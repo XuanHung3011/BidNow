@@ -68,6 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isLoading && user) {
       const allowedPaths = ["/login", "/register"]
+      const publicPaths = ["/", "/about", "/contact", "/auctions", "/auction", "/categories", "/search"]
+
+      // Allow navigating to public pages for all roles
+      const isPublicPath = publicPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+      if (isPublicPath) {
+        return
+      }
 
       if (user.role === "admin") {
         // Admin can only access /admin and /messages

@@ -4,6 +4,8 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/lib/auth-context"
 import { Header } from "@/components/header"
+import { TopSearchBar } from "@/components/top-search-bar"
+import { TopCategoryBar } from "@/components/top-category-bar"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -25,6 +27,8 @@ export default function RootLayout({
       <body className={`font-sans antialiased`}>
         <AuthProvider>
           <Header />
+          <TopSearchBar />
+          <TopCategoryBar />
           {children}
         </AuthProvider>
         <Analytics />

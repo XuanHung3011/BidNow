@@ -276,7 +276,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
 
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Giá khởi điểm</span>
-              <span className="text-muted-foreground line-through">{formatPrice(auction.startingBid)}</span>
+              <span className="text-muted-foreground">{formatPrice(auction.startingBid)}</span>
             </div>
 
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
