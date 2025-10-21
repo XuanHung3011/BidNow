@@ -9,7 +9,8 @@ export interface User {
   id: string
   email: string
   name: string
-  role: UserRole
+  roles: UserRole[] // Changed from single role to array of roles
+  currentRole: UserRole // Current active role
   avatar?: string
   rating?: number
   totalRatings?: number
@@ -18,7 +19,9 @@ export interface User {
 interface AuthContextType {
   user: User | null
   login: (email: string, password: string) => Promise<boolean>
-  register: (email: string, password: string, name: string, role: UserRole) => Promise<boolean>
+  register: (email: string, password: string, name: string) => Promise<boolean>
+  switchRole: (role: UserRole) => void
+  addRole: (role: UserRole) => void
   logout: () => void
   isLoading: boolean
 }
@@ -32,21 +35,24 @@ const DEMO_ACCOUNTS = [
     email: "admin@bidnow.com",
     password: "admin123",
     name: "Admin User",
-    role: "admin" as UserRole,
+    roles: ["admin"] as UserRole[],
+    currentRole: "admin" as UserRole,
   },
   {
     id: "2",
     email: "seller@bidnow.com",
     password: "seller123",
     name: "Seller User",
-    role: "seller" as UserRole,
+    roles: ["buyer", "seller"] as UserRole[],
+    currentRole: "buyer" as UserRole,
   },
   {
     id: "3",
     email: "buyer@bidnow.com",
     password: "buyer123",
     name: "Buyer User",
-    role: "buyer" as UserRole,
+    roles: ["buyer"] as UserRole[],
+    currentRole: "buyer" as UserRole,
   },
 ]
 
@@ -76,12 +82,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      if (user.role === "admin") {
+      if (user.currentRole === "admin") {
         // Admin can only access /admin and /messages
         if (!pathname.startsWith("/admin") && !pathname.startsWith("/messages") && !allowedPaths.includes(pathname)) {
           router.push("/admin")
         }
-      } else if (user.role === "seller") {
+      } else if (user.currentRole === "seller") {
         if (
           !pathname.startsWith("/seller") &&
           !pathname.startsWith("/profile") &&
@@ -91,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ) {
           router.push("/seller")
         }
-      } else if (user.role === "buyer") {
+      } else if (user.currentRole === "buyer") {
         if (
           !pathname.startsWith("/buyer") &&
           !pathname.startsWith("/messages") &&
@@ -135,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false
   }
 
-  const register = async (email: string, password: string, name: string, role: UserRole): Promise<boolean> => {
+  const register = async (email: string, password: string, name: string): Promise<boolean> => {
     const users = JSON.parse(localStorage.getItem("bidnow_users") || "[]")
 
     // Check if email already exists
@@ -148,7 +154,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
       name,
-      role,
+      roles: ["buyer"] as UserRole[], // Default to buyer only
+      currentRole: "buyer" as UserRole,
     }
 
     users.push(newUser)
@@ -161,13 +168,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true
   }
 
+  const switchRole = (role: UserRole) => {
+    if (user && user.roles.includes(role)) {
+      const updatedUser = { ...user, currentRole: role }
+      setUser(updatedUser)
+      localStorage.setItem("bidnow_user", JSON.stringify(updatedUser))
+    }
+  }
+
+  const addRole = (role: UserRole) => {
+    if (user && !user.roles.includes(role)) {
+      const updatedUser = { 
+        ...user, 
+        roles: [...user.roles, role],
+        currentRole: role // Switch to the new role
+      }
+      setUser(updatedUser)
+      localStorage.setItem("bidnow_user", JSON.stringify(updatedUser))
+      
+      // Also update in registered users
+      const users = JSON.parse(localStorage.getItem("bidnow_users") || "[]")
+      const userIndex = users.findIndex((u: any) => u.id === user.id)
+      if (userIndex !== -1) {
+        users[userIndex].roles = updatedUser.roles
+        users[userIndex].currentRole = updatedUser.currentRole
+        localStorage.setItem("bidnow_users", JSON.stringify(users))
+      }
+    }
+  }
+
   const logout = () => {
     setUser(null)
     localStorage.removeItem("bidnow_user")
     router.push("/")
   }
 
-  return <AuthContext.Provider value={{ user, login, register, logout, isLoading }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, login, register, switchRole, addRole, logout, isLoading }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

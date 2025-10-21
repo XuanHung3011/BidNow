@@ -7,13 +7,18 @@ import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Bell, Lock, CreditCard, Globe } from "lucide-react"
+import { Bell, Lock, CreditCard, Globe, User, Package, ShoppingBag } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
 
 export function UserSettings() {
+  const { user, switchRole, addRole } = useAuth()
   const [emailNotifications, setEmailNotifications] = useState(true)
   const [pushNotifications, setPushNotifications] = useState(true)
   const [bidUpdates, setBidUpdates] = useState(true)
   const [newAuctions, setNewAuctions] = useState(false)
+
+  const hasSellerRole = user?.roles?.includes("seller")
+  const hasBuyerRole = user?.roles?.includes("buyer")
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -22,8 +27,12 @@ export function UserSettings() {
         <p className="text-muted-foreground">Quản lý tùy chọn tài khoản và thông báo</p>
       </div>
 
-      <Tabs defaultValue="notifications" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+      <Tabs defaultValue="account" className="w-full">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="account">
+            <User className="mr-2 h-4 w-4" />
+            Tài khoản
+          </TabsTrigger>
           <TabsTrigger value="notifications">
             <Bell className="mr-2 h-4 w-4" />
             Thông báo
@@ -41,6 +50,78 @@ export function UserSettings() {
             Tùy chọn
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="account">
+          <Card>
+            <CardHeader>
+              <CardTitle>Quản lý vai trò</CardTitle>
+              <CardDescription>Chuyển đổi giữa các vai trò người mua và người bán</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <ShoppingBag className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="font-medium">Người mua</p>
+                      <p className="text-sm text-muted-foreground">Tham gia đấu giá và mua sản phẩm</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {user?.currentRole === "buyer" && (
+                      <span className="text-sm text-primary font-medium">Đang hoạt động</span>
+                    )}
+                    {hasBuyerRole && user?.currentRole !== "buyer" && (
+                      <Button size="sm" onClick={() => switchRole("buyer")}>
+                        Chuyển sang
+                      </Button>
+                    )}
+                    {!hasBuyerRole && (
+                      <span className="text-sm text-muted-foreground">Mặc định</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Package className="h-5 w-5 text-accent" />
+                    <div>
+                      <p className="font-medium">Người bán</p>
+                      <p className="text-sm text-muted-foreground">Tạo và quản lý phiên đấu giá</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {user?.currentRole === "seller" && (
+                      <span className="text-sm text-primary font-medium">Đang hoạt động</span>
+                    )}
+                    {hasSellerRole && user?.currentRole !== "seller" && (
+                      <Button size="sm" onClick={() => switchRole("seller")}>
+                        Chuyển sang
+                      </Button>
+                    )}
+                    {!hasSellerRole && (
+                      <Button size="sm" variant="outline" onClick={() => addRole("seller")}>
+                        Kích hoạt
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {!hasSellerRole && (
+                <div className="rounded-lg bg-blue-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="text-blue-600">ℹ️</div>
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium mb-1">Muốn trở thành người bán?</p>
+                      <p>Kích hoạt vai trò người bán để có thể tạo và quản lý các phiên đấu giá của riêng bạn.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="notifications">
           <Card>

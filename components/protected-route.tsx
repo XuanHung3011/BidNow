@@ -18,7 +18,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   useEffect(() => {
     if (!isLoading && !user) {
       router.push("/login")
-    } else if (!isLoading && user && allowedRoles && !allowedRoles.includes(user.role)) {
+    } else if (!isLoading && user && allowedRoles && !allowedRoles.includes(user.currentRole)) {
       router.push("/")
     }
   }, [user, isLoading, allowedRoles, router])
@@ -31,7 +31,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     )
   }
 
-  if (!user || (allowedRoles && !allowedRoles.includes(user.role))) {
+  if (!user || (allowedRoles && !allowedRoles.includes(user.currentRole))) {
     return null
   }
 

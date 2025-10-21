@@ -13,8 +13,10 @@ export function TopSearchBar() {
   const pathname = usePathname()
   const { user } = useAuth()
 
-  const isAdmin = user?.role === "admin"
-  const isAuctionsPage = pathname === "/auctions"
+  const isAdmin = user?.currentRole === "admin"
+  
+  // Only show on home page, auctions page, and categories page
+  const shouldShow = pathname === "/" || pathname === "/auctions" || pathname.startsWith("/categories")
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -22,7 +24,7 @@ export function TopSearchBar() {
     router.push(`/search?q=${encodeURIComponent(query.trim())}`)
   }
 
-  if (isAdmin || isAuctionsPage) return null
+  if (isAdmin || !shouldShow) return null
 
   return (
     <div className="border-b border-border bg-background/95">

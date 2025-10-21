@@ -17,10 +17,12 @@ const categories: { href: string; label: string }[] = [
 export function TopCategoryBar() {
   const pathname = usePathname()
   const { user } = useAuth()
-  const isAdmin = user?.role === "admin"
-  const isAuctionsPage = pathname === "/auctions"
+  const isAdmin = user?.currentRole === "admin"
   
-  if (isAdmin || isAuctionsPage) return null
+  // Only show on home page, auctions page, and categories page
+  const shouldShow = pathname === "/" || pathname === "/auctions" || pathname.startsWith("/categories")
+  
+  if (isAdmin || !shouldShow) return null
 
   return (
     <nav className="border-b border-border bg-background/95">

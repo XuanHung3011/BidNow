@@ -12,14 +12,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Gavel, AlertCircle } from "lucide-react"
-import { useAuth, type UserRole } from "@/lib/auth-context"
+import { useAuth } from "@/lib/auth-context"
 
 export default function RegisterPage() {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
-  const [role, setRole] = useState<UserRole>("buyer")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const { register } = useAuth()
@@ -41,7 +40,7 @@ export default function RegisterPage() {
 
     setIsLoading(true)
 
-    const success = await register(email, password, name, role)
+    const success = await register(email, password, name)
 
     if (success) {
       router.push("/")
@@ -126,22 +125,14 @@ export default function RegisterPage() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Loại tài khoản</Label>
-                <RadioGroup value={role} onValueChange={(value) => setRole(value as UserRole)}>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="buyer" id="buyer" />
-                    <Label htmlFor="buyer" className="font-normal">
-                      Người mua - Tham gia đấu giá
-                    </Label>
+              <div className="rounded-lg bg-blue-50 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="text-blue-600">ℹ️</div>
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium mb-1">Tài khoản linh hoạt</p>
+                    <p>Bạn sẽ đăng ký với vai trò <strong>Người mua</strong> mặc định. Sau khi đăng nhập, bạn có thể chuyển đổi sang vai trò <strong>Người bán</strong> bất cứ lúc nào trong phần cài đặt.</p>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="seller" id="seller" />
-                    <Label htmlFor="seller" className="font-normal">
-                      Người bán - Tạo phiên đấu giá
-                    </Label>
-                  </div>
-                </RadioGroup>
+                </div>
               </div>
 
               <Button type="submit" className="w-full" disabled={isLoading}>

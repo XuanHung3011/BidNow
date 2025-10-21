@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Search, Bell, User, Gavel, LogOut, Settings, Package, ShoppingBag, Shield, MessageSquare } from "lucide-react"
+import { Search, Bell, User, Gavel, LogOut, Settings, Package, ShoppingBag, Shield, MessageSquare, ArrowUpDown } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import {
   DropdownMenu,
@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 
 export function Header() {
-  const { user, logout } = useAuth()
+  const { user, logout, switchRole } = useAuth()
   const router = useRouter()
 
   const unreadMessages = 3
@@ -27,7 +27,7 @@ export function Header() {
   }
 
   const getRoleDashboard = () => {
-    switch (user?.role) {
+    switch (user?.currentRole) {
       case "admin":
         return "/admin"
       case "seller":
@@ -39,7 +39,8 @@ export function Header() {
     }
   }
 
-  const isRestrictedRole = user?.role === "admin"
+  const isRestrictedRole = user?.currentRole === "admin"
+  const hasMultipleRoles = user?.roles && user.roles.length > 1
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -51,7 +52,7 @@ export function Header() {
           <span className="text-xl font-bold text-foreground">BidNow</span>
         </Link>
 
-        {!isRestrictedRole && user?.role !== "seller" && (
+        {!isRestrictedRole && user?.currentRole !== "seller" && (
           <nav className="hidden items-center gap-6 md:flex">
             <Link
               href="/"
@@ -120,15 +121,42 @@ export function Header() {
                     <div className="flex flex-col space-y-1">
                       <p className="text-sm font-medium leading-none">{user.name}</p>
                       <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
-                      <p className="text-xs leading-none text-primary capitalize">{user.role}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs leading-none text-primary capitalize">{user.currentRole}</p>
+                        {hasMultipleRoles && (
+                          <Badge variant="secondary" className="text-xs px-1 py-0">
+                            {user.roles.length} roles
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
 
+                  {hasMultipleRoles && (
+                    <>
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">Chuyển đổi vai trò</DropdownMenuLabel>
+                      {user.roles.map((role) => (
+                        <DropdownMenuItem
+                          key={role}
+                          onClick={() => switchRole(role)}
+                          className={user.currentRole === role ? "bg-primary/10" : ""}
+                        >
+                          <ArrowUpDown className="mr-2 h-4 w-4" />
+                          {role === "admin" && "Quản trị viên"}
+                          {role === "seller" && "Người bán"}
+                          {role === "buyer" && "Người mua"}
+                          {user.currentRole === role && " (Hiện tại)"}
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+
                   <DropdownMenuItem onClick={() => router.push(getRoleDashboard())}>
-                    {user.role === "admin" && <Shield className="mr-2 h-4 w-4" />}
-                    {user.role === "seller" && <Package className="mr-2 h-4 w-4" />}
-                    {user.role === "buyer" && <ShoppingBag className="mr-2 h-4 w-4" />}
+                    {user.currentRole === "admin" && <Shield className="mr-2 h-4 w-4" />}
+                    {user.currentRole === "seller" && <Package className="mr-2 h-4 w-4" />}
+                    {user.currentRole === "buyer" && <ShoppingBag className="mr-2 h-4 w-4" />}
                     Dashboard
                   </DropdownMenuItem>
 
