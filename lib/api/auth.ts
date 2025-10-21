@@ -1,0 +1,93 @@
+import { API_BASE, API_ENDPOINTS } from './config';
+import { LoginRequest, RegisterRequest, ResendVerificationRequest, UserResponse, AuthResult } from './types';
+
+export class AuthAPI {
+  private static async handleResponse<T>(response: Response): Promise<T> {
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Network error' }));
+      throw new Error(error.message || 'Request failed');
+    }
+    return response.json();
+  }
+
+  static async login(credentials: LoginRequest): Promise<AuthResult> {
+    try {
+      const response = await fetch(`${API_BASE}${API_ENDPOINTS.AUTH.LOGIN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
+      });
+
+      if (response.status === 403) return { ok: false, reason: 'not_verified' };
+      if (!response.ok) return { ok: false, reason: 'invalid' };
+
+      const userData: UserResponse = await this.handleResponse(response);
+      return { ok: true, data: userData };
+    } catch (error) {
+      console.error('Login error:', error);
+      return { ok: false, reason: 'network' };
+    }
+  }
+
+  static async register(userData: RegisterRequest): Promise<AuthResult> {
+    try {
+      const response = await fetch(`${API_BASE}${API_ENDPOINTS.AUTH.REGISTER}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData),
+      });
+
+      if (response.status === 409) return { ok: false, reason: 'duplicate' };
+      if (!response.ok) return { ok: false, reason: 'invalid' };
+
+      const newUser: UserResponse = await this.handleResponse(response);
+      
+      // Try to get verification token
+      try {
+        const resendResponse = await fetch(`${API_BASE}${API_ENDPOINTS.AUTH.RESEND_VERIFICATION}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: newUser.id, email: newUser.email }),
+        });
+        
+        const resendData = resendResponse.ok ? await resendResponse.json() : { token: undefined };
+        return { ok: true, verifyToken: resendData.token };
+      } catch {
+        return { ok: true, verifyToken: undefined };
+      }
+    } catch (error) {
+      console.error('Register error:', error);
+      return { ok: false, reason: 'network' };
+    }
+  }
+
+  static async verifyEmail(token: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE}${API_ENDPOINTS.AUTH.VERIFY}?token=${encodeURIComponent(token)}`, {
+        method: 'POST',
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Verify email error:', error);
+      return false;
+    }
+  }
+
+  static async resendVerification(request: ResendVerificationRequest): Promise<{ token?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}${API_ENDPOINTS.AUTH.RESEND_VERIFICATION}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+      
+      if (response.ok) {
+        return await response.json();
+      }
+      return { token: undefined };
+    } catch (error) {
+      console.error('Resend verification error:', error);
+      return { token: undefined };
+    }
+  }
+}

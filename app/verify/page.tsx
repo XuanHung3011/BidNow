@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
-import { API_BASE } from "@/lib/utils"
+import { AuthAPI } from "@/lib/api"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
@@ -16,8 +16,8 @@ export default function VerifyPage() {
     if (!token) return
     const run = async () => {
       setStatus("verifying")
-      const res = await fetch(`${API_BASE}/api/Auth/verify?token=${encodeURIComponent(token)}`, { method: "POST" })
-      setStatus(res.ok ? "success" : "error")
+      const success = await AuthAPI.verifyEmail(token)
+      setStatus(success ? "success" : "error")
     }
     run()
   }, [params])
@@ -48,5 +48,6 @@ export default function VerifyPage() {
     </div>
   )
 }
+
 
 

@@ -1,8 +1,8 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { API_BASE } from "@/lib/utils"
 import { useRouter, usePathname } from "next/navigation"
+import { AuthAPI } from "@/lib/api"
 
 export type UserRole = "guest" | "buyer" | "seller" | "admin"
 
@@ -92,56 +92,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, pathname, isLoading, router])
 
   const login = async (email: string, password: string): Promise<{ ok: boolean; reason?: string }> => {
-    try {
-      const res = await fetch(`${API_BASE}/api/Auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      })
-      if (res.status === 403) return { ok: false, reason: "not_verified" }
-      if (!res.ok) return { ok: false, reason: "invalid" }
-      const data = await res.json()
+    const result = await AuthAPI.login({ email, password })
+    
+    if (result.ok && result.data) {
+      const userData = result.data
       const mapped: User = {
-        id: String(data.id),
-        email: data.email,
-        name: data.fullName,
-        roles: (data.roles ?? []).includes("admin") ? (["admin"] as UserRole[]) : (["buyer"] as UserRole[]),
-        currentRole: ((data.roles ?? []).includes("admin") ? "admin" : "buyer") as UserRole,
-        avatar: data.avatarUrl ?? undefined,
-        rating: data.reputationScore ?? undefined,
-        totalRatings: data.totalRatings ?? undefined,
+        id: String(userData.id),
+        email: userData.email,
+        name: userData.fullName,
+        roles: (userData.roles ?? []).includes("admin") ? (["admin"] as UserRole[]) : (["buyer"] as UserRole[]),
+        currentRole: ((userData.roles ?? []).includes("admin") ? "admin" : "buyer") as UserRole,
+        avatar: userData.avatarUrl ?? undefined,
+        rating: userData.reputationScore ?? undefined,
+        totalRatings: userData.totalRatings ?? undefined,
       }
       setUser(mapped)
       localStorage.setItem("bidnow_user", JSON.stringify(mapped))
       return { ok: true }
-    } catch {
-      return { ok: false, reason: "network" }
     }
+    
+    return { ok: false, reason: result.reason }
   }
 
   const register = async (email: string, password: string, name: string): Promise<{ ok: boolean; verifyToken?: string; reason?: string }> => {
-    try {
-      const res = await fetch(`${API_BASE}/api/Auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, fullName: name }),
-      })
-      if (res.status === 409) return { ok: false, reason: "duplicate" }
-      if (!res.ok) return { ok: false, reason: "invalid" }
-      const data = await res.json()
-
-      // ask backend to generate (already generated in register), but also allow re-fetch latest
-      const resend = await fetch(`${API_BASE}/api/Auth/resend-verification`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: data.id, email: data.email }),
-      })
-      // Handle the 501 response gracefully - don't treat it as an error
-      const resendData = resend.ok ? await resend.json() : { token: undefined }
-      return { ok: true, verifyToken: resendData.token }
-    } catch {
-      return { ok: false, reason: "network" }
-    }
+    const result = await AuthAPI.register({ email, password, fullName: name })
+    return result
   }
 
   const switchRole = (role: UserRole) => {
