@@ -26,12 +26,13 @@ export default function LoginPage() {
     setError("")
     setIsLoading(true)
 
-    const success = await login(email, password)
+    const result = await login(email, password)
 
-    if (success) {
+    if (result.ok) {
       router.push("/")
     } else {
-      setError("Email hoặc mật khẩu không đúng")
+      if (result.reason === "not_verified") setError("Email chưa được xác minh")
+      else setError("Email hoặc mật khẩu không đúng")
     }
 
     setIsLoading(false)

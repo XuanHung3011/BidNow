@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { API_BASE } from "@/lib/utils"
 import { useRouter, usePathname } from "next/navigation"
 
 export type UserRole = "guest" | "buyer" | "seller" | "admin"
@@ -18,8 +19,8 @@ export interface User {
 
 interface AuthContextType {
   user: User | null
-  login: (email: string, password: string) => Promise<boolean>
-  register: (email: string, password: string, name: string) => Promise<boolean>
+  login: (email: string, password: string) => Promise<{ ok: boolean; reason?: string }>
+  register: (email: string, password: string, name: string) => Promise<{ ok: boolean; verifyToken?: string; reason?: string }>
   switchRole: (role: UserRole) => void
   addRole: (role: UserRole) => void
   logout: () => void
@@ -28,33 +29,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Demo accounts for testing
-const DEMO_ACCOUNTS = [
-  {
-    id: "1",
-    email: "admin@bidnow.com",
-    password: "admin123",
-    name: "Admin User",
-    roles: ["admin"] as UserRole[],
-    currentRole: "admin" as UserRole,
-  },
-  {
-    id: "2",
-    email: "seller@bidnow.com",
-    password: "seller123",
-    name: "Seller User",
-    roles: ["buyer", "seller"] as UserRole[],
-    currentRole: "buyer" as UserRole,
-  },
-  {
-    id: "3",
-    email: "buyer@bidnow.com",
-    password: "buyer123",
-    name: "Buyer User",
-    roles: ["buyer"] as UserRole[],
-    currentRole: "buyer" as UserRole,
-  },
-]
+// Demo accounts removed; now using backend
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -116,56 +91,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, pathname, isLoading, router])
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    // Check demo accounts
-    const account = DEMO_ACCOUNTS.find((acc) => acc.email === email && acc.password === password)
-
-    if (account) {
-      const { password: _, ...userWithoutPassword } = account
-      setUser(userWithoutPassword)
-      localStorage.setItem("bidnow_user", JSON.stringify(userWithoutPassword))
-      return true
+  const login = async (email: string, password: string): Promise<{ ok: boolean; reason?: string }> => {
+    try {
+      const res = await fetch(`${API_BASE}/api/Auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
+      if (res.status === 403) return { ok: false, reason: "not_verified" }
+      if (!res.ok) return { ok: false, reason: "invalid" }
+      const data = await res.json()
+      const mapped: User = {
+        id: String(data.id),
+        email: data.email,
+        name: data.fullName,
+        roles: (data.roles ?? []).includes("admin") ? (["admin"] as UserRole[]) : (["buyer"] as UserRole[]),
+        currentRole: ((data.roles ?? []).includes("admin") ? "admin" : "buyer") as UserRole,
+        avatar: data.avatarUrl ?? undefined,
+        rating: data.reputationScore ?? undefined,
+        totalRatings: data.totalRatings ?? undefined,
+      }
+      setUser(mapped)
+      localStorage.setItem("bidnow_user", JSON.stringify(mapped))
+      return { ok: true }
+    } catch {
+      return { ok: false, reason: "network" }
     }
-
-    // Check registered users
-    const users = JSON.parse(localStorage.getItem("bidnow_users") || "[]")
-    const registeredUser = users.find((u: any) => u.email === email && u.password === password)
-
-    if (registeredUser) {
-      const { password: _, ...userWithoutPassword } = registeredUser
-      setUser(userWithoutPassword)
-      localStorage.setItem("bidnow_user", JSON.stringify(userWithoutPassword))
-      return true
-    }
-
-    return false
   }
 
-  const register = async (email: string, password: string, name: string): Promise<boolean> => {
-    const users = JSON.parse(localStorage.getItem("bidnow_users") || "[]")
+  const register = async (email: string, password: string, name: string): Promise<{ ok: boolean; verifyToken?: string; reason?: string }> => {
+    try {
+      const res = await fetch(`${API_BASE}/api/Auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, fullName: name }),
+      })
+      if (res.status === 409) return { ok: false, reason: "duplicate" }
+      if (!res.ok) return { ok: false, reason: "invalid" }
+      const data = await res.json()
 
-    // Check if email already exists
-    if (users.some((u: any) => u.email === email)) {
-      return false
+      // ask backend to generate (already generated in register), but also allow re-fetch latest
+      const resend = await fetch(`${API_BASE}/api/Auth/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: data.id, email: data.email }),
+      })
+      // Handle the 501 response gracefully - don't treat it as an error
+      const resendData = resend.ok ? await resend.json() : { token: undefined }
+      return { ok: true, verifyToken: resendData.token }
+    } catch {
+      return { ok: false, reason: "network" }
     }
-
-    const newUser = {
-      id: Date.now().toString(),
-      email,
-      password,
-      name,
-      roles: ["buyer"] as UserRole[], // Default to buyer only
-      currentRole: "buyer" as UserRole,
-    }
-
-    users.push(newUser)
-    localStorage.setItem("bidnow_users", JSON.stringify(users))
-
-    const { password: _, ...userWithoutPassword } = newUser
-    setUser(userWithoutPassword)
-    localStorage.setItem("bidnow_user", JSON.stringify(userWithoutPassword))
-
-    return true
   }
 
   const switchRole = (role: UserRole) => {

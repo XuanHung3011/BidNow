@@ -4,7 +4,6 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,6 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Gavel, AlertCircle } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
+import Link from "next/link"
 
 export default function RegisterPage() {
   const [name, setName] = useState("")
@@ -22,6 +22,7 @@ export default function RegisterPage() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const { register } = useAuth()
+  const [verifyToken, setVerifyToken] = useState<string | null>(null)
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,12 +41,13 @@ export default function RegisterPage() {
 
     setIsLoading(true)
 
-    const success = await register(email, password, name)
-
-    if (success) {
-      router.push("/")
-    } else {
+    const result = await register(email, password, name)
+    if (result.ok) {
+      setVerifyToken(result.verifyToken ?? null)
+    } else if (result.reason === "duplicate") {
       setError("Email đã được sử dụng")
+    } else {
+      setError("Đăng ký thất bại, vui lòng thử lại")
     }
 
     setIsLoading(false)
@@ -141,12 +143,22 @@ export default function RegisterPage() {
             </form>
           </CardContent>
           <CardFooter className="flex justify-center">
-            <p className="text-sm text-muted-foreground">
-              Đã có tài khoản?{" "}
-              <Link href="/login" className="font-medium text-primary hover:underline">
-                Đăng nhập
-              </Link>
-            </p>
+            {verifyToken ? (
+              <div className="text-center space-y-2">
+                <p className="text-sm text-muted-foreground">Đăng ký thành công. Vui lòng xác minh email.</p>
+                <p className="text-xs break-all">Link nhanh: /verify?token={verifyToken}</p>
+                <Link href={`/verify?token=${verifyToken}`} className="font-medium text-primary hover:underline">
+                  Xác minh ngay
+                </Link>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Đã có tài khoản?{" "}
+                <Link href="/login" className="font-medium text-primary hover:underline">
+                  Đăng nhập
+                </Link>
+              </p>
+            )}
           </CardFooter>
         </Card>
       </div>
