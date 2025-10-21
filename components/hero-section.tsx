@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Sparkles, Users, Gavel, TrendingUp } from "lucide-react"
+import { HeroSearchBar } from "./hero-search-bar"
 
 export function HeroSection() {
   return (
@@ -25,6 +26,11 @@ export function HeroSection() {
             Tham gia hàng nghìn phiên đấu giá trực tuyến với sản phẩm đa dạng từ điện tử, sưu tầm đến nghệ thuật. Đấu
             giá dễ dàng, nhanh chóng và an toàn.
           </p>
+
+          {/* Hero Search Bar */}
+          <div className="mb-8">
+            <HeroSearchBar />
+          </div>
 
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Button size="lg" className="group w-full sm:w-auto bg-primary hover:bg-primary/90">
