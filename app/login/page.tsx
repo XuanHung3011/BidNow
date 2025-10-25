@@ -31,7 +31,10 @@ export default function LoginPage() {
     if (result.ok) {
       router.push("/")
     } else {
-      if (result.reason === "not_verified") setError("Email chưa được xác minh")
+      if (result.reason === "user_not_found") setError("Tài khoản chưa được đăng ký")
+      else if (result.reason === "invalid_password") setError("Mật khẩu không đúng")
+      else if (result.reason === "not_verified") setError("Email chưa được xác minh")
+      else if (result.reason === "network") setError("Lỗi kết nối, vui lòng thử lại")
       else setError("Email hoặc mật khẩu không đúng")
     }
 

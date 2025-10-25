@@ -18,6 +18,8 @@ export class AuthAPI {
         body: JSON.stringify(credentials),
       });
 
+      if (response.status === 404) return { ok: false, reason: 'user_not_found' };
+      if (response.status === 401) return { ok: false, reason: 'invalid_password' };
       if (response.status === 403) return { ok: false, reason: 'not_verified' };
       if (!response.ok) return { ok: false, reason: 'invalid' };
 
@@ -51,9 +53,9 @@ export class AuthAPI {
         });
         
         const resendData = resendResponse.ok ? await resendResponse.json() : { token: undefined };
-        return { ok: true, verifyToken: resendData.token };
+        return { ok: true, data: newUser, verifyToken: resendData.token };
       } catch {
-        return { ok: true, verifyToken: undefined };
+        return { ok: true, data: newUser, verifyToken: undefined };
       }
     } catch (error) {
       console.error('Register error:', error);
@@ -91,3 +93,4 @@ export class AuthAPI {
     }
   }
 }
+

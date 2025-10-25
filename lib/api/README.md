@@ -43,3 +43,4 @@ const { token } = await AuthAPI.resendVerification({ userId, email })
 - ✅ **Error handling**: Xử lý lỗi tập trung
 - ✅ **Dễ test**: Có thể mock API services
 - ✅ **Maintainable**: Dễ bảo trì và mở rộng
+
