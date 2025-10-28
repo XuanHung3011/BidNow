@@ -116,24 +116,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (email: string, password: string, name: string): Promise<{ ok: boolean; verifyToken?: string; reason?: string }> => {
     const result = await AuthAPI.register({ email, password, fullName: name })
-    
-    if (result.ok && result.data) {
-      // Store user data for resend verification
-      const userData = result.data
-      const mapped: User = {
-        id: String(userData.id),
-        email: userData.email,
-        name: userData.fullName,
-        roles: (userData.roles ?? []).includes("admin") ? (["admin"] as UserRole[]) : (["buyer"] as UserRole[]),
-        currentRole: ((userData.roles ?? []).includes("admin") ? "admin" : "buyer") as UserRole,
-        avatar: userData.avatarUrl ?? undefined,
-        rating: userData.reputationScore ?? undefined,
-        totalRatings: userData.totalRatings ?? undefined,
-      }
-      setUser(mapped)
-      localStorage.setItem("bidnow_user", JSON.stringify(mapped))
+
+    // Store pending registration creds for auto login after verification
+    if (result.ok) {
+      localStorage.setItem("bidnow_pending_register", JSON.stringify({ email, password }))
     }
-    
+
+    // Do NOT log the user in yet
     return result
   }
 
