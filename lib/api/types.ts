@@ -44,3 +44,41 @@ export interface AuthResult {
   verifyToken?: string;
   data?: UserResponse;
 }
+export interface ItemResponseDto {
+  id: string;
+  title: string;
+  description?: string;
+  basePrice?: number;
+  condition?: string;
+  images?: string[];
+  location?: string;
+  status?: string;
+  createdAt?: string;
+  categoryId?: string;
+  categoryName?: string;
+  sellerId?: string;
+  sellerName?: string;
+  sellerAvatar?: string;
+  auctionId?: string | null;
+  startingBid?: number | null;
+  currentBid?: number | null;
+  bidCount?: number | null;
+  auctionEndTime?: string | null;
+  auctionStatus?: string | null;
+}
+export interface CategoryDto {
+  id: number;
+  name: string;
+  slug?: string;
+  icon?: string | null;
+}
+export interface ItemFilterDto {
+  searchTerm?: string | null;
+
+  categoryIds?: number[] | null;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+  
+  auctionStatuses?: string[] | null;
+  condition?: string | null;
+}

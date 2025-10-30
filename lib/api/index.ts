@@ -10,3 +10,7 @@ export type {
   AuthResult,
 } from './types';
 
+// lib/api/index.ts
+export * from './config'
+export * from './types'
+export * from './items'
