@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -9,253 +9,208 @@ import { Search, SlidersHorizontal } from "lucide-react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ItemsAPI } from "@/lib/api/items"
+import type { ItemResponseDto, ItemFilterDto, CategoryDto } from "@/lib/api/types"
+import { useSearchParams } from "next/navigation"
 
-const allAuctions = [
-  {
-    id: "1",
-    title: "iPhone 15 Pro Max 256GB - Titan Xanh",
-    image: "/iphone-15-pro-max-blue-titanium.jpg",
-    currentBid: 28500000,
-    startingBid: 25000000,
-    endTime: new Date(Date.now() + 2 * 60 * 60 * 1000),
-    bidCount: 45,
-    category: "Điện tử",
-  },
-  {
-    id: "2",
-    title: "MacBook Pro M3 Max 16 inch - 64GB RAM",
-    image: "/silver-macbook-on-desk.png",
-    currentBid: 72000000,
-    startingBid: 65000000,
-    endTime: new Date(Date.now() + 5 * 60 * 60 * 1000),
-    bidCount: 56,
-    category: "Điện tử",
-  },
-  {
-    id: "3",
-    title: "Đồng hồ Rolex Submariner Date",
-    image: "/rolex-watch.jpg",
-    currentBid: 185000000,
-    startingBid: 150000000,
-    endTime: new Date(Date.now() + 12 * 60 * 60 * 1000),
-    bidCount: 78,
-    category: "Đồng hồ",
-  },
-  {
-    id: "4",
-    title: "Tranh sơn dầu trừu tượng hiện đại",
-    image: "/abstract-oil-painting.png",
-    currentBid: 45000000,
-    startingBid: 35000000,
-    endTime: new Date(Date.now() + 8 * 60 * 60 * 1000),
-    bidCount: 23,
-    category: "Nghệ thuật",
-  },
-  {
-    id: "5",
-    title: "PlayStation 5 Pro + 2 Tay cầm",
-    image: "/gaming-console-setup.png",
-    currentBid: 18500000,
-    startingBid: 15000000,
-    endTime: new Date(Date.now() + 3 * 60 * 60 * 1000),
-    bidCount: 67,
-    category: "Gaming",
-  },
-  {
-    id: "6",
-    title: "Tai nghe Sony WH-1000XM5",
-    image: "/premium-headphones.png",
-    currentBid: 6500000,
-    startingBid: 5500000,
-    endTime: new Date(Date.now() + 6 * 60 * 60 * 1000),
-    bidCount: 34,
-    category: "Điện tử",
-  },
-  {
-    id: "7",
-    title: "Sony A7R V + Lens 24-70mm F2.8",
-    image: "/professional-camera.png",
-    currentBid: 95000000,
-    startingBid: 85000000,
-    endTime: new Date(Date.now() + 4 * 60 * 60 * 1000),
-    bidCount: 42,
-    category: "Máy ảnh",
-  },
-  {
-    id: "8",
-    title: "Apple Watch Ultra 2 - Titanium",
-    image: "/smartwatch-closeup.png",
-    currentBid: 18000000,
-    startingBid: 16000000,
-    endTime: new Date(Date.now() + 7 * 60 * 60 * 1000),
-    bidCount: 51,
-    category: "Điện tử",
-  },
-  {
-    id: "9",
-    title: "iPad Pro M2 12.9 inch - 1TB",
-    image: "/modern-smartphone.png",
-    currentBid: 32000000,
-    startingBid: 28000000,
-    endTime: new Date(Date.now() + 5 * 60 * 60 * 1000),
-    bidCount: 38,
-    category: "Điện tử",
-  },
-  {
-    id: "10",
-    title: "Samsung Galaxy S24 Ultra 512GB",
-    image: "/modern-smartphone.png",
-    currentBid: 24000000,
-    startingBid: 22000000,
-    endTime: new Date(Date.now() + 3 * 60 * 60 * 1000),
-    bidCount: 29,
-    category: "Điện tử",
-  },
-  {
-    id: "11",
-    title: "Đồng hồ Omega Seamaster Professional",
-    image: "/rolex-watch.jpg",
-    currentBid: 125000000,
-    startingBid: 110000000,
-    endTime: new Date(Date.now() + 10 * 60 * 60 * 1000),
-    bidCount: 62,
-    category: "Đồng hồ",
-  },
-  {
-    id: "12",
-    title: "Tranh sơn dầu Phố cổ Hà Nội",
-    image: "/vietnamese-oil-painting-hanoi-old-quarter.jpg",
-    currentBid: 38000000,
-    startingBid: 30000000,
-    endTime: new Date(Date.now() + 9 * 60 * 60 * 1000),
-    bidCount: 19,
-    category: "Nghệ thuật",
-  },
-  {
-    id: "13",
-    title: "Nintendo Switch OLED + 10 Games",
-    image: "/gaming-console-setup.png",
-    currentBid: 9500000,
-    startingBid: 8000000,
-    endTime: new Date(Date.now() + 4 * 60 * 60 * 1000),
-    bidCount: 44,
-    category: "Gaming",
-  },
-  {
-    id: "14",
-    title: "Bose QuietComfort Ultra Headphones",
-    image: "/premium-headphones.png",
-    currentBid: 8500000,
-    startingBid: 7500000,
-    endTime: new Date(Date.now() + 6 * 60 * 60 * 1000),
-    bidCount: 27,
-    category: "Điện tử",
-  },
-  {
-    id: "15",
-    title: "Canon EOS R5 + RF 24-105mm",
-    image: "/professional-camera.png",
-    currentBid: 82000000,
-    startingBid: 75000000,
-    endTime: new Date(Date.now() + 8 * 60 * 60 * 1000),
-    bidCount: 36,
-    category: "Máy ảnh",
-  },
-  {
-    id: "16",
-    title: "Garmin Fenix 7X Sapphire Solar",
-    image: "/smartwatch-closeup.png",
-    currentBid: 22000000,
-    startingBid: 19000000,
-    endTime: new Date(Date.now() + 5 * 60 * 60 * 1000),
-    bidCount: 31,
-    category: "Điện tử",
-  },
-  {
-    id: "17",
-    title: "Microsoft Surface Pro 9 - i7 32GB",
-    image: "/silver-macbook-on-desk.png",
-    currentBid: 35000000,
-    startingBid: 30000000,
-    endTime: new Date(Date.now() + 7 * 60 * 60 * 1000),
-    bidCount: 25,
-    category: "Điện tử",
-  },
-  {
-    id: "18",
-    title: "Đồng hồ TAG Heuer Carrera Chronograph",
-    image: "/rolex-watch.jpg",
-    currentBid: 95000000,
-    startingBid: 85000000,
-    endTime: new Date(Date.now() + 11 * 60 * 60 * 1000),
-    bidCount: 48,
-    category: "Đồng hồ",
-  },
-  {
-    id: "19",
-    title: "Tượng gỗ Phật Quan Âm - Gỗ Hương",
-    image: "/abstract-oil-painting.png",
-    currentBid: 28000000,
-    startingBid: 22000000,
-    endTime: new Date(Date.now() + 10 * 60 * 60 * 1000),
-    bidCount: 16,
-    category: "Sưu tầm",
-  },
-  {
-    id: "20",
-    title: "Xbox Series X + Game Pass Ultimate",
-    image: "/gaming-console-setup.png",
-    currentBid: 14500000,
-    startingBid: 12000000,
-    endTime: new Date(Date.now() + 4 * 60 * 60 * 1000),
-    bidCount: 53,
-    category: "Gaming",
-  },
-  {
-    id: "21",
-    title: "AirPods Max - Space Gray",
-    image: "/premium-headphones.png",
-    currentBid: 12000000,
-    startingBid: 10500000,
-    endTime: new Date(Date.now() + 5 * 60 * 60 * 1000),
-    bidCount: 39,
-    category: "Điện tử",
-  },
-  {
-    id: "22",
-    title: "Nikon Z9 + Z 24-120mm f/4 S",
-    image: "/professional-camera.png",
-    currentBid: 135000000,
-    startingBid: 120000000,
-    endTime: new Date(Date.now() + 9 * 60 * 60 * 1000),
-    bidCount: 28,
-    category: "Máy ảnh",
-  },
-  {
-    id: "23",
-    title: "Samsung Galaxy Watch 6 Classic",
-    image: "/smartwatch-closeup.png",
-    currentBid: 8500000,
-    startingBid: 7500000,
-    endTime: new Date(Date.now() + 6 * 60 * 60 * 1000),
-    bidCount: 33,
-    category: "Điện tử",
-  },
-  {
-    id: "24",
-    title: "ASUS ROG Zephyrus G16 - RTX 4090",
-    image: "/silver-macbook-on-desk.png",
-    currentBid: 85000000,
-    startingBid: 75000000,
-    endTime: new Date(Date.now() + 8 * 60 * 60 * 1000),
-    bidCount: 41,
-    category: "Điện tử",
-  },
-]
+// helper nhỏ
+const formatCurrency = (v?: number) =>
+  v == null ? "-" : v.toLocaleString('vi-VN') + " ₫"
 
 export function AllAuctions() {
-  const [searchQuery, setSearchQuery] = useState("")
+  const searchParams = useSearchParams()
+  const qParam = searchParams?.get("q") ?? ""
+
+  // search
+  const [searchQuery, setSearchQuery] = useState<string>(qParam)
+  const [debouncedQuery, setDebouncedQuery] = useState<string>(qParam)
+
+  // filter states (form values inside sheet)
+  // <-- CHANGED: store category IDs as numbers
+  const [selectedCategories, setSelectedCategories] = useState<number[]>([])
+  const [minPriceStr, setMinPriceStr] = useState<string>("")
+  const [maxPriceStr, setMaxPriceStr] = useState<string>("")
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
+  const [categories, setCategories] = useState<CategoryDto[]>([])
+
+  // activeFilter = filter đã nhấn "Áp dụng"
+  const [activeFilter, setActiveFilter] = useState<ItemFilterDto | null>(null)
+
   const [sortBy, setSortBy] = useState("ending-soon")
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(12)
+
+  const [items, setItems] = useState<ItemResponseDto[]>([])
+  const [totalCount, setTotalCount] = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+// sync q param & categoryId param -> searchQuery, reset page
+useEffect(() => {
+  const newQ = searchParams?.get("q") ?? ""
+  setSearchQuery(newQ)
+  setDebouncedQuery(newQ)
+  setPage(1)
+
+  // NEW: check categoryId param and auto-apply or clear
+  const catIdParam = searchParams?.get("categoryId")
+
+  if (catIdParam) {
+    const parsed = Number(catIdParam)
+    if (!Number.isNaN(parsed)) {
+      // if categoryId exists -> set selection + apply filter for that single category
+      setSelectedCategories([parsed])
+      const newFilter: ItemFilterDto = {
+        categoryIds: [parsed],
+        // keep searchTerm if present
+        searchTerm: newQ || undefined
+      }
+      setActiveFilter(newFilter)
+      setPage(1)
+    } else {
+      // malformed param -> clear filters
+      setSelectedCategories([])
+      setActiveFilter(null)
+      setPage(1)
+    }
+  } else {
+    // NO categoryId param -> clear category filter so "Tất cả" shows everything
+    setSelectedCategories([])
+    // Only clear activeFilter if it was set by URL category. 
+    // For simplicity and to match "All" behavior, we clear activeFilter here.
+    setActiveFilter(null)
+    setPage(1)
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [searchParams?.toString()])
+
+  // fetch categories once on mount
+  useEffect(() => {
+    let mounted = true
+    const load = async () => {
+      try {
+        const cats = await ItemsAPI.getCategories()
+        if (!mounted) return
+        setCategories(cats)
+      } catch (err) {
+        console.error("Cannot load categories", err)
+      }
+    }
+    load()
+    return () => { mounted = false }
+  }, [])
+
+  // debounce search
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300)
+    return () => clearTimeout(id)
+  }, [searchQuery])
+
+  // helper toggles for checkbox lists (numbers)
+  const toggleArrayItemNum = (arr: number[], value: number) =>
+    arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value]
+
+  // Apply filter: build ItemFilterDto and set activeFilter
+  const applyFilter = () => {
+    const filter: ItemFilterDto = {}
+
+    // <-- CHANGED: send categoryIds as number[] to match backend DTO
+    if (selectedCategories.length) filter.categoryIds = selectedCategories
+
+    // <-- CHANGED: send auctionStatuses (backend expects auctionStatuses)
+    if (selectedStatuses.length) filter.auctionStatuses = selectedStatuses
+
+    const min = Number(minPriceStr)
+    const max = Number(maxPriceStr)
+    if (!Number.isNaN(min) && min > 0) filter.minPrice = min
+    if (!Number.isNaN(max) && max > 0) filter.maxPrice = max
+    // include search term if present (optional)
+    if (debouncedQuery) filter.searchTerm = debouncedQuery
+
+    setActiveFilter(filter)
+    setPage(1)
+  }
+
+  const resetFilter = () => {
+    setSelectedCategories([])
+    setSelectedStatuses([])
+    setMinPriceStr("")
+    setMaxPriceStr("")
+    setActiveFilter(null)
+    // optionally refetch unfiltered results; page already set to 1
+    setPage(1)
+  }
+
+  // fetch whenever page / debouncedQuery / activeFilter changes
+  useEffect(() => {
+    let isMounted = true
+    setLoading(true)
+    setError(null)
+
+    const fetchData = async () => {
+      try {
+        if (activeFilter) {
+          const res = await ItemsAPI.filterPaged(activeFilter, page, pageSize)
+          if (!isMounted) return
+          setItems(res.items)
+          setTotalCount(res.pagination?.totalCount ?? res.items.length)
+        } else if (debouncedQuery) {
+          const res = await ItemsAPI.searchPaged(debouncedQuery, page, pageSize)
+          if (!isMounted) return
+          setItems(res.items)
+          setTotalCount(res.pagination?.totalCount ?? res.items.length)
+        } else {
+          const res = await ItemsAPI.getPaged(page, pageSize)
+          if (!isMounted) return
+          setItems(res.items)
+          setTotalCount(res.pagination?.totalCount ?? res.items.length)
+        }
+      } catch (err: any) {
+        console.error('Fetch items error', err)
+        if (!isMounted) return
+        setError(err.message || 'Lỗi khi tải dữ liệu')
+        setItems([])
+        setTotalCount(null)
+      } finally {
+        if (!isMounted) return
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+    return () => { isMounted = false }
+  }, [debouncedQuery, activeFilter, page, pageSize])
+
+  // sort client-side unchanged
+  const sortedItems = useMemo(() => {
+    const copy = [...items]
+    if (sortBy === 'ending-soon') {
+      return copy.sort((a, b) => {
+        const at = a.auctionEndTime ? new Date(a.auctionEndTime).getTime() : Infinity
+        const bt = b.auctionEndTime ? new Date(b.auctionEndTime).getTime() : Infinity
+        return at - bt
+      })
+    }
+    if (sortBy === 'newest') {
+      return copy.sort((a,b)=> new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime())
+    }
+    if (sortBy === 'price-low') {
+      return copy.sort((a,b)=>(a.currentBid ?? a.startingBid ?? a.basePrice ?? 0) - (b.currentBid ?? b.startingBid ?? b.basePrice ?? 0))
+    }
+    if (sortBy === 'price-high') {
+      return copy.sort((a,b)=>(b.currentBid ?? b.startingBid ?? b.basePrice ?? 0) - (a.currentBid ?? a.startingBid ?? a.basePrice ?? 0))
+    }
+    if (sortBy === 'most-bids') {
+      return copy.sort((a,b)=> (b.bidCount ?? 0) - (a.bidCount ?? 0))
+    }
+    return copy
+  }, [items, sortBy])
+
+  const totalPages = totalCount ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1
+
+  // statuses list (could be dynamic from API)
+  const statusOptions = ["active", "pending", "ended"] // map to backend status values if needed
 
   return (
     <>
@@ -270,7 +225,7 @@ export function AllAuctions() {
               <Input
                 placeholder="Tìm kiếm sản phẩm..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
                 className="pl-10"
               />
             </div>
@@ -287,43 +242,44 @@ export function AllAuctions() {
                   <SheetDescription>Tùy chỉnh kết quả tìm kiếm của bạn</SheetDescription>
                 </SheetHeader>
                 <div className="mt-6 space-y-6">
+                  {/* Categories (from API) */}
                   <div className="space-y-3">
                     <Label className="text-base font-semibold">Danh mục</Label>
-                    <div className="space-y-2">
-                      {["Điện tử", "Nghệ thuật", "Sưu tầm", "Đồng hồ", "Gaming", "Máy ảnh"].map((category) => (
-                        <div key={category} className="flex items-center space-x-2">
-                          <Checkbox id={category} />
-                          <label htmlFor={category} className="text-sm font-medium leading-none">
-                            {category}
-                          </label>
-                        </div>
-                      ))}
+                    <div className="space-y-2 max-h-48 overflow-auto pr-2">
+                      {categories.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">Đang tải danh mục...</div>
+                      ) : (
+                        categories.map((category) => (
+                          <div key={category.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`cat-${category.id}`}
+                              checked={selectedCategories.includes(Number(category.id))}
+                              onCheckedChange={() => setSelectedCategories(toggleArrayItemNum(selectedCategories, Number(category.id)))}
+
+                            />
+                            <label htmlFor={`cat-${category.id}`} className="text-sm font-medium leading-none">
+                              {category.name}
+                            </label>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
 
+                  {/* Price range */}
                   <div className="space-y-3">
                     <Label className="text-base font-semibold">Khoảng giá</Label>
-                    <div className="space-y-2">
-                      <Input type="number" placeholder="Giá tối thiểu" />
-                      <Input type="number" placeholder="Giá tối đa" />
+                    <div className="flex gap-2">
+                      <Input value={minPriceStr} onChange={(e) => setMinPriceStr(e.target.value)} type="number" placeholder="Giá tối thiểu" />
+                      <Input value={maxPriceStr} onChange={(e) => setMaxPriceStr(e.target.value)} type="number" placeholder="Giá tối đa" />
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <Label className="text-base font-semibold">Trạng thái</Label>
-                    <div className="space-y-2">
-                      {["Đang diễn ra", "Sắp kết thúc", "Mới bắt đầu"].map((status) => (
-                        <div key={status} className="flex items-center space-x-2">
-                          <Checkbox id={status} />
-                          <label htmlFor={status} className="text-sm font-medium leading-none">
-                            {status}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
+                  
+                  <div className="flex gap-2">
+                    <Button className="flex-1" onClick={applyFilter}>Áp dụng bộ lọc</Button>
+                    <Button variant="ghost" className="flex-1" onClick={resetFilter}>Xóa bộ lọc</Button>
                   </div>
-
-                  <Button className="w-full">Áp dụng bộ lọc</Button>
                 </div>
               </SheetContent>
             </Sheet>
@@ -334,7 +290,9 @@ export function AllAuctions() {
       <section className="py-8">
         <div className="container mx-auto px-4">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground">Hiển thị {allAuctions.length} kết quả</p>
+            <p className="text-sm text-muted-foreground">
+              {loading ? 'Đang tải...' : `Hiển thị ${totalCount ?? 0} kết quả`}
+            </p>
 
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="w-[200px]">
@@ -350,10 +308,35 @@ export function AllAuctions() {
             </Select>
           </div>
 
+          {error && <div className="mb-4 text-red-600">Lỗi: {error}</div>}
+
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {allAuctions.map((auction) => (
-              <AuctionCard key={auction.id} auction={auction} />
-            ))}
+            {loading
+              ? Array.from({ length: pageSize }).map((_, i) => (
+                  <div key={i} className="h-80 animate-pulse rounded-lg bg-gray-100" />
+                ))
+              : sortedItems.map((auction) => (
+                  <AuctionCard
+                    key={auction.id}
+                    auction={{
+                      id: auction.id,
+                      title: auction.title,
+                      image: (auction.images && auction.images[0]) || '/placeholder.jpg',
+                      currentBid: auction.currentBid ?? auction.startingBid ?? auction.basePrice ?? 0,
+                      startingBid: auction.startingBid ?? auction.basePrice ?? 0,
+                      endTime: auction.auctionEndTime ? new Date(auction.auctionEndTime) : new Date(0),
+                      bidCount: auction.bidCount ?? 0,
+                      category: auction.categoryName ?? "Chưa phân loại",
+                    }}
+                  />
+                ))}
+          </div>
+
+          {/* Pagination simple */}
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <Button variant="ghost" onClick={() => setPage(p => Math.max(1, p-1))} disabled={page <= 1 || loading}>Trước</Button>
+            <span>Trang {page} / {totalPages}</span>
+            <Button variant="ghost" onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page >= totalPages || loading}>Sau</Button>
           </div>
         </div>
       </section>

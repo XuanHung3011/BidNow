@@ -13,6 +13,14 @@ export const API_ENDPOINTS = {
     GET_ALL: "/api/Users",
     GET_BY_ID: "/api/Users",
     SEARCH: "/api/Users/search",
+  },
+    ITEMS: {
+    GET_ALL: "/api/home/items",
+    GET_PAGED: "/api/home/items/paged",
+    SEARCH: "/api/home/search",
+    SEARCH_PAGED: "/api/home/search/paged",
+    FILTER: "/api/home/filter",            // <-- endpoint filter (POST)
+    CATEGORIES: "/api/home/categories",
   }
 } as const;
 
