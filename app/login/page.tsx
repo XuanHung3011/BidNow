@@ -4,14 +4,16 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+// duplicate import removed
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Gavel, AlertCircle } from "lucide-react"
+import { Gavel, AlertCircle, Eye, EyeOff, LogIn } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
+import { useToast } from "@/hooks/use-toast"
+import Link from "next/link"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -20,6 +22,8 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const { login } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
+  const [showPassword, setShowPassword] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,13 +33,21 @@ export default function LoginPage() {
     const result = await login(email, password)
 
     if (result.ok) {
+      toast({ title: "Đăng nhập thành công", description: "Chào mừng bạn trở lại BidNow!" })
       router.push("/")
     } else {
-      if (result.reason === "user_not_found") setError("Tài khoản chưa được đăng ký")
-      else if (result.reason === "invalid_password") setError("Mật khẩu không đúng")
-      else if (result.reason === "not_verified") setError("Email chưa được xác minh")
-      else if (result.reason === "network") setError("Lỗi kết nối, vui lòng thử lại")
-      else setError("Email hoặc mật khẩu không đúng")
+      const message =
+        result.reason === "user_not_found"
+          ? "Tài khoản chưa được đăng ký"
+          : result.reason === "invalid_password"
+          ? "Mật khẩu không đúng"
+          : result.reason === "not_verified"
+          ? "Email chưa được xác minh"
+          : result.reason === "network"
+          ? "Lỗi kết nối, vui lòng thử lại"
+          : "Email hoặc mật khẩu không đúng"
+      setError(message)
+      toast({ title: "Không thể đăng nhập", description: message, variant: "destructive" })
     }
 
     setIsLoading(false)
@@ -90,18 +102,28 @@ export default function LoginPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">Mật khẩu</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Nhập mật khẩu"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                    className="absolute inset-y-0 right-3 flex items-center text-muted-foreground"
+                    onClick={() => setShowPassword((s) => !s)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Đang đăng nhập..." : "Đăng nhập"}
+                {isLoading ? "Đang đăng nhập..." : (<span className="inline-flex items-center gap-2"><LogIn className="h-4 w-4"/>Đăng nhập</span>)}
               </Button>
             </form>
 
@@ -155,6 +177,10 @@ export default function LoginPage() {
             </p>
           </CardFooter>
         </Card>
+
+        <div className="mt-6 text-center">
+          <Link href="/forgot-password" className="text-sm text-primary hover:underline">Quên mật khẩu?</Link>
+        </div>
       </div>
     </div>
   )

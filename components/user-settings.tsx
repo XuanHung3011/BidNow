@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { PasswordAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -174,22 +175,7 @@ export function UserSettings() {
               <CardDescription>Quản lý mật khẩu và bảo mật tài khoản</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="current-password">Mật khẩu hiện tại</Label>
-                <Input id="current-password" type="password" />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="new-password">Mật khẩu mới</Label>
-                <Input id="new-password" type="password" />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Xác nhận mật khẩu mới</Label>
-                <Input id="confirm-password" type="password" />
-              </div>
-
-              <Button>Đổi mật khẩu</Button>
+              <ChangePasswordForm />
             </CardContent>
           </Card>
         </TabsContent>
@@ -229,6 +215,70 @@ export function UserSettings() {
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  )
+}
+
+function ChangePasswordForm() {
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [message, setMessage] = useState<string>("")
+
+  const { user } = useAuth()
+
+  const onSubmit = async () => {
+    setMessage("")
+    if (newPassword !== confirmPassword) {
+      setMessage("Mật khẩu xác nhận không khớp")
+      return
+    }
+    if (newPassword.length < 6) {
+      setMessage("Mật khẩu mới phải có ít nhất 6 ký tự")
+      return
+    }
+    if (!user) {
+      setMessage("Bạn cần đăng nhập")
+      return
+    }
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5167"}/api/Users/${user.id}/change-password`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword })
+      })
+      if (res.ok) {
+        setMessage("Đổi mật khẩu thành công")
+        setCurrentPassword("")
+        setNewPassword("")
+        setConfirmPassword("")
+      } else {
+        const data = await res.json().catch(() => ({}))
+        if (res.status === 401) setMessage("Mật khẩu hiện tại không đúng")
+        else if (res.status === 400) setMessage(data.message || "Mật khẩu mới phải có ít nhất 6 ký tự")
+        else setMessage(data.message || "Đổi mật khẩu thất bại")
+      }
+    } catch {
+      setMessage("Có lỗi xảy ra")
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {message && <div className="text-sm text-muted-foreground">{message}</div>}
+      <div className="space-y-2">
+        <Label htmlFor="current-password">Mật khẩu hiện tại</Label>
+        <Input id="current-password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="new-password">Mật khẩu mới</Label>
+        <Input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="confirm-password">Xác nhận mật khẩu mới</Label>
+        <Input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+      </div>
+      <Button onClick={onSubmit}>Đổi mật khẩu</Button>
     </div>
   )
 }

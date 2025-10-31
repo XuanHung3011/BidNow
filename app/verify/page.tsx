@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { AuthAPI } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
@@ -10,6 +11,7 @@ export default function VerifyPage() {
   const params = useSearchParams()
   const router = useRouter()
   const [status, setStatus] = useState<"idle" | "verifying" | "success" | "error">("idle")
+  const { login } = useAuth()
 
   useEffect(() => {
     const token = params.get("token")
@@ -17,7 +19,27 @@ export default function VerifyPage() {
     const run = async () => {
       setStatus("verifying")
       const success = await AuthAPI.verifyEmail(token)
-      setStatus(success ? "success" : "error")
+      if (!success) {
+        setStatus("error")
+        return
+      }
+      // Try auto login using stored pending registration info if available
+      const pending = localStorage.getItem("bidnow_pending_register")
+      if (pending) {
+        try {
+          const { email, password } = JSON.parse(pending)
+          const result = await login(email, password)
+          if (result.ok) {
+            localStorage.removeItem("bidnow_pending_register")
+            setStatus("success")
+            router.push("/")
+            return
+          }
+        } catch {
+          // ignore and fallback to success without auto login
+        }
+      }
+      setStatus("success")
     }
     run()
   }, [params])

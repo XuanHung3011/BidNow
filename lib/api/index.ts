@@ -1,5 +1,6 @@
 // Export all API services
 export { AuthAPI } from './auth';
+export { PasswordAPI } from './password';
 export { API_BASE, API_ENDPOINTS } from './config';
 export type {
   ApiResponse,

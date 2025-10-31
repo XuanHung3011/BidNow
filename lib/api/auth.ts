@@ -43,20 +43,8 @@ export class AuthAPI {
       if (!response.ok) return { ok: false, reason: 'invalid' };
 
       const newUser: UserResponse = await this.handleResponse(response);
-      
-      // Try to get verification token
-      try {
-        const resendResponse = await fetch(`${API_BASE}${API_ENDPOINTS.AUTH.RESEND_VERIFICATION}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: newUser.id, email: newUser.email }),
-        });
-        
-        const resendData = resendResponse.ok ? await resendResponse.json() : { token: undefined };
-        return { ok: true, data: newUser, verifyToken: resendData.token };
-      } catch {
-        return { ok: true, data: newUser, verifyToken: undefined };
-      }
+      // Email verification is sent by backend; no extra call here
+      return { ok: true, data: newUser };
     } catch (error) {
       console.error('Register error:', error);
       return { ok: false, reason: 'network' };
