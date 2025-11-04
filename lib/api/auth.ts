@@ -63,6 +63,20 @@ export class AuthAPI {
     }
   }
 
+  static async addRole(userId: number, role: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.ADD_ROLE(userId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Add role error:', error);
+      return false;
+    }
+  }
+
   static async resendVerification(request: ResendVerificationRequest): Promise<{ token?: string }> {
     try {
       const response = await fetch(`${API_BASE}${API_ENDPOINTS.AUTH.RESEND_VERIFICATION}`, {

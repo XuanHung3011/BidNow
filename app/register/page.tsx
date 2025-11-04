@@ -23,7 +23,8 @@ export default function RegisterPage() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const { register } = useAuth()
-  const [verifyToken, setVerifyToken] = useState<string | null>(null)
+  const [showVerifyInfo, setShowVerifyInfo] = useState(false)
+  const [registeredUserId, setRegisteredUserId] = useState<number | null>(null)
   const [isResending, setIsResending] = useState(false)
   const [resendMessage, setResendMessage] = useState("")
   const [timeLeft, setTimeLeft] = useState(0) // minutes
@@ -47,8 +48,11 @@ export default function RegisterPage() {
 
     const result = await register(email, password, name)
     if (result.ok) {
-      setVerifyToken(result.verifyToken ?? null)
+      setShowVerifyInfo(true)
       setTimeLeft(24 * 60) // 24 hours in minutes
+      if ((result as any).data?.id) {
+        setRegisteredUserId((result as any).data.id)
+      }
     } else if (result.reason === "duplicate") {
       setError("Email đã được sử dụng")
     } else {
@@ -77,16 +81,13 @@ export default function RegisterPage() {
     setResendMessage("")
     
     try {
-      // Get user info from localStorage
-      const userData = localStorage.getItem("bidnow_user")
-      if (!userData) {
-        setResendMessage("Không tìm thấy thông tin user. Vui lòng đăng ký lại.")
+      if (!registeredUserId) {
+        setResendMessage("Không tìm thấy thông tin người dùng vừa đăng ký.")
         return
       }
-      
-      const user = JSON.parse(userData)
+
       const result = await AuthAPI.resendVerification({ 
-        userId: parseInt(user.id), 
+        userId: registeredUserId, 
         email: email 
       })
       
@@ -184,7 +185,7 @@ export default function RegisterPage() {
             </form>
           </CardContent>
           <CardFooter className="flex justify-center">
-            {verifyToken ? (
+            {showVerifyInfo ? (
               <div className="text-center space-y-4 w-full">
                 <div className="rounded-lg bg-green-50 p-4 border border-green-200">
                   <div className="flex items-center justify-center mb-2">
