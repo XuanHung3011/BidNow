@@ -7,6 +7,7 @@ import { UserManagement } from "./user-management"
 import { DisputeManagement } from "./dispute-management"
 import { PlatformAnalytics } from "./platform-analytics"
 import { AllAuctionsManagement } from "./all-auctions-management"
+import { CategoryManagement } from "./category-management"
 
 export function AdminDashboard() {
   return (
@@ -24,6 +25,7 @@ export function AdminDashboard() {
           <TabsTrigger value="pending">Chờ duyệt</TabsTrigger>
           <TabsTrigger value="users">Người dùng</TabsTrigger>
           <TabsTrigger value="disputes">Tranh chấp</TabsTrigger>
+          <TabsTrigger value="categories">Danh mục</TabsTrigger>
           <TabsTrigger value="analytics">Phân tích</TabsTrigger>
         </TabsList>
 
@@ -41,6 +43,10 @@ export function AdminDashboard() {
 
         <TabsContent value="disputes" className="mt-6">
           <DisputeManagement />
+        </TabsContent>
+
+        <TabsContent value="categories" className="mt-6">
+          <CategoryManagement />
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-6">
