@@ -13,6 +13,8 @@ export const API_ENDPOINTS = {
     GET_ALL: "/api/Users",
     GET_BY_ID: "/api/Users",
     SEARCH: "/api/Users/search",
+    ADD_ROLE: (userId: number) => `/api/Users/${userId}/roles`,
+    REMOVE_ROLE: (userId: number, role: string) => `/api/Users/${userId}/roles/${encodeURIComponent(role)}`,
   },
     ITEMS: {
     GET_ALL: "/api/home/items",
@@ -31,7 +33,8 @@ export const API_ENDPOINTS = {
     UPDATE: "/api/Categories",
     DELETE: "/api/Categories",
     CHECK_SLUG: "/api/Categories/check-slug",
-     CHECK_IN_USE: "/api/Categories",
-  }
+     CHECK_IN_USE: "/api/Categories"},
+    HOT: "/api/home/hot",
+  
 } as const;
 

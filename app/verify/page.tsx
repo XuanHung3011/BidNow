@@ -40,6 +40,7 @@ export default function VerifyPage() {
         }
       }
       setStatus("success")
+      router.push("/")
     }
     run()
   }, [params])
@@ -55,8 +56,8 @@ export default function VerifyPage() {
           {status === "verifying" && <p>Đang xác minh, vui lòng đợi...</p>}
           {status === "success" && (
             <div className="space-y-4">
-              <p>Email của bạn đã được xác minh thành công. Bạn có thể đăng nhập.</p>
-              <Button onClick={() => router.push("/login")}>Đăng nhập</Button>
+              <p>Email của bạn đã được xác minh thành công. Đang chuyển về trang chủ...</p>
+              <Button onClick={() => router.push("/")}>Về trang chủ</Button>
             </div>
           )}
           {status === "error" && (
