@@ -298,7 +298,7 @@ export function CategoryManagement() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>ID</TableHead>
+                     
                       <TableHead>Tên</TableHead>
                       <TableHead>Slug</TableHead>
                       <TableHead>Mô tả</TableHead>
@@ -310,7 +310,6 @@ export function CategoryManagement() {
                   <TableBody>
                     {categories.map((category) => (
                       <TableRow key={category.id}>
-                        <TableCell className="font-medium">{category.id}</TableCell>
                         <TableCell>{category.name}</TableCell>
                         <TableCell className="font-mono text-sm">{category.slug}</TableCell>
                         <TableCell className="max-w-xs truncate">
