@@ -78,5 +78,13 @@ export const ItemsAPI = {
     })
 
     return handleResponse<PagedResponse>(res)
+  },
+
+  // 🔥 Get hottest active auctions
+  getHot: async (limit = 8): Promise<ItemResponseDto[]> => {
+    const url = new URL(`${API_BASE}${API_ENDPOINTS.ITEMS.HOT}`)
+    url.searchParams.set('limit', String(limit))
+    const res = await fetch(url.toString(), { cache: 'no-store' })
+    return handleResponse<ItemResponseDto[]>(res)
   }
 }

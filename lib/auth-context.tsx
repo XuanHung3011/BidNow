@@ -51,18 +51,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const allowedPaths = ["/login", "/register"]
       const publicPaths = ["/", "/about", "/contact", "/auctions", "/auction", "/categories", "/search"]
 
-      // Allow navigating to public pages for all roles
+      if (user.currentRole === "admin") {
+        // Admin is restricted to /admin and /messages only (no homepage/public pages)
+        if (!pathname.startsWith("/admin") && !pathname.startsWith("/messages") && !allowedPaths.includes(pathname)) {
+          router.push("/admin")
+        }
+        return
+      }
+
+      // For non-admin roles, allow navigating to public pages
       const isPublicPath = publicPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
       if (isPublicPath) {
         return
       }
 
-      if (user.currentRole === "admin") {
-        // Admin can only access /admin and /messages
-        if (!pathname.startsWith("/admin") && !pathname.startsWith("/messages") && !allowedPaths.includes(pathname)) {
-          router.push("/admin")
-        }
-      } else if (user.currentRole === "seller") {
+      if (user.currentRole === "seller") {
         if (
           !pathname.startsWith("/seller") &&
           !pathname.startsWith("/profile") &&
@@ -134,24 +137,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const addRole = (role: UserRole) => {
+  const addRole = async (role: UserRole) => {
     if (user && !user.roles.includes(role)) {
+      // Persist to backend first
+      const ok = await AuthAPI.addRole(Number(user.id), role)
+      if (!ok) return
+
       const updatedUser = { 
         ...user, 
         roles: [...user.roles, role],
-        currentRole: role // Switch to the new role
+        currentRole: role
       }
       setUser(updatedUser)
       localStorage.setItem("bidnow_user", JSON.stringify(updatedUser))
-      
-      // Also update in registered users
-      const users = JSON.parse(localStorage.getItem("bidnow_users") || "[]")
-      const userIndex = users.findIndex((u: any) => u.id === user.id)
-      if (userIndex !== -1) {
-        users[userIndex].roles = updatedUser.roles
-        users[userIndex].currentRole = updatedUser.currentRole
-        localStorage.setItem("bidnow_users", JSON.stringify(users))
-      }
     }
   }
 

@@ -13,6 +13,8 @@ export const API_ENDPOINTS = {
     GET_ALL: "/api/Users",
     GET_BY_ID: "/api/Users",
     SEARCH: "/api/Users/search",
+    ADD_ROLE: (userId: number) => `/api/Users/${userId}/roles`,
+    REMOVE_ROLE: (userId: number, role: string) => `/api/Users/${userId}/roles/${encodeURIComponent(role)}`,
   },
     ITEMS: {
     GET_ALL: "/api/home/items",
@@ -21,6 +23,8 @@ export const API_ENDPOINTS = {
     SEARCH_PAGED: "/api/home/search/paged",
     FILTER: "/api/home/filter",            // <-- endpoint filter (POST)
     CATEGORIES: "/api/home/categories",
+    HOT: "/api/home/hot",
+
   },
   CATEGORIES: {
     GET_ALL: "/api/Categories",
@@ -32,6 +36,7 @@ export const API_ENDPOINTS = {
     DELETE: "/api/Categories",
     CHECK_SLUG: "/api/Categories/check-slug",
      CHECK_IN_USE: "/api/Categories",
+
   }
 } as const;
 
