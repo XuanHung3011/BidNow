@@ -15,3 +15,4 @@ export type {
 export * from './config'
 export * from './types'
 export * from './items'
+export * from './categories'

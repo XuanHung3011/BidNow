@@ -24,6 +24,19 @@ export const API_ENDPOINTS = {
     FILTER: "/api/home/filter",            // <-- endpoint filter (POST)
     CATEGORIES: "/api/home/categories",
     HOT: "/api/home/hot",
+
+  },
+  CATEGORIES: {
+    GET_ALL: "/api/Categories",
+    GET_PAGED: "/api/Categories/paged",
+    GET_BY_ID: "/api/Categories",
+    GET_BY_SLUG: "/api/Categories/slug",
+    CREATE: "/api/Categories",
+    UPDATE: "/api/Categories",
+    DELETE: "/api/Categories",
+    CHECK_SLUG: "/api/Categories/check-slug",
+     CHECK_IN_USE: "/api/Categories",
+
   }
 } as const;
 

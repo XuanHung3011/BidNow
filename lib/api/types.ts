@@ -91,3 +91,45 @@ export interface ResetPasswordRequest {
   token: string;
   newPassword: string;
 }
+
+// Category Management Types
+export interface CategoryDtos {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+  createdAt?: string;
+}
+
+export interface CreateCategoryDtos {
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+}
+
+export interface UpdateCategoryDtos {
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+}
+
+export interface CategoryFilterDto {
+  searchTerm?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
