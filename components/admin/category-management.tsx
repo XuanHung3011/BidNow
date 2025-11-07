@@ -59,6 +59,18 @@ export function CategoryManagement() {
     icon: "",
   })
 
+  // Validation states
+  const [nameError, setNameError] = useState<string>("")
+  const [slugError, setSlugError] = useState<string>("")
+  const [isCheckingName, setIsCheckingName] = useState(false)
+  const [touched, setTouched] = useState<{
+    name: boolean
+    slug: boolean
+  }>({
+    name: false,
+    slug: false,
+  })
+
   const loadCategories = async () => {
   setLoading(true)
   try {
@@ -114,15 +126,124 @@ export function CategoryManagement() {
     return () => clearTimeout(timer)
   }, [searchTerm])
 
+  // Validate form fields
+  const validateField = (field: "name" | "slug", value: string) => {
+    const trimmedValue = value.trim()
+    
+    if (field === "name") {
+      if (!trimmedValue) {
+        setNameError("Tên danh mục không được để trống")
+        return false
+      }
+      // Clear empty error, but keep duplicate error if exists (will be checked by useEffect)
+      // Only clear if current error is about empty field
+      if (nameError === "Tên danh mục không được để trống") {
+        setNameError("")
+      }
+      // Name existence check will be handled separately by useEffect
+      return true
+    }
+    
+    if (field === "slug") {
+      if (!trimmedValue) {
+        setSlugError("Slug không được để trống")
+        return false
+      }
+      setSlugError("")
+      return true
+    }
+    
+    return true
+  }
+
+  // Check name existence when name changes (debounced)
+  useEffect(() => {
+    const checkName = async () => {
+      const name = formData.name.trim()
+      
+      // Validate required field first
+      if (!name) {
+        if (touched.name) {
+          setNameError("Tên danh mục không được để trống")
+        } else {
+          setNameError("")
+        }
+        return
+      }
+
+      // Only check if we're in create or edit dialog
+      if (!showCreateDialog && !showEditDialog) {
+        return
+      }
+
+      setIsCheckingName(true)
+      try {
+        const excludeId = showEditDialog && selectedCategory ? selectedCategory.id : undefined
+        const exists = await CategoriesAPI.checkName(name, excludeId)
+        
+        if (exists) {
+          setNameError("Tên danh mục này đã tồn tại")
+        } else {
+          setNameError("")
+        }
+      } catch (error) {
+        // Silently fail validation check
+        setNameError("")
+      } finally {
+        setIsCheckingName(false)
+      }
+    }
+
+    const timer = setTimeout(checkName, 500) // Debounce 500ms
+    return () => clearTimeout(timer)
+  }, [formData.name, showCreateDialog, showEditDialog, selectedCategory, touched.name])
+
+  // Validate slug when it changes
+  useEffect(() => {
+    if (touched.slug) {
+      validateField("slug", formData.slug)
+    }
+  }, [formData.slug, touched.slug])
+
   const handleCreate = async () => {
     try {
-      if (!formData.name.trim() || !formData.slug.trim()) {
+      // Mark all fields as touched
+      setTouched({ name: true, slug: true })
+
+      // Validate all required fields
+      const isNameValid = validateField("name", formData.name)
+      const isSlugValid = validateField("slug", formData.slug)
+
+      if (!isNameValid || !isSlugValid) {
         toast({
           title: "Lỗi",
-          description: "Tên và slug là bắt buộc",
+          description: "Vui lòng điền đầy đủ thông tin bắt buộc",
           variant: "destructive",
         })
         return
+      }
+
+      // Check name one more time before creating
+      if (nameError) {
+        toast({
+          title: "Lỗi",
+          description: nameError,
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Wait for name check to complete if in progress
+      if (isCheckingName) {
+        await new Promise(resolve => setTimeout(resolve, 600))
+        if (nameError) {
+          toast({
+            title: "Lỗi",
+            description: nameError,
+            variant: "destructive",
+          })
+          return
+        }
       }
 
       await CategoriesAPI.create(formData)
@@ -146,13 +267,43 @@ export function CategoryManagement() {
     if (!selectedCategory) return
 
     try {
-      if (!formData.name.trim() || !formData.slug.trim()) {
+      // Mark all fields as touched
+      setTouched({ name: true, slug: true })
+
+      // Validate all required fields
+      const isNameValid = validateField("name", formData.name)
+      const isSlugValid = validateField("slug", formData.slug)
+
+      if (!isNameValid || !isSlugValid) {
         toast({
           title: "Lỗi",
-          description: "Tên và slug là bắt buộc",
+          description: "Vui lòng điền đầy đủ thông tin bắt buộc",
           variant: "destructive",
         })
         return
+      }
+
+      // Check name one more time before updating
+      if (nameError) {
+        toast({
+          title: "Lỗi",
+          description: nameError,
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Wait for name check to complete if in progress
+      if (isCheckingName) {
+        await new Promise(resolve => setTimeout(resolve, 600))
+        if (nameError) {
+          toast({
+            title: "Lỗi",
+            description: nameError,
+            variant: "destructive",
+          })
+          return
+        }
       }
 
       await CategoriesAPI.update(selectedCategory.id, formData)
@@ -210,6 +361,10 @@ export function CategoryManagement() {
       icon: "",
     })
     setSelectedCategory(null)
+    setNameError("")
+    setSlugError("")
+    setIsCheckingName(false)
+    setTouched({ name: false, slug: false })
   }
 
   const openEditDialog = (category: CategoryDtos) => {
@@ -220,6 +375,10 @@ export function CategoryManagement() {
       description: category.description || "",
       icon: category.icon || "",
     })
+    setNameError("") // Reset validation error when opening edit dialog
+    setSlugError("")
+    setIsCheckingName(false)
+    setTouched({ name: false, slug: false })
     setShowEditDialog(true)
   }
 
@@ -239,7 +398,10 @@ export function CategoryManagement() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Quản lý danh mục</CardTitle>
-            <Button onClick={() => setShowCreateDialog(true)}>
+            <Button onClick={() => {
+              resetForm()
+              setShowCreateDialog(true)
+            }}>
               <Plus className="mr-2 h-4 w-4" />
               Thêm danh mục
             </Button>
@@ -388,8 +550,19 @@ export function CategoryManagement() {
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onBlur={() => {
+                  setTouched((prev) => ({ ...prev, name: true }))
+                  validateField("name", formData.name)
+                }}
                 placeholder="Ví dụ: Điện tử"
+                className={nameError ? "border-destructive" : ""}
               />
+              {isCheckingName && (
+                <p className="text-sm text-muted-foreground">Đang kiểm tra...</p>
+              )}
+              {nameError && !isCheckingName && (
+                <p className="text-sm text-destructive">{nameError}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="slug">Slug *</Label>
@@ -397,8 +570,16 @@ export function CategoryManagement() {
                 id="slug"
                 value={formData.slug}
                 onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                onBlur={() => {
+                  setTouched((prev) => ({ ...prev, slug: true }))
+                  validateField("slug", formData.slug)
+                }}
                 placeholder="Ví dụ: dien-tu"
+                className={slugError ? "border-destructive" : ""}
               />
+              {slugError && (
+                <p className="text-sm text-destructive">{slugError}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Mô tả</Label>
@@ -425,7 +606,10 @@ export function CategoryManagement() {
               <X className="mr-2 h-4 w-4" />
               Hủy
             </Button>
-            <Button onClick={handleCreate}>
+            <Button 
+              onClick={handleCreate} 
+              disabled={!!nameError || !!slugError || isCheckingName || !formData.name.trim() || !formData.slug.trim()}
+            >
               <Save className="mr-2 h-4 w-4" />
               Tạo
             </Button>
@@ -447,8 +631,19 @@ export function CategoryManagement() {
                 id="edit-name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onBlur={() => {
+                  setTouched((prev) => ({ ...prev, name: true }))
+                  validateField("name", formData.name)
+                }}
                 placeholder="Ví dụ: Điện tử"
+                className={nameError ? "border-destructive" : ""}
               />
+              {isCheckingName && (
+                <p className="text-sm text-muted-foreground">Đang kiểm tra...</p>
+              )}
+              {nameError && !isCheckingName && (
+                <p className="text-sm text-destructive">{nameError}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-slug">Slug *</Label>
@@ -456,8 +651,16 @@ export function CategoryManagement() {
                 id="edit-slug"
                 value={formData.slug}
                 onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                onBlur={() => {
+                  setTouched((prev) => ({ ...prev, slug: true }))
+                  validateField("slug", formData.slug)
+                }}
                 placeholder="Ví dụ: dien-tu"
+                className={slugError ? "border-destructive" : ""}
               />
+              {slugError && (
+                <p className="text-sm text-destructive">{slugError}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-description">Mô tả</Label>
@@ -484,7 +687,10 @@ export function CategoryManagement() {
               <X className="mr-2 h-4 w-4" />
               Hủy
             </Button>
-            <Button onClick={handleUpdate}>
+            <Button 
+              onClick={handleUpdate} 
+              disabled={!!nameError || !!slugError || isCheckingName || !formData.name.trim() || !formData.slug.trim()}
+            >
               <Save className="mr-2 h-4 w-4" />
               Lưu
             </Button>
