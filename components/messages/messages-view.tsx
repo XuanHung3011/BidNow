@@ -1,167 +1,301 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Search, Send, MoreVertical, ImageIcon, Paperclip } from "lucide-react"
+import { Search, Send, MoreVertical, ImageIcon, Paperclip, Loader2, Plus, Mail } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { AdminMessaging } from "@/components/admin/admin-messaging"
-
-interface Message {
-  id: string
-  senderId: string
-  senderName: string
-  senderRole: "buyer" | "seller"
-  content: string
-  timestamp: Date
-  read: boolean
-}
-
-interface Conversation {
-  id: string
-  userId: string
-  userName: string
-  userRole: "buyer" | "seller"
-  userAvatar?: string
-  lastMessage: string
-  lastMessageTime: Date
-  unreadCount: number
-  auctionTitle?: string
-}
+import { MessagesAPI } from "@/lib/api/messages"
+import type { ConversationDto, MessageResponseDto } from "@/lib/api/types"
+import { useToast } from "@/hooks/use-toast"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
 export function MessagesView() {
-  const [selectedConversation, setSelectedConversation] = useState<string | null>("1")
+  const [selectedConversation, setSelectedConversation] = useState<number | null>(null)
+  const [selectedAuctionId, setSelectedAuctionId] = useState<number | null>(null)
   const [messageInput, setMessageInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
+  const [conversations, setConversations] = useState<ConversationDto[]>([])
+  const [messages, setMessages] = useState<MessageResponseDto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [newConversationEmail, setNewConversationEmail] = useState("")
+  const [newConversationMessage, setNewConversationMessage] = useState("")
+  const [creating, setCreating] = useState(false)
   const { user } = useAuth()
+  const { toast } = useToast()
 
-  if (user?.role === "admin") {
+  if (user?.currentRole === "admin") {
     return <AdminMessaging />
   }
 
-  // Mock conversations
-  const conversations: Conversation[] = [
-    {
-      id: "1",
-      userId: user?.role === "buyer" ? "seller1" : "buyer1",
-      userName: user?.role === "buyer" ? "Nguyễn Văn A" : "Trần Thị B",
-      userRole: user?.role === "buyer" ? "seller" : "buyer",
-      lastMessage: "Sản phẩm còn hàng không ạ?",
-      lastMessageTime: new Date(Date.now() - 1000 * 60 * 5),
-      unreadCount: 2,
-      auctionTitle: "iPhone 15 Pro Max 256GB",
-    },
-    {
-      id: "2",
-      userId: user?.role === "buyer" ? "seller2" : "buyer2",
-      userName: user?.role === "buyer" ? "Lê Văn C" : "Phạm Thị D",
-      userRole: user?.role === "buyer" ? "seller" : "buyer",
-      lastMessage: "Cảm ơn bạn đã quan tâm!",
-      lastMessageTime: new Date(Date.now() - 1000 * 60 * 30),
-      unreadCount: 0,
-      auctionTitle: "MacBook Pro M3",
-    },
-    {
-      id: "3",
-      userId: user?.role === "buyer" ? "seller3" : "buyer3",
-      userName: user?.role === "buyer" ? "Hoàng Văn E" : "Đỗ Thị F",
-      userRole: user?.role === "buyer" ? "seller" : "buyer",
-      lastMessage: "Tôi có thể xem sản phẩm trực tiếp không?",
-      lastMessageTime: new Date(Date.now() - 1000 * 60 * 60 * 2),
-      unreadCount: 0,
-      auctionTitle: "Đồng hồ Rolex Submariner",
-    },
-  ]
+  // Load conversations
+  useEffect(() => {
+    if (user?.id) {
+      loadConversations()
+    }
+  }, [user?.id])
 
-  // Mock messages for selected conversation
-  const messages: Message[] = [
-    {
-      id: "1",
-      senderId: user?.role === "buyer" ? user.id : "buyer1",
-      senderName: user?.role === "buyer" ? user.name : "Trần Thị B",
-      senderRole: "buyer",
-      content: "Xin chào, tôi muốn hỏi về sản phẩm này",
-      timestamp: new Date(Date.now() - 1000 * 60 * 60),
-      read: true,
-    },
-    {
-      id: "2",
-      senderId: user?.role === "seller" ? user.id : "seller1",
-      senderName: user?.role === "seller" ? user.name : "Nguyễn Văn A",
-      senderRole: "seller",
-      content: "Chào bạn! Tôi có thể giúp gì cho bạn?",
-      timestamp: new Date(Date.now() - 1000 * 60 * 55),
-      read: true,
-    },
-    {
-      id: "3",
-      senderId: user?.role === "buyer" ? user.id : "buyer1",
-      senderName: user?.role === "buyer" ? user.name : "Trần Thị B",
-      senderRole: "buyer",
-      content: "Sản phẩm có bảo hành không ạ?",
-      timestamp: new Date(Date.now() - 1000 * 60 * 50),
-      read: true,
-    },
-    {
-      id: "4",
-      senderId: user?.role === "seller" ? user.id : "seller1",
-      senderName: user?.role === "seller" ? user.name : "Nguyễn Văn A",
-      senderRole: "seller",
-      content: "Có ạ, sản phẩm được bảo hành 12 tháng chính hãng",
-      timestamp: new Date(Date.now() - 1000 * 60 * 45),
-      read: true,
-    },
-    {
-      id: "5",
-      senderId: user?.role === "buyer" ? user.id : "buyer1",
-      senderName: user?.role === "buyer" ? user.name : "Trần Thị B",
-      senderRole: "buyer",
-      content: "Sản phẩm còn hàng không ạ?",
-      timestamp: new Date(Date.now() - 1000 * 60 * 5),
-      read: false,
-    },
-  ]
+  // Load messages when conversation is selected
+  useEffect(() => {
+    if (selectedConversation && user?.id) {
+      const userId = Number(user.id)
+      if (!isNaN(userId)) {
+        loadMessages(userId, selectedConversation, selectedAuctionId)
+      }
+    }
+  }, [selectedConversation, selectedAuctionId, user?.id])
 
-  const filteredConversations = conversations.filter((conv) =>
-    conv.userName.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
-
-  const handleSendMessage = () => {
-    if (messageInput.trim()) {
-      // Handle sending message
-      console.log("[v0] Sending message:", messageInput)
-      setMessageInput("")
+  const loadConversations = async () => {
+    if (!user?.id) return
+    const userId = Number(user.id)
+    if (isNaN(userId)) return
+    try {
+      setLoading(true)
+      const data = await MessagesAPI.getConversations(userId)
+      setConversations(data)
+      // Auto-select first conversation if available
+      if (data.length > 0 && !selectedConversation) {
+        setSelectedConversation(data[0].otherUserId)
+        setSelectedAuctionId(data[0].auctionId || null)
+      }
+    } catch (error) {
+      console.error("Error loading conversations:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải danh sách cuộc trò chuyện",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
     }
   }
 
-  const formatTime = (date: Date) => {
+  const loadMessages = async (userId1: number, userId2: number, auctionId: number | null) => {
+    try {
+      const data = await MessagesAPI.getConversation(userId1, userId2, auctionId || undefined)
+      setMessages(data)
+      // Mark conversation as read
+      if (data.length > 0) {
+        await MessagesAPI.markConversationAsRead(userId1, userId2, auctionId || undefined)
+        // Reload conversations to update unread count
+        loadConversations()
+      }
+    } catch (error) {
+      console.error("Error loading messages:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải tin nhắn",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const filteredConversations = conversations.filter((conv) =>
+    conv.otherUserName.toLowerCase().includes(searchQuery.toLowerCase()),
+  )
+
+  const handleSendMessage = async () => {
+    if (!messageInput.trim() || !user?.id || !selectedConversation || sending) return
+
+    const senderId = Number(user.id)
+    if (isNaN(senderId)) return
+
+    try {
+      setSending(true)
+      await MessagesAPI.send({
+        senderId,
+        receiverId: selectedConversation,
+        auctionId: selectedAuctionId || undefined,
+        content: messageInput.trim(),
+      })
+      setMessageInput("")
+      // Reload messages
+      if (senderId && selectedConversation) {
+        await loadMessages(senderId, selectedConversation, selectedAuctionId)
+      }
+      // Reload conversations to update last message
+      await loadConversations()
+    } catch (error) {
+      console.error("Error sending message:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể gửi tin nhắn",
+        variant: "destructive",
+      })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const formatTime = (dateString: string | null | undefined) => {
+    if (!dateString) return ""
+    const date = new Date(dateString)
     const now = new Date()
     const diff = now.getTime() - date.getTime()
     const minutes = Math.floor(diff / 60000)
     const hours = Math.floor(diff / 3600000)
     const days = Math.floor(diff / 86400000)
 
+    if (minutes < 1) return "Vừa xong"
     if (minutes < 60) return `${minutes} phút trước`
     if (hours < 24) return `${hours} giờ trước`
     return `${days} ngày trước`
+  }
+
+  const handleConversationSelect = (otherUserId: number, auctionId: number | null) => {
+    setSelectedConversation(otherUserId)
+    setSelectedAuctionId(auctionId)
+  }
+
+  const handleCreateConversation = async () => {
+    if (!newConversationEmail.trim() || !user?.id || creating) return
+
+    const senderId = Number(user.id)
+    if (isNaN(senderId)) return
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newConversationEmail.trim())) {
+      toast({
+        title: "Lỗi",
+        description: "Email không hợp lệ",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setCreating(true)
+      const conversation = await MessagesAPI.createConversationByEmail({
+        senderId,
+        receiverEmail: newConversationEmail.trim(),
+        auctionId: null,
+        initialMessage: newConversationMessage.trim() || undefined,
+      })
+
+      // Add to conversations list
+      setConversations((prev) => [conversation, ...prev])
+      
+      // Select the new conversation
+      setSelectedConversation(conversation.otherUserId)
+      setSelectedAuctionId(conversation.auctionId || null)
+
+      // Clear form and close dialog
+      setNewConversationEmail("")
+      setNewConversationMessage("")
+      setShowCreateDialog(false)
+
+      toast({
+        title: "Thành công",
+        description: "Cuộc trò chuyện đã được tạo",
+      })
+
+      // Reload conversations to get latest data
+      await loadConversations()
+    } catch (error: any) {
+      console.error("Error creating conversation:", error)
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể tạo cuộc trò chuyện",
+        variant: "destructive",
+      })
+    } finally {
+      setCreating(false)
+    }
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Tin nhắn</h1>
-        <p className="text-muted-foreground">Trò chuyện với {user?.role === "buyer" ? "người bán" : "người mua"}</p>
+        <p className="text-muted-foreground">Trò chuyện với {user?.currentRole === "buyer" ? "người bán" : "người mua"}</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
         {/* Conversations List */}
         <Card className="p-4">
-          <div className="mb-4">
+          <div className="mb-4 space-y-2">
+            <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+              <DialogTrigger asChild>
+                <Button className="w-full" variant="default">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Tạo cuộc trò chuyện mới
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Tạo cuộc trò chuyện mới</DialogTitle>
+                  <DialogDescription>
+                    Nhập email của người bạn muốn trò chuyện. Bạn có thể gửi tin nhắn đầu tiên ngay bây giờ.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email người nhận</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="example@email.com"
+                        value={newConversationEmail}
+                        onChange={(e) => setNewConversationEmail(e.target.value)}
+                        className="pl-9"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault()
+                            handleCreateConversation()
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="message">Tin nhắn đầu tiên (tùy chọn)</Label>
+                    <Textarea
+                      id="message"
+                      placeholder="Nhập tin nhắn đầu tiên..."
+                      value={newConversationMessage}
+                      onChange={(e) => setNewConversationMessage(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+                    Hủy
+                  </Button>
+                  <Button onClick={handleCreateConversation} disabled={creating || !newConversationEmail.trim()}>
+                    {creating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Đang tạo...
+                      </>
+                    ) : (
+                      "Tạo cuộc trò chuyện"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -174,41 +308,55 @@ export function MessagesView() {
           </div>
 
           <ScrollArea className="h-[600px]">
-            <div className="space-y-2">
-              {filteredConversations.map((conv) => (
-                <button
-                  key={conv.id}
-                  onClick={() => setSelectedConversation(conv.id)}
-                  className={`w-full rounded-lg p-3 text-left transition-colors hover:bg-accent ${
-                    selectedConversation === conv.id ? "bg-accent" : ""
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={conv.userAvatar || "/placeholder.svg"} />
-                      <AvatarFallback>{conv.userName.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 overflow-hidden">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold text-sm">{conv.userName}</p>
-                        <span className="text-xs text-muted-foreground">{formatTime(conv.lastMessageTime)}</span>
-                      </div>
-                      {conv.auctionTitle && (
-                        <p className="text-xs text-muted-foreground truncate">{conv.auctionTitle}</p>
-                      )}
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm text-muted-foreground truncate">{conv.lastMessage}</p>
-                        {conv.unreadCount > 0 && (
-                          <Badge variant="default" className="h-5 min-w-5 rounded-full px-1.5 text-xs">
-                            {conv.unreadCount}
-                          </Badge>
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredConversations.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                Chưa có cuộc trò chuyện nào
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredConversations.map((conv) => (
+                  <button
+                    key={`${conv.otherUserId}-${conv.auctionId || 'none'}`}
+                    onClick={() => handleConversationSelect(conv.otherUserId, conv.auctionId || null)}
+                    className={`w-full rounded-lg p-3 text-left transition-colors hover:bg-accent ${
+                      selectedConversation === conv.otherUserId && selectedAuctionId === (conv.auctionId || null)
+                        ? "bg-accent"
+                        : ""
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={conv.otherUserAvatarUrl || "/placeholder.svg"} />
+                        <AvatarFallback>{conv.otherUserName.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 overflow-hidden">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-semibold text-sm">{conv.otherUserName}</p>
+                          {conv.lastMessageTime && (
+                            <span className="text-xs text-muted-foreground">{formatTime(conv.lastMessageTime)}</span>
+                          )}
+                        </div>
+                        {conv.auctionTitle && (
+                          <p className="text-xs text-muted-foreground truncate">{conv.auctionTitle}</p>
                         )}
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm text-muted-foreground truncate">{conv.lastMessage || "Chưa có tin nhắn"}</p>
+                          {conv.unreadCount > 0 && (
+                            <Badge variant="default" className="h-5 min-w-5 rounded-full px-1.5 text-xs">
+                              {conv.unreadCount}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
-              ))}
-            </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </ScrollArea>
         </Card>
 
@@ -220,17 +368,34 @@ export function MessagesView() {
               <div className="flex items-center justify-between border-b p-4">
                 <div className="flex items-center gap-3">
                   <Avatar className="h-10 w-10">
+                    <AvatarImage
+                      src={
+                        conversations.find(
+                          (c) => c.otherUserId === selectedConversation && c.auctionId === selectedAuctionId
+                        )?.otherUserAvatarUrl || "/placeholder.svg"
+                      }
+                    />
                     <AvatarFallback>
-                      {conversations.find((c) => c.id === selectedConversation)?.userName.charAt(0)}
+                      {conversations
+                        .find((c) => c.otherUserId === selectedConversation && c.auctionId === selectedAuctionId)
+                        ?.otherUserName.charAt(0) || "U"}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="font-semibold">
-                      {conversations.find((c) => c.id === selectedConversation)?.userName}
+                      {conversations.find(
+                        (c) => c.otherUserId === selectedConversation && c.auctionId === selectedAuctionId
+                      )?.otherUserName || "Người dùng"}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {conversations.find((c) => c.id === selectedConversation)?.auctionTitle}
-                    </p>
+                    {conversations.find(
+                      (c) => c.otherUserId === selectedConversation && c.auctionId === selectedAuctionId
+                    )?.auctionTitle && (
+                      <p className="text-xs text-muted-foreground">
+                        {conversations.find(
+                          (c) => c.otherUserId === selectedConversation && c.auctionId === selectedAuctionId
+                        )?.auctionTitle}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <DropdownMenu>
@@ -249,30 +414,41 @@ export function MessagesView() {
 
               {/* Messages */}
               <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4">
-                  {messages.map((message) => {
-                    const isOwnMessage = message.senderId === user?.id
-                    return (
-                      <div key={message.id} className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}>
-                        <div className={`flex gap-2 max-w-[70%] ${isOwnMessage ? "flex-row-reverse" : "flex-row"}`}>
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback className="text-xs">{message.senderName.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div
-                              className={`rounded-lg px-4 py-2 ${
-                                isOwnMessage ? "bg-primary text-primary-foreground" : "bg-muted"
-                              }`}
-                            >
-                              <p className="text-sm">{message.content}</p>
+                {loading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                    Chưa có tin nhắn nào. Hãy bắt đầu cuộc trò chuyện!
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {messages.map((message) => {
+                      const isOwnMessage = message.senderId === Number(user?.id)
+                      return (
+                        <div key={message.id} className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}>
+                          <div className={`flex gap-2 max-w-[70%] ${isOwnMessage ? "flex-row-reverse" : "flex-row"}`}>
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={isOwnMessage ? message.senderAvatarUrl || undefined : message.senderAvatarUrl || undefined} />
+                              <AvatarFallback className="text-xs">{message.senderName.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div
+                                className={`rounded-lg px-4 py-2 ${
+                                  isOwnMessage ? "bg-primary text-primary-foreground" : "bg-muted"
+                                }`}
+                              >
+                                <p className="text-sm">{message.content}</p>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">{formatTime(message.sentAt)}</p>
                             </div>
-                            <p className="mt-1 text-xs text-muted-foreground">{formatTime(message.timestamp)}</p>
                           </div>
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                )}
               </ScrollArea>
 
               {/* Message Input */}
@@ -296,8 +472,12 @@ export function MessagesView() {
                     }}
                     className="flex-1"
                   />
-                  <Button onClick={handleSendMessage} className="shrink-0">
-                    <Send className="h-4 w-4" />
+                  <Button onClick={handleSendMessage} className="shrink-0" disabled={sending || !messageInput.trim()}>
+                    {sending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>
