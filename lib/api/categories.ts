@@ -91,6 +91,15 @@ export const CategoriesAPI = {
     const res = await fetch(url.toString(), { cache: 'no-store' })
     return handleResponse<boolean>(res)
   },
+
+  // Check if name exists
+  checkName: async (name: string, excludeId?: number): Promise<boolean> => {
+    const url = new URL(`${API_BASE}${API_ENDPOINTS.CATEGORIES.CHECK_NAME}/${encodeURIComponent(name)}`)
+    if (excludeId) url.searchParams.set('excludeId', String(excludeId))
+    
+    const res = await fetch(url.toString(), { cache: 'no-store' })
+    return handleResponse<boolean>(res)
+  },
 // Check if category is currently in use (has related items)
 checkInUse: async (id: number): Promise<boolean> => {
   const url = `${API_BASE}${API_ENDPOINTS.CATEGORIES.CHECK_IN_USE}/${id}/is-in-use`

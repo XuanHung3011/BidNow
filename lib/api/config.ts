@@ -35,7 +35,8 @@ export const API_ENDPOINTS = {
     UPDATE: "/api/Categories",
     DELETE: "/api/Categories",
     CHECK_SLUG: "/api/Categories/check-slug",
-     CHECK_IN_USE: "/api/Categories",
+    CHECK_NAME: "/api/Categories/check-name",
+    CHECK_IN_USE: "/api/Categories",
 
   }
 } as const;
