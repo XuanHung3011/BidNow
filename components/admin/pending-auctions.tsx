@@ -4,32 +4,66 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Check, X, Eye, Loader2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Check, X, Eye, Loader2, Search } from "lucide-react"
 import { ItemsAPI } from "@/lib/api/items"
-import { ItemResponseDto } from "@/lib/api/types"
+import { ItemResponseDto, CategoryDto } from "@/lib/api/types"
 import { useToast } from "@/hooks/use-toast"
 
 export function PendingAuctions() {
   const { toast } = useToast()
   const [items, setItems] = useState<ItemResponseDto[]>([])
+  const [allItems, setAllItems] = useState<ItemResponseDto[]>([]) // For client-side search
   const [loading, setLoading] = useState(true)
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set())
+  
+  // Filters
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
+  const [sortBy, setSortBy] = useState("CreatedAt")
+  const [sortOrder, setSortOrder] = useState("desc")
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(10)
+  const [totalCount, setTotalCount] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  
+  // Categories
+  const [categories, setCategories] = useState<CategoryDto[]>([])
+
+  useEffect(() => {
+    fetchCategories()
+    fetchPendingItems()
+  }, [])
 
   useEffect(() => {
     fetchPendingItems()
-  }, [])
+  }, [selectedCategory, sortBy, sortOrder, page])
+
+  const fetchCategories = async () => {
+    try {
+      const cats = await ItemsAPI.getCategories()
+      setCategories(cats)
+    } catch (error) {
+      console.error("Error fetching categories:", error)
+    }
+  }
 
   const fetchPendingItems = async () => {
     try {
       setLoading(true)
       const result = await ItemsAPI.getAllWithFilter({
         statuses: ["pending"],
-        sortBy: "CreatedAt",
-        sortOrder: "desc",
-        page: 1,
-        pageSize: 100,
+        categoryId: selectedCategory || undefined,
+        sortBy: sortBy,
+        sortOrder: sortOrder,
+        page: page,
+        pageSize: pageSize,
       })
+      setAllItems(result.data || [])
       setItems(result.data || [])
+      setTotalCount(result.totalCount || 0)
+      setTotalPages(result.totalPages || 0)
     } catch (error) {
       console.error("Error fetching pending items:", error)
       toast({
@@ -42,6 +76,23 @@ export function PendingAuctions() {
     }
   }
 
+  // Client-side search filter
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setItems(allItems)
+      return
+    }
+
+    const query = searchQuery.toLowerCase().trim()
+    const filtered = allItems.filter((item) => {
+      const titleMatch = item.title?.toLowerCase().includes(query)
+      const sellerMatch = item.sellerName?.toLowerCase().includes(query)
+      const categoryMatch = item.categoryName?.toLowerCase().includes(query)
+      return titleMatch || sellerMatch || categoryMatch
+    })
+    setItems(filtered)
+  }, [searchQuery, allItems])
+
   const handleApprove = async (itemId: number) => {
     try {
       setProcessingIds((prev) => new Set(prev).add(itemId))
@@ -50,8 +101,8 @@ export function PendingAuctions() {
         title: "Thành công",
         description: "Đã phê duyệt sản phẩm",
       })
-      // Remove item from list
-      setItems((prev) => prev.filter((item) => Number(item.id) !== itemId))
+      // Refresh list after approve/reject
+      await fetchPendingItems()
     } catch (error) {
       console.error("Error approving item:", error)
       toast({
@@ -76,8 +127,8 @@ export function PendingAuctions() {
         title: "Thành công",
         description: "Đã từ chối sản phẩm",
       })
-      // Remove item from list
-      setItems((prev) => prev.filter((item) => Number(item.id) !== itemId))
+      // Refresh list after approve/reject
+      await fetchPendingItems()
     } catch (error) {
       console.error("Error rejecting item:", error)
       toast({
@@ -138,7 +189,15 @@ export function PendingAuctions() {
     return "/placeholder.svg"
   }
 
-  if (loading) {
+  const handleResetFilters = () => {
+    setSearchQuery("")
+    setSelectedCategory(null)
+    setSortBy("CreatedAt")
+    setSortOrder("desc")
+    setPage(1)
+  }
+
+  if (loading && items.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -146,16 +205,117 @@ export function PendingAuctions() {
     )
   }
 
-  if (items.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <p>Không có sản phẩm nào đang chờ duyệt</p>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-4">
+      {/* Search and Filters */}
+      <Card className="p-4">
+        <div className="space-y-4">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Tìm kiếm theo tên sản phẩm, người bán, danh mục..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          {/* Filters Row */}
+          <div className="flex flex-col gap-4 sm:flex-row">
+            {/* Category Filter */}
+            <Select
+              value={selectedCategory?.toString() || "all"}
+              onValueChange={(value) => {
+                setSelectedCategory(value === "all" ? null : Number(value))
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Danh mục" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả danh mục</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id.toString()}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Sort By */}
+            <Select
+              value={sortBy}
+              onValueChange={(value) => {
+                setSortBy(value)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Sắp xếp theo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CreatedAt">Ngày tạo</SelectItem>
+                <SelectItem value="Title">Tên sản phẩm</SelectItem>
+                <SelectItem value="BasePrice">Giá khởi điểm</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Sort Order */}
+            <Select
+              value={sortOrder}
+              onValueChange={(value) => {
+                setSortOrder(value)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[150px]">
+                <SelectValue placeholder="Thứ tự" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="desc">Giảm dần</SelectItem>
+                <SelectItem value="asc">Tăng dần</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Reset Button */}
+            <Button
+              variant="outline"
+              onClick={handleResetFilters}
+              className="w-full sm:w-auto"
+            >
+              Đặt lại
+            </Button>
+          </div>
+
+          {/* Results Count */}
+          <div className="text-sm text-muted-foreground">
+            {searchQuery ? (
+              <span>
+                Tìm thấy {items.length} kết quả
+                {selectedCategory && ` trong danh mục đã chọn`}
+              </span>
+            ) : (
+              <span>
+                Tổng cộng {totalCount} sản phẩm chờ duyệt
+              </span>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Items List */}
+      {items.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <p>
+            {searchQuery
+              ? "Không tìm thấy sản phẩm nào phù hợp với từ khóa tìm kiếm"
+              : "Không có sản phẩm nào đang chờ duyệt"}
+          </p>
+        </div>
+      ) : (
+        <>
       {items.map((item) => {
         const itemId = item.id
         const isProcessing = processingIds.has(itemId)
@@ -232,6 +392,38 @@ export function PendingAuctions() {
           </Card>
         )
       })}
+
+          {/* Pagination */}
+          {!searchQuery && totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4">
+              <div className="text-sm text-muted-foreground">
+                Hiển thị {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, totalCount)} trong tổng số {totalCount} sản phẩm
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1 || loading}
+                >
+                  Trước
+                </Button>
+                <div className="flex items-center px-4 text-sm">
+                  Trang {page} / {totalPages}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || loading}
+                >
+                  Sau
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
