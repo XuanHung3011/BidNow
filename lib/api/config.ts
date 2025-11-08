@@ -24,7 +24,10 @@ export const API_ENDPOINTS = {
     FILTER: "/api/home/filter",            // <-- endpoint filter (POST)
     CATEGORIES: "/api/home/categories",
     HOT: "/api/home/hot",
-
+    // Admin endpoints
+    GET_ALL_WITH_FILTER: "/api/Items",
+    APPROVE: (id: number) => `/api/Items/${id}/approve`,
+    REJECT: (id: number) => `/api/Items/${id}/reject`,
   },
   CATEGORIES: {
     GET_ALL: "/api/Categories",
@@ -38,6 +41,17 @@ export const API_ENDPOINTS = {
     CHECK_NAME: "/api/Categories/check-name",
     CHECK_IN_USE: "/api/Categories",
 
+  },
+  MESSAGES: {
+    SEND: "/api/Messages/send",
+    CREATE_CONVERSATION: "/api/Messages/create-conversation",
+    CONVERSATION: "/api/Messages/conversation",
+    CONVERSATIONS: (userId: number) => `/api/Messages/conversations/${userId}`,
+    UNREAD: (userId: number) => `/api/Messages/unread/${userId}`,
+    UNREAD_COUNT: (userId: number) => `/api/Messages/unread-count/${userId}`,
+    MARK_READ: (messageId: number) => `/api/Messages/read/${messageId}`,
+    MARK_CONVERSATION_READ: "/api/Messages/conversation/read",
+    GET_BY_ID: (messageId: number) => `/api/Messages/${messageId}`,
   }
 } as const;
 
