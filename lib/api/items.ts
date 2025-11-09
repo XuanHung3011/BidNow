@@ -88,6 +88,13 @@ export const ItemsAPI = {
     return handleResponse<ItemResponseDto[]>(res)
   },
 
+  // Admin: Get item by ID
+  getById: async (id: number): Promise<ItemResponseDto> => {
+    const url = `${API_BASE}${API_ENDPOINTS.ITEMS.GET_BY_ID(id)}`
+    const res = await fetch(url, { cache: 'no-store' })
+    return handleResponse<ItemResponseDto>(res)
+  },
+
   // Admin: Get all items with filter (status, category, sorting)
   getAllWithFilter: async (filter: ItemFilterAllDto): Promise<PaginatedResult<ItemResponseDto>> => {
     const url = new URL(`${API_BASE}${API_ENDPOINTS.ITEMS.GET_ALL_WITH_FILTER}`)

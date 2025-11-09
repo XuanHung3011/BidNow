@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Check, X, Eye, Loader2, Search } from "lucide-react"
 import { ItemsAPI } from "@/lib/api/items"
 import { ItemResponseDto, CategoryDto } from "@/lib/api/types"
@@ -30,6 +37,11 @@ export function PendingAuctions() {
   
   // Categories
   const [categories, setCategories] = useState<CategoryDto[]>([])
+  
+  // Dialog state
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<ItemResponseDto | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
 
   useEffect(() => {
     fetchCategories()
@@ -197,6 +209,25 @@ export function PendingAuctions() {
     setPage(1)
   }
 
+  const handleViewDetails = async (itemId: number) => {
+    try {
+      setLoadingDetail(true)
+      setDialogOpen(true)
+      const item = await ItemsAPI.getById(itemId)
+      setSelectedItem(item)
+    } catch (error) {
+      console.error("Error fetching item details:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải thông tin chi tiết sản phẩm",
+        variant: "destructive",
+      })
+      setDialogOpen(false)
+    } finally {
+      setLoadingDetail(false)
+    }
+  }
+
   if (loading && items.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -356,6 +387,7 @@ export function PendingAuctions() {
                   size="sm" 
                   className="w-full sm:w-auto bg-transparent"
                   disabled={isProcessing}
+                  onClick={() => handleViewDetails(itemId)}
                 >
                   <Eye className="mr-2 h-4 w-4" />
                   Xem chi tiết
@@ -424,6 +456,178 @@ export function PendingAuctions() {
           )}
         </>
       )}
+
+      {/* Item Detail Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          {loadingDetail ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : selectedItem ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedItem.title}</DialogTitle>
+                <DialogDescription>
+                  Chi tiết sản phẩm chờ duyệt
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                {/* Images */}
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Hình ảnh</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {(() => {
+                      const images = typeof selectedItem.images === 'string' 
+                        ? (() => {
+                            try {
+                              const parsed = JSON.parse(selectedItem.images)
+                              return Array.isArray(parsed) ? parsed : [selectedItem.images]
+                            } catch {
+                              return [selectedItem.images]
+                            }
+                          })()
+                        : Array.isArray(selectedItem.images) 
+                          ? selectedItem.images 
+                          : []
+                      
+                      if (images.length === 0) {
+                        return (
+                          <div className="aspect-square rounded-lg bg-muted flex items-center justify-center">
+                            <span className="text-muted-foreground">Không có hình ảnh</span>
+                          </div>
+                        )
+                      }
+                      
+                      return images.map((img, idx) => (
+                        <img
+                          key={idx}
+                          src={img}
+                          alt={`${selectedItem.title} - ${idx + 1}`}
+                          className="aspect-square rounded-lg object-cover w-full"
+                        />
+                      ))
+                    })()}
+                  </div>
+                </div>
+
+                {/* Description */}
+                {selectedItem.description && (
+                  <div>
+                    <h3 className="text-sm font-medium mb-2">Mô tả</h3>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                      {selectedItem.description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Details Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-sm font-medium mb-2">Thông tin cơ bản</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Danh mục:</span>
+                        <span className="font-medium">{selectedItem.categoryName || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tình trạng:</span>
+                        <span className="font-medium">{selectedItem.condition || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Vị trí:</span>
+                        <span className="font-medium">{selectedItem.location || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Giá khởi điểm:</span>
+                        <span className="font-medium">{formatPrice(selectedItem.basePrice)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Trạng thái:</span>
+                        <Badge variant={selectedItem.status === "pending" ? "default" : "secondary"}>
+                          {selectedItem.status || "N/A"}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Ngày tạo:</span>
+                        <span className="font-medium">{formatDate(selectedItem.createdAt)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-medium mb-2">Thông tin người bán</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tên:</span>
+                        <span className="font-medium">{selectedItem.sellerName || "N/A"}</span>
+                      </div>
+                      {(selectedItem as any).sellerEmail && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Email:</span>
+                          <span className="font-medium">{(selectedItem as any).sellerEmail}</span>
+                        </div>
+                      )}
+                      {(selectedItem as any).sellerReputationScore !== undefined && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Điểm uy tín:</span>
+                          <span className="font-medium">{(selectedItem as any).sellerReputationScore.toFixed(1)}</span>
+                        </div>
+                      )}
+                      {(selectedItem as any).sellerTotalSales !== undefined && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Tổng bán hàng:</span>
+                          <span className="font-medium">{(selectedItem as any).sellerTotalSales}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Auction Info */}
+                {selectedItem.auctionId && (
+                  <div>
+                    <h3 className="text-sm font-medium mb-2">Thông tin đấu giá</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      {selectedItem.startingBid !== null && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Giá khởi điểm đấu giá:</span>
+                          <span className="font-medium">{formatPrice(selectedItem.startingBid)}</span>
+                        </div>
+                      )}
+                      {selectedItem.currentBid !== null && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Giá hiện tại:</span>
+                          <span className="font-medium">{formatPrice(selectedItem.currentBid)}</span>
+                        </div>
+                      )}
+                      {selectedItem.bidCount !== null && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Số lượt đấu giá:</span>
+                          <span className="font-medium">{selectedItem.bidCount}</span>
+                        </div>
+                      )}
+                      {selectedItem.auctionEndTime && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Thời gian kết thúc:</span>
+                          <span className="font-medium">{formatDate(selectedItem.auctionEndTime)}</span>
+                        </div>
+                      )}
+                      {selectedItem.auctionStatus && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Trạng thái đấu giá:</span>
+                          <Badge variant="outline">{selectedItem.auctionStatus}</Badge>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
