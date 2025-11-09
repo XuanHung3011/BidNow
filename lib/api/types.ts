@@ -133,3 +133,36 @@ export interface PaginatedResult<T> {
   hasPreviousPage: boolean;
   hasNextPage: boolean;
 }
+
+// User Management Types
+export interface UserCreateDto {
+  email: string;
+  password: string;
+  fullName: string;
+  phone?: string;
+  avatarUrl?: string;
+}
+
+export interface UserUpdateDto {
+  fullName?: string;
+  phone?: string;
+  avatarUrl?: string;
+}
+
+export interface ChangePasswordDto {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface UserLoginDto {
+  email: string;
+  password: string;
+}
+
+export interface AddRoleRequest {
+  role: string;
+}
+
+export interface ValidateCredentialsResponse {
+  isValid: boolean;
+}
