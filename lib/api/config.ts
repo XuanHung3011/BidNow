@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
   USERS: {
     GET_ALL: "/api/Users",
     GET_BY_ID: "/api/Users",
+    GET_BY_EMAIL: (email: string) => `/api/Users/email/${encodeURIComponent(email)}`,
     SEARCH: "/api/Users/search",
     ADD_ROLE: (userId: number) => `/api/Users/${userId}/roles`,
     REMOVE_ROLE: (userId: number, role: string) => `/api/Users/${userId}/roles/${encodeURIComponent(role)}`,
@@ -26,6 +27,7 @@ export const API_ENDPOINTS = {
     HOT: "/api/home/hot",
     // Admin endpoints
     GET_ALL_WITH_FILTER: "/api/Items",
+    GET_BY_ID: (id: number) => `/api/Items/${id}`,
     APPROVE: (id: number) => `/api/Items/${id}/approve`,
     REJECT: (id: number) => `/api/Items/${id}/reject`,
   },
@@ -43,15 +45,12 @@ export const API_ENDPOINTS = {
 
   },
   MESSAGES: {
-    SEND: "/api/Messages/send",
-    CREATE_CONVERSATION: "/api/Messages/create-conversation",
-    CONVERSATION: "/api/Messages/conversation",
-    CONVERSATIONS: (userId: number) => `/api/Messages/conversations/${userId}`,
-    UNREAD: (userId: number) => `/api/Messages/unread/${userId}`,
-    UNREAD_COUNT: (userId: number) => `/api/Messages/unread-count/${userId}`,
-    MARK_READ: (messageId: number) => `/api/Messages/read/${messageId}`,
-    MARK_CONVERSATION_READ: "/api/Messages/conversation/read",
-    GET_BY_ID: (messageId: number) => `/api/Messages/${messageId}`,
+    SEND: "/api/Messages", // POST - Gửi tin nhắn
+    CONVERSATIONS: "/api/Messages/conversations", // GET - Danh sách hội thoại
+    CONVERSATION: "/api/Messages/conversation", // GET - Chi tiết cuộc hội thoại
+    MARK_READ: (messageId: number) => `/api/Messages/${messageId}/read`, // PUT - Đánh dấu đã đọc
+    UNREAD: "/api/Messages/unread", // GET - Tin nhắn chưa đọc
+    ALL: "/api/Messages/all", // GET - Tất cả tin nhắn (đã gửi và đã nhận)
   }
 } as const;
 
