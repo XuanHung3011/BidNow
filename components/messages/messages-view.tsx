@@ -106,11 +106,18 @@ export function MessagesView() {
         )
         if (updatedConv) {
           setSelectedConversationInfo(updatedConv)
+        } else {
+          // If selected conversation no longer exists, clear selection
+          // But don't auto-select first one - let user choose
+          setSelectedConversation(null)
+          setSelectedAuctionId(null)
+          setSelectedConversationInfo(null)
         }
       }
       
-      // Auto-select first conversation if available and none selected
-      if (data && data.length > 0 && !selectedConversation) {
+      // Auto-select first conversation ONLY on initial load (when showLoading is true)
+      // Don't auto-select on silent refresh to prevent jumping
+      if (showLoading && data && data.length > 0 && !selectedConversation) {
         setSelectedConversation(data[0].otherUserId)
         setSelectedAuctionId(data[0].auctionId || null)
         setSelectedConversationInfo(data[0])
@@ -569,11 +576,11 @@ export function MessagesView() {
         </Card>
 
         {/* Chat Area */}
-        <Card className="flex flex-col">
+        <Card className="flex flex-col h-[calc(100vh-120px)] max-h-[900px]">
           {selectedConversation ? (
             <>
               {/* Chat Header */}
-              <div className="flex items-center justify-between border-b p-4">
+              <div className="flex items-center justify-between border-b p-4 flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <Avatar className="h-10 w-10">
                     <AvatarImage
@@ -609,58 +616,62 @@ export function MessagesView() {
               </div>
 
               {/* Messages */}
-              <ScrollArea className="flex-1 p-4 h-[500px]">
-                {loadingMessages ? (
-                  <div className="flex items-center justify-center h-full">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                    Chưa có tin nhắn nào. Hãy bắt đầu cuộc trò chuyện!
-                  </div>
-                ) : (
-                  <div className="space-y-4 pb-4">
-                    {messages.map((message) => {
-                      const isOwnMessage = message.senderId === Number(user?.id)
-                      const displayName = isOwnMessage 
-                        ? (user?.name || message.senderName) 
-                        : message.senderName
-                      const displayAvatar = isOwnMessage 
-                        ? (user?.avatar || message.senderAvatarUrl) 
-                        : message.senderAvatarUrl
-                      
-                      return (
-                        <div key={message.id} className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}>
-                          <div className={`flex gap-2 max-w-[70%] ${isOwnMessage ? "flex-row-reverse" : "flex-row"}`}>
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage src={displayAvatar || undefined} />
-                              <AvatarFallback className="text-xs">
-                                {displayName?.charAt(0) || "U"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              {!isOwnMessage && (
-                                <p className="mb-1 text-xs font-medium text-muted-foreground">{displayName}</p>
-                              )}
-                              <div
-                                className={`rounded-lg px-4 py-2 ${
-                                  isOwnMessage ? "bg-primary text-primary-foreground" : "bg-muted"
-                                }`}
-                              >
-                                <p className="text-sm">{message.content}</p>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ScrollArea className="h-full">
+                  <div className="p-4">
+                    {loadingMessages ? (
+                      <div className="flex items-center justify-center py-20">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : messages.length === 0 ? (
+                      <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
+                        Chưa có tin nhắn nào. Hãy bắt đầu cuộc trò chuyện!
+                      </div>
+                    ) : (
+                      <div className="space-y-4 pb-4">
+                        {messages.map((message) => {
+                          const isOwnMessage = message.senderId === Number(user?.id)
+                          const displayName = isOwnMessage 
+                            ? (user?.name || message.senderName) 
+                            : message.senderName
+                          const displayAvatar = isOwnMessage 
+                            ? (user?.avatar || message.senderAvatarUrl) 
+                            : message.senderAvatarUrl
+                          
+                          return (
+                            <div key={message.id} className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}>
+                              <div className={`flex gap-2 max-w-[70%] ${isOwnMessage ? "flex-row-reverse" : "flex-row"}`}>
+                                <Avatar className="h-8 w-8">
+                                  <AvatarImage src={displayAvatar || undefined} />
+                                  <AvatarFallback className="text-xs">
+                                    {displayName?.charAt(0) || "U"}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  {!isOwnMessage && (
+                                    <p className="mb-1 text-xs font-medium text-muted-foreground">{displayName}</p>
+                                  )}
+                                  <div
+                                    className={`rounded-lg px-4 py-2 ${
+                                      isOwnMessage ? "bg-primary text-primary-foreground" : "bg-muted"
+                                    }`}
+                                  >
+                                    <p className="text-sm">{message.content}</p>
+                                  </div>
+                                  <p className="mt-1 text-xs text-muted-foreground">{formatTime(message.sentAt)}</p>
+                                </div>
                               </div>
-                              <p className="mt-1 text-xs text-muted-foreground">{formatTime(message.sentAt)}</p>
                             </div>
-                          </div>
-                        </div>
-                      )
-                    })}
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </ScrollArea>
+                </ScrollArea>
+              </div>
 
               {/* Message Input */}
-              <div className="border-t p-4">
+              <div className="border-t p-4 flex-shrink-0">
                 <div className="flex items-end gap-2">
                   <Button variant="ghost" size="icon" className="shrink-0">
                     <ImageIcon className="h-5 w-5" />
@@ -693,7 +704,7 @@ export function MessagesView() {
           ) : (
             <>
               {/* All Messages Header - when no conversation selected */}
-              <div className="flex items-center justify-between border-b p-4">
+              <div className="flex items-center justify-between border-b p-4 flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <div>
                     <p className="font-semibold">Tất cả tin nhắn</p>
@@ -705,17 +716,19 @@ export function MessagesView() {
               </div>
 
               {/* Messages List by UserId */}
-              <ScrollArea className="flex-1 p-4 h-[600px]">
-                {loadingMessages ? (
-                  <div className="flex items-center justify-center h-full">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                    Chưa có tin nhắn nào. Hãy chọn một cuộc trò chuyện để bắt đầu!
-                  </div>
-                ) : (
-                  <div className="space-y-4 pb-4">
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ScrollArea className="h-full">
+                  <div className="p-4">
+                    {loadingMessages ? (
+                      <div className="flex items-center justify-center py-20">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : messages.length === 0 ? (
+                      <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
+                        Chưa có tin nhắn nào. Hãy chọn một cuộc trò chuyện để bắt đầu!
+                      </div>
+                    ) : (
+                      <div className="space-y-4 pb-4">
                     {messages.map((message) => {
                       const isOwnMessage = message.senderId === Number(user?.id)
                       const displayName = isOwnMessage 
@@ -775,9 +788,11 @@ export function MessagesView() {
                         </div>
                       )
                     })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </ScrollArea>
+                </ScrollArea>
+              </div>
             </>
           )}
         </Card>
