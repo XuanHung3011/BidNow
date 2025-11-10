@@ -9,13 +9,19 @@ export const API_ENDPOINTS = {
     FORGOT_PASSWORD: "/api/Auth/forgot-password",
     RESET_PASSWORD: "/api/Auth/reset-password",
   },
-  USERS: {
+    USERS: {
     GET_ALL: "/api/Users",
-    GET_BY_ID: "/api/Users",
+    GET_BY_ID: (id: number) => `/api/Users/${id}`,
     GET_BY_EMAIL: (email: string) => `/api/Users/email/${encodeURIComponent(email)}`,
-    SEARCH: "/api/Users/search",
+    CREATE: "/api/Users",
+    UPDATE: (id: number) => `/api/Users/${id}`,
+    CHANGE_PASSWORD: (id: number) => `/api/Users/${id}/change-password`,
+    ACTIVATE: (id: number) => `/api/Users/${id}/activate`,
+    DEACTIVATE: (id: number) => `/api/Users/${id}/deactivate`,
     ADD_ROLE: (userId: number) => `/api/Users/${userId}/roles`,
     REMOVE_ROLE: (userId: number, role: string) => `/api/Users/${userId}/roles/${encodeURIComponent(role)}`,
+    SEARCH: "/api/Users/search",
+    VALIDATE_CREDENTIALS: "/api/Users/validate-credentials",
   },
     ITEMS: {
     GET_ALL: "/api/home/items",
