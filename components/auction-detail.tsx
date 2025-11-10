@@ -131,9 +131,9 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
 
   // Mock seller data (có thể fetch từ API khác nếu cần)
   const seller = {
-    name: "Seller #" + auction.sellerId,
+    name: auction.sellerName || `User #${auction.sellerId}`,
     rating: 4.8,
-    totalRatings: 156,
+    totalRatings: auction.sellerTotalRatings || 0,
     totalSales: 1234,
     joinDate: "Tháng 3, 2023",
     responseRate: 98,
