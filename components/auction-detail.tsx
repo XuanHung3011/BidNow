@@ -24,7 +24,8 @@ import {
 import { BidHistory } from "@/components/bid-history"
 import { LiveChat } from "@/components/live-chat"
 import { AutoBidDialog } from "@/components/auto-bid-dialog"
-import { AuctionsAPI, type AuctionDetailDto } from "@/lib/api"
+import { AuctionsAPI, FavoriteSellersAPI, type AuctionDetailDto } from "@/lib/api"
+
 
 interface AuctionDetailProps {
   auctionId: string
@@ -40,7 +41,12 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const [auction, setAuction] = useState<AuctionDetailDto | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
+  
+  // State cho favorite seller
+  const [isFavoriteSeller, setIsFavoriteSeller] = useState(false)
+  const [loadingFavorite, setLoadingFavorite] = useState(false)
+  const [favoriteMessage, setFavoriteMessage] = useState<string | null>(null)
+  
   // Fetch auction detail
   useEffect(() => {
     let mounted = true
@@ -67,7 +73,27 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     
     return () => { mounted = false }
   }, [auctionId])
-
+  
+  // Check if seller is favorite
+  useEffect(() => {
+    if (!auction?.sellerId) return
+    
+    let mounted = true
+    const checkFavorite = async () => {
+      try {
+        const isFav = await FavoriteSellersAPI.checkIsFavorite(auction.sellerId)
+        if (!mounted) return
+        setIsFavoriteSeller(isFav)
+      } catch (err) {
+        console.error('Failed to check favorite:', err)
+        // Không hiển thị lỗi cho user, chỉ log
+      }
+    }
+    
+    checkFavorite()
+    return () => { mounted = false }
+  }, [auction?.sellerId])
+  
   // Update countdown timer
   useEffect(() => {
     if (!auction) return
@@ -100,6 +126,40 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       currency: "VND",
     }).format(price)
   }
+
+const addFavoriteSeller = async () => {
+  if (!auction?.sellerId) return
+  if (isFavoriteSeller) return
+  
+  setLoadingFavorite(true)
+  setFavoriteMessage(null)
+  
+  try {
+    console.log('=== Adding favorite seller ===')
+    console.log('SellerId:', auction.sellerId)
+    console.log('Current user:', localStorage.getItem('bidnow_user'))
+    
+    const result = await FavoriteSellersAPI.addFavorite(auction.sellerId)
+    
+    console.log('Add favorite result:', result)
+    
+    if (result.success) {
+      setIsFavoriteSeller(true)
+      setFavoriteMessage(result.message)
+      setTimeout(() => setFavoriteMessage(null), 3000)
+    } else {
+      setFavoriteMessage(result.message)
+      setTimeout(() => setFavoriteMessage(null), 3000)
+    }
+  } catch (err: any) {
+    console.error('=== Add favorite error ===')
+    console.error('Error details:', err)
+    setFavoriteMessage(err.message || "Không thể thêm vào yêu thích")
+    setTimeout(() => setFavoriteMessage(null), 3000)
+  } finally {
+    setLoadingFavorite(false)
+  }
+}
 
   // Loading state
   if (loading) {
@@ -205,12 +265,6 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 {auction.itemDescription || 'Không có mô tả'}
               </div>
               <div className="mt-6 grid grid-cols-2 gap-4">
-{/*
-                <div className="rounded-lg border border-border bg-muted/50 p-4">
-                  <div className="text-sm text-muted-foreground">Trạng thái</div>
-                  <div className="mt-1 font-semibold text-foreground">{auction.status}</div>
-                </div>
-*/}
                 <div className="rounded-lg border border-border bg-muted/50 p-4">
                   <div className="text-sm text-muted-foreground">Danh mục</div>
                   <div className="mt-1 font-semibold text-foreground">
@@ -231,7 +285,32 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                     {seller.name[0]}
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-2xl font-semibold text-foreground">{seller.name}</h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-2xl font-semibold text-foreground">{seller.name}</h3>
+                      {/* Button thêm seller yêu thích */}
+                      <Button
+                        size="sm"
+                        variant={isFavoriteSeller ? "secondary" : "default"}
+                        onClick={addFavoriteSeller}
+                        disabled={loadingFavorite || isFavoriteSeller}
+                        className="flex items-center gap-2"
+                      >
+                        {loadingFavorite ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Heart className={`h-4 w-4 ${isFavoriteSeller ? "fill-current" : ""}`} />
+                        )}
+                        {isFavoriteSeller ? "Đã yêu thích" : "Yêu thích"}
+                      </Button>
+                    </div>
+
+                    {/* Hiển thị message */}
+                    {favoriteMessage && (
+                      <div className="mt-3 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-800">
+                        {favoriteMessage}
+                      </div>
+                    )}
+                    
                     <div className="mt-3 flex items-center gap-2">
                       <div className="flex items-center gap-1 rounded-lg bg-yellow-50 px-3 py-1.5">
                         <Star className="h-5 w-5 fill-yellow-500 text-yellow-500" />
