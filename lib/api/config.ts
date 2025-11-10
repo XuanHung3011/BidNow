@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
   USERS: {
     GET_ALL: "/api/Users",
     GET_BY_ID: "/api/Users",
+    GET_BY_EMAIL: (email: string) => `/api/Users/email/${encodeURIComponent(email)}`,
     SEARCH: "/api/Users/search",
     ADD_ROLE: (userId: number) => `/api/Users/${userId}/roles`,
     REMOVE_ROLE: (userId: number, role: string) => `/api/Users/${userId}/roles/${encodeURIComponent(role)}`,
@@ -24,7 +25,11 @@ export const API_ENDPOINTS = {
     FILTER: "/api/home/filter",            // <-- endpoint filter (POST)
     CATEGORIES: "/api/home/categories",
     HOT: "/api/home/hot",
-
+    // Admin endpoints
+    GET_ALL_WITH_FILTER: "/api/Items",
+    GET_BY_ID: (id: number) => `/api/Items/${id}`,
+    APPROVE: (id: number) => `/api/Items/${id}/approve`,
+    REJECT: (id: number) => `/api/Items/${id}/reject`,
   },
   CATEGORIES: {
     GET_ALL: "/api/Categories",
@@ -38,6 +43,14 @@ export const API_ENDPOINTS = {
     CHECK_NAME: "/api/Categories/check-name",
     CHECK_IN_USE: "/api/Categories",
 
+  },
+  MESSAGES: {
+    SEND: "/api/Messages", // POST - Gửi tin nhắn
+    CONVERSATIONS: "/api/Messages/conversations", // GET - Danh sách hội thoại
+    CONVERSATION: "/api/Messages/conversation", // GET - Chi tiết cuộc hội thoại
+    MARK_READ: (messageId: number) => `/api/Messages/${messageId}/read`, // PUT - Đánh dấu đã đọc
+    UNREAD: "/api/Messages/unread", // GET - Tin nhắn chưa đọc
+    ALL: "/api/Messages/all", // GET - Tất cả tin nhắn (đã gửi và đã nhận)
   }
 } as const;
 
