@@ -45,21 +45,21 @@ export interface AuthResult {
   data?: UserResponse;
 }
 export interface ItemResponseDto {
-  id: string;
+  id: number;
   title: string;
   description?: string;
   basePrice?: number;
   condition?: string;
-  images?: string[];
+  images?: string | string[];
   location?: string;
   status?: string;
   createdAt?: string;
-  categoryId?: string;
+  categoryId?: number;
   categoryName?: string;
-  sellerId?: string;
+  sellerId?: number;
   sellerName?: string;
   sellerAvatar?: string;
-  auctionId?: string | null;
+  auctionId?: number | null;
   startingBid?: number | null;
   currentBid?: number | null;
   bidCount?: number | null;
@@ -81,6 +81,15 @@ export interface ItemFilterDto {
   
   auctionStatuses?: string[] | null;
   condition?: string | null;
+}
+
+export interface ItemFilterAllDto {
+  statuses?: string[] | null;
+  categoryId?: number | null;
+  sortBy?: string;
+  sortOrder?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 export interface ForgotPasswordRequest {
@@ -165,4 +174,44 @@ export interface AddRoleRequest {
 
 export interface ValidateCredentialsResponse {
   isValid: boolean;
+}
+// Message Types
+export interface SendMessageRequest {
+  senderId: number;
+  receiverId: number;
+  auctionId?: number | null;
+  content: string;
+}
+
+export interface CreateConversationByEmailRequest {
+  senderId: number;
+  receiverEmail: string;
+  auctionId?: number | null;
+  initialMessage?: string | null;
+}
+
+export interface MessageResponseDto {
+  id: number;
+  senderId: number;
+  senderName: string;
+  senderAvatarUrl?: string | null;
+  receiverId: number;
+  receiverName: string;
+  receiverAvatarUrl?: string | null;
+  auctionId?: number | null;
+  auctionTitle?: string | null;
+  content: string;
+  isRead: boolean;
+  sentAt?: string | null;
+}
+
+export interface ConversationDto {
+  otherUserId: number;
+  otherUserName: string;
+  otherUserAvatarUrl?: string | null;
+  lastMessage?: string | null;
+  lastMessageTime?: string | null;
+  unreadCount: number;
+  auctionId?: number | null;
+  auctionTitle?: string | null;
 }
