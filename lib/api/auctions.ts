@@ -10,6 +10,8 @@ export interface AuctionDetailDto {
   categoryId: number
   categoryName?: string
   sellerId: number
+  sellerName?: string
+  sellerTotalRatings?: number
   startingBid: number
   currentBid?: number
   buyNowPrice?: number

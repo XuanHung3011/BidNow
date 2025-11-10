@@ -57,6 +57,12 @@ export const API_ENDPOINTS = {
     MARK_READ: (messageId: number) => `/api/Messages/${messageId}/read`, // PUT - Đánh dấu đã đọc
     UNREAD: "/api/Messages/unread", // GET - Tin nhắn chưa đọc
     ALL: "/api/Messages/all", // GET - Tất cả tin nhắn (đã gửi và đã nhận)
+  },
+  FAVORITE_SELLERS: {
+    GET_MY_FAVORITES: "/api/FavoriteSellers",
+    CHECK_IS_FAVORITE: (sellerId: number) => `/api/FavoriteSellers/check/${sellerId}`,
+    ADD_FAVORITE: "/api/FavoriteSellers",
+    REMOVE_FAVORITE: (sellerId: number) => `/api/FavoriteSellers/${sellerId}`,
   }
 } as const;
 
