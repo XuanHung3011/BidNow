@@ -460,18 +460,21 @@ export function PendingAuctions() {
       {/* Item Detail Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {loadingDetail ? "Đang tải..." : selectedItem ? selectedItem.title : "Chi tiết sản phẩm"}
+            </DialogTitle>
+            <DialogDescription>
+              {loadingDetail ? "Vui lòng chờ..." : "Chi tiết sản phẩm chờ duyệt"}
+            </DialogDescription>
+          </DialogHeader>
+
           {loadingDetail ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : selectedItem ? (
             <>
-              <DialogHeader>
-                <DialogTitle>{selectedItem.title}</DialogTitle>
-                <DialogDescription>
-                  Chi tiết sản phẩm chờ duyệt
-                </DialogDescription>
-              </DialogHeader>
 
               <div className="space-y-6">
                 {/* Images */}
