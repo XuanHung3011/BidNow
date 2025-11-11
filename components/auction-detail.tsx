@@ -24,7 +24,9 @@ import {
 import { BidHistory } from "@/components/bid-history"
 import { LiveChat } from "@/components/live-chat"
 import { AutoBidDialog } from "@/components/auto-bid-dialog"
-import { AuctionsAPI, FavoriteSellersAPI, type AuctionDetailDto, type FavoriteSellerResponseDto } from "@/lib/api"
+import { AuctionsAPI, FavoriteSellersAPI, type AuctionDetailDto,type FavoriteSellerResponseDto } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
+import { createAuctionHubConnection, type BidPlacedPayload } from "@/lib/realtime/auctionHub"
 
 
 interface AuctionDetailProps {
@@ -32,8 +34,11 @@ interface AuctionDetailProps {
 }
 
 export function AuctionDetail({ auctionId }: AuctionDetailProps) {
+  const { user } = useAuth()
   const [timeLeft, setTimeLeft] = useState("")
   const [bidAmount, setBidAmount] = useState("")
+  const [placing, setPlacing] = useState(false)
+  const [placeError, setPlaceError] = useState<string | null>(null)
   const [isWatching, setIsWatching] = useState(false)
   const [selectedImage, setSelectedImage] = useState(0)
   
@@ -74,6 +79,52 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     return () => { mounted = false }
   }, [auctionId])
   
+  // SignalR: subscribe to BidPlaced and update UI in real-time
+  useEffect(() => {
+    let isMounted = true
+    const connection = createAuctionHubConnection()
+    let started = false
+
+    const start = async () => {
+      try {
+        await connection.start()
+        started = true
+        await connection.invoke("JoinAuctionGroup", String(auctionId))
+      } catch (e) {
+        // ignore transient connection errors
+      }
+    }
+
+    connection.on("BidPlaced", (payload: BidPlacedPayload) => {
+      if (!isMounted) return
+      if (!auction) return
+      if (payload.auctionId !== Number(auctionId)) return
+      setAuction({
+        ...auction,
+        currentBid: payload.currentBid,
+        bidCount: payload.bidCount,
+      })
+    })
+
+    start()
+
+    return () => {
+      isMounted = false
+      const leaveAndStop = async () => {
+        try {
+          if (started) {
+            await connection.invoke("LeaveAuctionGroup", String(auctionId))
+            await connection.stop()
+          }
+        } catch {
+          // ignore
+        }
+      }
+      void leaveAndStop()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auctionId, auction?.id])
+
   // Check if seller is favorite
   useEffect(() => {
     if (!auction?.sellerId) return
@@ -278,7 +329,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
             </TabsContent>
 
             <TabsContent value="history" className="mt-6">
-              <BidHistory />
+              <BidHistory auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} />
             </TabsContent>
 
             <TabsContent value="seller" className="mt-6">
@@ -440,8 +491,37 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 onChange={(e) => setBidAmount(e.target.value)}
                 className="flex-1"
               />
-              <Button className="px-6">Đặt giá</Button>
+              <Button 
+                className="px-6"
+                disabled={placing || !user}
+                onClick={async () => {
+                  if (!auction) return
+                  setPlaceError(null)
+                  const amount = Number(bidAmount)
+                  if (!amount || isNaN(amount)) { setPlaceError("Vui lòng nhập số hợp lệ"); return }
+                  if (amount < suggestedBid) { setPlaceError(`Giá tối thiểu ${formatPrice(suggestedBid)}`); return }
+                  if (!user) { setPlaceError("Bạn cần đăng nhập để đặt giá"); return }
+                  try {
+                    setPlacing(true)
+                    const res = await AuctionsAPI.placeBid(Number(auctionId), { bidderId: Number(user.id), amount })
+                    // Update UI with new values
+                    setAuction({
+                      ...auction,
+                      currentBid: res.currentBid,
+                      bidCount: res.bidCount,
+                    })
+                    setBidAmount("")
+                  } catch (err: any) {
+                    setPlaceError(err.message || "Đặt giá thất bại")
+                  } finally {
+                    setPlacing(false)
+                  }
+                }}
+              >
+                {placing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Đặt giá"}
+              </Button>
             </div>
+            {placeError && <div className="text-sm text-destructive">{placeError}</div>}
 
             <div className="flex gap-2">
               <Button
