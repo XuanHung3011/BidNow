@@ -66,6 +66,17 @@ export interface ItemResponseDto {
   auctionEndTime?: string | null;
   auctionStatus?: string | null;
 }
+
+export interface CreateItemDto {
+  sellerId: number;
+  categoryId: number;
+  title: string;
+  description?: string;
+  condition?: string;
+  location?: string;
+  basePrice: number;
+  // Images are uploaded separately as File[] in FormData
+}
 export interface CategoryDto {
   id: number;
   name: string;
@@ -86,6 +97,7 @@ export interface ItemFilterDto {
 export interface ItemFilterAllDto {
   statuses?: string[] | null;
   categoryId?: number | null;
+  sellerId?: number | null;
   sortBy?: string;
   sortOrder?: string;
   page?: number;
