@@ -66,6 +66,10 @@ export const API_ENDPOINTS = {
   },
   ADMIN_STATS: {
     GET_STATS: "/api/AdminStats",
+  },
+  ADMIN_AUCTIONS: {
+    GET_ALL: "/api/AdminAuctions",
+    GET_BY_ID: (id: number) => `/api/AdminAuctions/${id}`,
   }
 } as const;
 
