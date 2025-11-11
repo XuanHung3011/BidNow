@@ -354,9 +354,9 @@ useEffect(() => {
               ))
             : sortedItems.map((auction) => (
                 <AuctionCard
-                  key={auction.id}
+                  key={auction.auctionId ?? auction.id}
                   auction={{
-                    id: (auction.auctionId ?? auction.id).toString(),
+                    id: (auction.auctionId ?? auction.id)?.toString(),
                     title: auction.title,
                     image:
                       (auction.images && auction.images[0]) || "/placeholder.jpg",
