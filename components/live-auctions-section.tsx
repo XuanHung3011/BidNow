@@ -28,9 +28,9 @@ export function LiveAuctionsSection() {
       try {
         const items = await ItemsAPI.getHot(8)
         const mapped: CardAuction[] = items
-          .filter(i => i.auctionStatus === "active")
+          .filter(i => i.auctionStatus === "active" && (i.auctionId ?? i.id))
           .map(i => ({
-            id: String(i.id),
+            id: String(i.auctionId ?? i.id),
             title: i.title,
             image: (i.images && i.images[0]) || "/placeholder.jpg",
             currentBid: Number(i.currentBid || i.startingBid || 0),
