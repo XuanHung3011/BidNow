@@ -1,6 +1,25 @@
 // lib/api/auctions.ts
 import { API_BASE, API_ENDPOINTS } from './config'
 
+export interface BidRequestDto {
+  bidderId: number
+  amount: number
+}
+
+export interface BidDto {
+  bidderId: number
+  bidderName?: string
+  amount: number
+  bidTime: string
+}
+
+export interface BidResultDto {
+  auctionId: number
+  currentBid: number
+  bidCount: number
+  placedBid: BidDto
+}
+
 export interface AuctionDetailDto {
   id: number
   itemId: number
@@ -63,6 +82,7 @@ export const AuctionsAPI = {
     return response.json()
   },
 
+  // Create auction
   async create(auction: CreateAuctionDto): Promise<AuctionResponseDto> {
     const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.CREATE}`
     console.log('Creating auction at URL:', url)
@@ -112,12 +132,14 @@ export const AuctionsAPI = {
     }
   },
 
+  // Admin: Get pending auctions
   async getPending(): Promise<AuctionResponseDto[]> {
     const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_PENDING}`
     const res = await fetch(url, { cache: 'no-store' })
     return handleResponse<AuctionResponseDto[]>(res)
   },
 
+  // Admin: Approve auction
   async approve(id: number): Promise<{ message: string }> {
     const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.APPROVE(id)}`
     const res = await fetch(url, {
@@ -128,6 +150,7 @@ export const AuctionsAPI = {
     return handleResponse<{ message: string }>(res)
   },
 
+  // Admin: Reject auction
   async reject(id: number): Promise<{ message: string }> {
     const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.REJECT(id)}`
     const res = await fetch(url, {
@@ -136,5 +159,33 @@ export const AuctionsAPI = {
       cache: 'no-store'
     })
     return handleResponse<{ message: string }>(res)
+  },
+
+  // Place bid on auction
+  async placeBid(id: number, payload: BidRequestDto): Promise<BidResultDto> {
+    const response = await fetch(`${API_BASE}/api/auctions/${id}/bid`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.message || 'Đặt giá thất bại')
+    }
+    return response.json()
+  },
+
+  // Get recent bids for an auction
+  async getRecentBids(id: number, limit = 100): Promise<BidDto[]> {
+    const response = await fetch(`${API_BASE}/api/auctions/${id}/bids/recent?limit=${limit}`)
+    if (!response.ok) throw new Error('Không lấy được lịch sử đấu giá')
+    return response.json()
+  },
+
+  // Get highest bid for an auction
+  async getHighestBid(id: number): Promise<number | null> {
+    const response = await fetch(`${API_BASE}/api/auctions/${id}/bids/highest`)
+    if (!response.ok) return null
+    return response.json()
   }
 }

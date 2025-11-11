@@ -6,6 +6,7 @@ import { ActiveBidsList } from "./active-bids-list"
 import { WonAuctionsList } from "./won-auctions-list"
 import { WatchlistList } from "./watchlist-list"
 import { BiddingHistory } from "./bidding-history"
+import { FavoriteSellersList } from "./FavoriteSellersList"
 
 export function BuyerDashboard() {
   return (
@@ -18,11 +19,12 @@ export function BuyerDashboard() {
       <BuyerStats />
 
       <Tabs defaultValue="active" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto">
           <TabsTrigger value="active">Đang đấu giá</TabsTrigger>
           <TabsTrigger value="won">Đã thắng</TabsTrigger>
           <TabsTrigger value="watchlist">Theo dõi</TabsTrigger>
           <TabsTrigger value="history">Lịch sử</TabsTrigger>
+          <TabsTrigger value="favorites">Seller yêu thích</TabsTrigger> {/* Sửa value */}
         </TabsList>
 
         <TabsContent value="active" className="mt-6">
@@ -39,6 +41,10 @@ export function BuyerDashboard() {
 
         <TabsContent value="history" className="mt-6">
           <BiddingHistory />
+        </TabsContent>
+
+        <TabsContent value="favorites" className="mt-6">
+          <FavoriteSellersList />
         </TabsContent>
       </Tabs>
     </div>
