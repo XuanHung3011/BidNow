@@ -356,7 +356,7 @@ useEffect(() => {
                 <AuctionCard
                   key={auction.id}
                   auction={{
-                    id: auction.id,
+                    id: (auction.auctionId ?? auction.id).toString(),
                     title: auction.title,
                     image:
                       (auction.images && auction.images[0]) || "/placeholder.jpg",
