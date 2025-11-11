@@ -63,6 +63,9 @@ export const API_ENDPOINTS = {
     CHECK_IS_FAVORITE: (sellerId: number) => `/api/FavoriteSellers/check/${sellerId}`,
     ADD_FAVORITE: "/api/FavoriteSellers",
     REMOVE_FAVORITE: (sellerId: number) => `/api/FavoriteSellers/${sellerId}`,
+  },
+  ADMIN_STATS: {
+    GET_STATS: "/api/AdminStats",
   }
 } as const;
 
