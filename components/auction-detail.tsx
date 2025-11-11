@@ -24,7 +24,7 @@ import {
 import { BidHistory } from "@/components/bid-history"
 import { LiveChat } from "@/components/live-chat"
 import { AutoBidDialog } from "@/components/auto-bid-dialog"
-import { AuctionsAPI, FavoriteSellersAPI, type AuctionDetailDto } from "@/lib/api"
+import { AuctionsAPI, FavoriteSellersAPI, type AuctionDetailDto, type FavoriteSellerResponseDto } from "@/lib/api"
 
 
 interface AuctionDetailProps {
@@ -127,39 +127,42 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     }).format(price)
   }
 
-const addFavoriteSeller = async () => {
-  if (!auction?.sellerId) return
-  if (isFavoriteSeller) return
-  
-  setLoadingFavorite(true)
-  setFavoriteMessage(null)
-  
-  try {
-    console.log('=== Adding favorite seller ===')
-    console.log('SellerId:', auction.sellerId)
-    console.log('Current user:', localStorage.getItem('bidnow_user'))
+  // Toggle favorite seller
+  const toggleFavoriteSeller = async () => {
+    if (!auction?.sellerId) return
     
-    const result = await FavoriteSellersAPI.addFavorite(auction.sellerId)
+    setLoadingFavorite(true)
+    setFavoriteMessage(null)
     
-    console.log('Add favorite result:', result)
-    
-    if (result.success) {
-      setIsFavoriteSeller(true)
+    try {
+      let result: FavoriteSellerResponseDto
+      
+      if (isFavoriteSeller) {
+        // Nếu đã yêu thích -> XÓA
+        result = await FavoriteSellersAPI.removeFavorite(auction.sellerId)
+        if (result.success) {
+          setIsFavoriteSeller(false)
+        }
+      } else {
+        // Nếu chưa yêu thích -> THÊM
+        result = await FavoriteSellersAPI.addFavorite(auction.sellerId)
+        if (result.success) {
+          setIsFavoriteSeller(true)
+        }
+      }
+      
+      // Luôn hiển thị message từ API
       setFavoriteMessage(result.message)
       setTimeout(() => setFavoriteMessage(null), 3000)
-    } else {
-      setFavoriteMessage(result.message)
+      
+    } catch (err: any) {
+      console.error('Toggle favorite error:', err)
+      setFavoriteMessage(err.message || "Không thể thực hiện thao tác. Vui lòng đăng nhập.")
       setTimeout(() => setFavoriteMessage(null), 3000)
+    } finally {
+      setLoadingFavorite(false)
     }
-  } catch (err: any) {
-    console.error('=== Add favorite error ===')
-    console.error('Error details:', err)
-    setFavoriteMessage(err.message || "Không thể thêm vào yêu thích")
-    setTimeout(() => setFavoriteMessage(null), 3000)
-  } finally {
-    setLoadingFavorite(false)
   }
-}
 
   // Loading state
   if (loading) {
@@ -287,26 +290,36 @@ const addFavoriteSeller = async () => {
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <h3 className="text-2xl font-semibold text-foreground">{seller.name}</h3>
-                      {/* Button thêm seller yêu thích */}
+                      {/* Button toggle yêu thích */}
                       <Button
                         size="sm"
                         variant={isFavoriteSeller ? "secondary" : "default"}
-                        onClick={addFavoriteSeller}
-                        disabled={loadingFavorite || isFavoriteSeller}
-                        className="flex items-center gap-2"
+                        onClick={toggleFavoriteSeller}
+                        disabled={loadingFavorite}
+                        className={`flex items-center gap-2 transition-all duration-300 ${
+                          isFavoriteSeller ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200' : ''
+                        }`}
                       >
                         {loadingFavorite ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <Heart className={`h-4 w-4 ${isFavoriteSeller ? "fill-current" : ""}`} />
+                          <Heart
+                            className={`h-4 w-4 transition-all duration-300 ${
+                              isFavoriteSeller ? "fill-red-500 text-red-500 scale-110" : ""
+                            }`}
+                          />
                         )}
-                        {isFavoriteSeller ? "Đã yêu thích" : "Yêu thích"}
+                        {isFavoriteSeller ? "Bỏ yêu thích" : "Yêu thích"}
                       </Button>
                     </div>
 
                     {/* Hiển thị message */}
                     {favoriteMessage && (
-                      <div className="mt-3 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-800">
+                      <div className={`mt-3 rounded-lg border p-3 text-sm ${
+                        favoriteMessage.includes('thành công') || favoriteMessage.includes('Đã')
+                          ? 'bg-green-50 border-green-200 text-green-800'
+                          : 'bg-red-50 border-red-200 text-red-800'
+                      }`}>
                         {favoriteMessage}
                       </div>
                     )}
