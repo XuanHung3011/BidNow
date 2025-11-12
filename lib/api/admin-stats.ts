@@ -13,6 +13,14 @@ export interface AdminStatsDto {
   revenueChangePercent: number
 }
 
+export interface AdminStatsDetailDto {
+  chartData: Array<{
+    name: string
+    value: number | string
+  }>
+  summary?: Record<string, string | number>
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => null)
@@ -36,6 +44,14 @@ export const AdminStatsAPI = {
       cache: 'no-store',
     })
     return handleResponse<AdminStatsDto>(res)
+  },
+  // GET /api/AdminStats/detail/{type} - Get detailed statistics for a specific type
+  getStatsDetail: async (type: string): Promise<AdminStatsDetailDto> => {
+    const url = `${API_BASE}${API_ENDPOINTS.ADMIN_STATS.GET_STATS}/detail/${type}`
+    const res = await fetch(url, {
+      cache: 'no-store',
+    })
+    return handleResponse<AdminStatsDetailDto>(res)
   },
 }
 
