@@ -65,6 +65,16 @@ export const API_ENDPOINTS = {
     ADD_FAVORITE: "/api/FavoriteSellers",
     REMOVE_FAVORITE: (sellerId: number) => `/api/FavoriteSellers/${sellerId}`,
   },
+  ADMIN_STATS: {
+    GET_STATS: "/api/AdminStats",
+  },
+  ADMIN_AUCTIONS: {
+    GET_ALL: "/api/AdminAuctions",
+    GET_BY_ID: (id: number) => `/api/AdminAuctions/${id}`,
+  },
+  PLATFORM_ANALYTICS: {
+    GET_ANALYTICS: "/api/PlatformAnalytics",
+  },
   AUCTIONS: {
     GET_BY_ID: (id: number) => `/api/Auctions/${id}`,
     CREATE: "/api/Auctions",

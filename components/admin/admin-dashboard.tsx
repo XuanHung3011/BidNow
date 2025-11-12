@@ -24,7 +24,7 @@ export function AdminDashboard() {
           <TabsTrigger value="auctions">Sản phẩm</TabsTrigger>
           <TabsTrigger value="pending">Chờ duyệt</TabsTrigger>
           <TabsTrigger value="users">Người dùng</TabsTrigger>
-          <TabsTrigger value="disputes">Tranh chấp</TabsTrigger>
+          {/* <TabsTrigger value="disputes">Tranh chấp</TabsTrigger> */}
           <TabsTrigger value="categories">Danh mục</TabsTrigger>
           <TabsTrigger value="analytics">Phân tích</TabsTrigger>
         </TabsList>

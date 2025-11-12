@@ -1,44 +1,127 @@
+"use client"
+
 import { Card } from "@/components/ui/card"
 import { TrendingUp, TrendingDown } from "lucide-react"
+import { useEffect, useState } from "react"
+import { PlatformAnalyticsAPI, PlatformAnalyticsDto } from "@/lib/api/platform-analytics"
+
+function formatNumber(num: number): string {
+  return new Intl.NumberFormat("vi-VN").format(num)
+}
+
+function formatCurrency(amount: number): string {
+  if (amount >= 1_000_000_000) {
+    return `₫${(amount / 1_000_000_000).toFixed(1)}B`
+  } else if (amount >= 1_000_000) {
+    return `₫${(amount / 1_000_000).toFixed(1)}M`
+  } else if (amount >= 1_000) {
+    return `₫${(amount / 1_000).toFixed(1)}K`
+  }
+  return `₫${formatNumber(amount)}`
+}
 
 export function PlatformAnalytics() {
+  const [analytics, setAnalytics] = useState<PlatformAnalyticsDto | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetchAnalytics() {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await PlatformAnalyticsAPI.getAnalytics()
+        setAnalytics(data)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load analytics")
+        console.error("Error fetching platform analytics:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAnalytics()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="p-6">
+              <div className="animate-pulse">
+                <div className="h-4 bg-muted rounded w-24 mb-4"></div>
+                <div className="h-8 bg-muted rounded w-32 mb-2"></div>
+                <div className="h-3 bg-muted rounded w-40"></div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !analytics) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6">
+          <p className="text-destructive">{error || "Failed to load analytics"}</p>
+        </Card>
+      </div>
+    )
+  }
+
   const metrics = [
     {
       title: "Người dùng mới",
-      current: "1,234",
-      previous: "1,056",
-      change: "+16.9%",
-      trend: "up",
+      current: formatNumber(analytics.newUsers.current),
+      previous: formatNumber(analytics.newUsers.previous),
+      change: analytics.newUsers.changePercent >= 0
+        ? `+${analytics.newUsers.changePercent.toFixed(1)}%`
+        : `${analytics.newUsers.changePercent.toFixed(1)}%`,
+      trend: analytics.newUsers.changePercent >= 0 ? "up" : "down",
     },
     {
       title: "Phiên đấu giá mới",
-      current: "456",
-      previous: "523",
-      change: "-12.8%",
-      trend: "down",
+      current: formatNumber(analytics.newAuctions.current),
+      previous: formatNumber(analytics.newAuctions.previous),
+      change: analytics.newAuctions.changePercent >= 0
+        ? `+${analytics.newAuctions.changePercent.toFixed(1)}%`
+        : `${analytics.newAuctions.changePercent.toFixed(1)}%`,
+      trend: analytics.newAuctions.changePercent >= 0 ? "up" : "down",
     },
     {
       title: "Tổng giao dịch",
-      current: "₫2.4B",
-      previous: "₫2.1B",
-      change: "+14.3%",
-      trend: "up",
+      current: formatCurrency(analytics.totalTransactions.current),
+      previous: formatCurrency(analytics.totalTransactions.previous),
+      change: analytics.totalTransactions.changePercent >= 0
+        ? `+${analytics.totalTransactions.changePercent.toFixed(1)}%`
+        : `${analytics.totalTransactions.changePercent.toFixed(1)}%`,
+      trend: analytics.totalTransactions.changePercent >= 0 ? "up" : "down",
     },
     {
       title: "Tỷ lệ thành công",
-      current: "87%",
-      previous: "84%",
-      change: "+3.6%",
-      trend: "up",
+      current: `${analytics.successRate.current}%`,
+      previous: `${analytics.successRate.previous}%`,
+      change: analytics.successRate.changePercent >= 0
+        ? `+${analytics.successRate.changePercent.toFixed(1)}%`
+        : `${analytics.successRate.changePercent.toFixed(1)}%`,
+      trend: analytics.successRate.changePercent >= 0 ? "up" : "down",
     },
   ]
 
-  const topCategories = [
-    { name: "Điện tử", auctions: 234, revenue: "₫850M" },
-    { name: "Sưu tầm", auctions: 156, revenue: "₫620M" },
-    { name: "Nghệ thuật", auctions: 89, revenue: "₫480M" },
-    { name: "Thời trang", auctions: 67, revenue: "₫320M" },
-  ]
+  const getSystemStatusColor = (status: string) => {
+    switch (status) {
+      case "normal":
+        return "bg-primary"
+      case "warning":
+        return "bg-accent"
+      case "error":
+        return "bg-destructive"
+      default:
+        return "bg-primary"
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -66,20 +149,24 @@ export function PlatformAnalytics() {
       <div>
         <h3 className="mb-4 text-lg font-semibold text-foreground">Danh mục hàng đầu</h3>
         <Card className="p-6">
-          <div className="space-y-4">
-            {topCategories.map((category, index) => (
-              <div key={index} className="flex items-center justify-between border-b border-border pb-4 last:border-0">
-                <div>
-                  <p className="font-semibold text-foreground">{category.name}</p>
-                  <p className="text-sm text-muted-foreground">{category.auctions} phiên đấu giá</p>
+          {analytics.topCategories.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">Chưa có dữ liệu danh mục</p>
+          ) : (
+            <div className="space-y-4">
+              {analytics.topCategories.map((category, index) => (
+                <div key={index} className="flex items-center justify-between border-b border-border pb-4 last:border-0">
+                  <div>
+                    <p className="font-semibold text-foreground">{category.name}</p>
+                    <p className="text-sm text-muted-foreground">{formatNumber(category.auctions)} phiên đấu giá</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-foreground">{formatCurrency(category.revenue)}</p>
+                    <p className="text-sm text-muted-foreground">Doanh thu</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold text-foreground">{category.revenue}</p>
-                  <p className="text-sm text-muted-foreground">Doanh thu</p>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </Card>
       </div>
 
@@ -89,19 +176,19 @@ export function PlatformAnalytics() {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Người dùng trực tuyến</span>
-              <span className="font-semibold text-foreground">1,234</span>
+              <span className="font-semibold text-foreground">{formatNumber(analytics.recentActivity.onlineUsers)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Phiên đấu giá đang diễn ra</span>
-              <span className="font-semibold text-foreground">156</span>
+              <span className="font-semibold text-foreground">{formatNumber(analytics.recentActivity.activeAuctions)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Lượt đấu giá hôm nay</span>
-              <span className="font-semibold text-foreground">2,456</span>
+              <span className="font-semibold text-foreground">{formatNumber(analytics.recentActivity.bidsToday)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Giao dịch hôm nay</span>
-              <span className="font-semibold text-foreground">₫125M</span>
+              <span className="font-semibold text-foreground">{formatCurrency(analytics.recentActivity.transactionsToday)}</span>
             </div>
           </div>
         </Card>
@@ -110,26 +197,32 @@ export function PlatformAnalytics() {
           <h4 className="mb-4 font-semibold text-foreground">Cảnh báo hệ thống</h4>
           <div className="space-y-3 text-sm">
             <div className="flex items-start gap-2">
-              <div className="mt-0.5 h-2 w-2 rounded-full bg-primary" />
+              <div className={`mt-0.5 h-2 w-2 rounded-full ${getSystemStatusColor(analytics.systemAlerts.systemStatus)}`} />
               <div>
-                <p className="font-medium text-foreground">Hệ thống hoạt động bình thường</p>
+                <p className="font-medium text-foreground">{analytics.systemAlerts.systemStatusMessage}</p>
                 <p className="text-muted-foreground">Tất cả dịch vụ đang chạy tốt</p>
               </div>
             </div>
-            <div className="flex items-start gap-2">
-              <div className="mt-0.5 h-2 w-2 rounded-full bg-accent" />
-              <div>
-                <p className="font-medium text-foreground">23 phiên đấu giá chờ duyệt</p>
-                <p className="text-muted-foreground">Cần xem xét trong 24 giờ</p>
+            {analytics.systemAlerts.pendingAuctions > 0 && (
+              <div className="flex items-start gap-2">
+                <div className="mt-0.5 h-2 w-2 rounded-full bg-accent" />
+                <div>
+                  <p className="font-medium text-foreground">{formatNumber(analytics.systemAlerts.pendingAuctions)} phiên đấu giá chờ duyệt</p>
+                  <p className="text-muted-foreground">Cần xem xét trong 24 giờ</p>
+                </div>
               </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="mt-0.5 h-2 w-2 rounded-full bg-destructive" />
-              <div>
-                <p className="font-medium text-foreground">8 tranh chấp đang xử lý</p>
-                <p className="text-muted-foreground">2 trường hợp khẩn cấp</p>
+            )}
+            {analytics.systemAlerts.processingDisputes > 0 && (
+              <div className="flex items-start gap-2">
+                <div className={`mt-0.5 h-2 w-2 rounded-full ${analytics.systemAlerts.urgentDisputes > 0 ? "bg-destructive" : "bg-accent"}`} />
+                <div>
+                  <p className="font-medium text-foreground">{formatNumber(analytics.systemAlerts.processingDisputes)} tranh chấp đang xử lý</p>
+                  {analytics.systemAlerts.urgentDisputes > 0 && (
+                    <p className="text-muted-foreground">{formatNumber(analytics.systemAlerts.urgentDisputes)} trường hợp khẩn cấp</p>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </Card>
       </div>
