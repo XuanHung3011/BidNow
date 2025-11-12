@@ -31,9 +31,10 @@ export const API_ENDPOINTS = {
     FILTER: "/api/home/filter",            // <-- endpoint filter (POST)
     CATEGORIES: "/api/home/categories",
     HOT: "/api/home/hot",
-    // Admin endpoints
+    // Admin/Seller endpoints
     GET_ALL_WITH_FILTER: "/api/Items",
     GET_BY_ID: (id: number) => `/api/Items/${id}`,
+    CREATE: "/api/Items",
     APPROVE: (id: number) => `/api/Items/${id}/approve`,
     REJECT: (id: number) => `/api/Items/${id}/reject`,
   },
@@ -73,6 +74,13 @@ export const API_ENDPOINTS = {
   },
   PLATFORM_ANALYTICS: {
     GET_ANALYTICS: "/api/PlatformAnalytics",
+  },
+  AUCTIONS: {
+    GET_BY_ID: (id: number) => `/api/Auctions/${id}`,
+    CREATE: "/api/Auctions",
+    GET_PENDING: "/api/Auctions/pending",
+    APPROVE: (id: number) => `/api/Auctions/${id}/approve`,
+    REJECT: (id: number) => `/api/Auctions/${id}/reject`,
   }
 } as const;
 
