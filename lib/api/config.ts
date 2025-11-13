@@ -1,5 +1,55 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5167";
 
+/**
+ * Tạo URL đầy đủ cho ảnh từ tên file
+ * Ảnh được serve qua endpoint /images/ trên backend
+ */
+export function getImageUrl(imageName?: string | null): string {
+  if (!imageName) return "/placeholder.svg";
+  
+  // Nếu đã là URL đầy đủ (bắt đầu bằng http), trả về nguyên
+  if (imageName.startsWith("http://") || imageName.startsWith("https://")) {
+    return imageName;
+  }
+  
+  // Nếu đã có /images/ trong path, chỉ cần thêm API_BASE
+  if (imageName.startsWith("/images/")) {
+    return `${API_BASE}${imageName}`;
+  }
+  
+  // Nếu chỉ là tên file, thêm API_BASE + /images/
+  return `${API_BASE}/images/${imageName}`;
+}
+
+/**
+ * Parse và tạo URLs cho nhiều ảnh từ string (comma-separated) hoặc array
+ */
+export function getImageUrls(images?: string | string[] | null): string[] {
+  if (!images) return ["/placeholder.svg"];
+  
+  if (typeof images === "string") {
+    // Thử parse JSON nếu có
+    try {
+      const parsed = JSON.parse(images);
+      if (Array.isArray(parsed)) {
+        return parsed.map(img => getImageUrl(img));
+      }
+    } catch {
+      // Không phải JSON, xử lý như comma-separated string
+      if (images.includes(",")) {
+        return images.split(",").map(img => getImageUrl(img.trim())).filter(Boolean);
+      }
+      return [getImageUrl(images)];
+    }
+  }
+  
+  if (Array.isArray(images)) {
+    return images.map(img => getImageUrl(img)).filter(Boolean);
+  }
+  
+  return ["/placeholder.svg"];
+}
+
 export const API_ENDPOINTS = {
   AUTH: {
     LOGIN: "/api/Auth/login",
