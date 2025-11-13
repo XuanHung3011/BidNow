@@ -12,13 +12,20 @@ export function BuyerStats() {
   const [endingSoonCount, setEndingSoonCount] = useState<number>(0)
   const [loadingActive, setLoadingActive] = useState(true)
   const [activeError, setActiveError] = useState<string | null>(null)
+  
+  const [wonCount, setWonCount] = useState<number>(0)
+  const [wonThisMonth, setWonThisMonth] = useState<number>(0)
+  const [loadingWon, setLoadingWon] = useState(true)
+  const [wonError, setWonError] = useState<string | null>(null)
 
   useEffect(() => {
     const bidderId = user ? parseInt(user.id) : NaN
 
     if (!bidderId || Number.isNaN(bidderId)) {
       setLoadingActive(false)
+      setLoadingWon(false)
       setActiveError("Không xác định được người dùng")
+      setWonError("Không xác định được người dùng")
       return
     }
 
@@ -51,8 +58,46 @@ export function BuyerStats() {
       }
     }
 
+    const loadWonStats = async () => {
+      try {
+        setLoadingWon(true)
+        setWonError(null)
+
+        const pageSize = 50
+        const result = await AuctionsAPI.getBuyerWonAuctions(bidderId, 1, pageSize)
+
+        setWonCount(result.totalCount)
+
+        // Tính số đã thắng trong tháng này
+        const now = new Date()
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        const wonThisMonthCount = result.data.filter((auction) => {
+          const wonDate = new Date(auction.wonDate)
+          return wonDate >= firstDayOfMonth
+        }).length
+
+        setWonThisMonth(wonThisMonthCount)
+      } catch (error) {
+        console.error("Failed to load buyer won stats:", error)
+        const message = error instanceof Error ? error.message : "Không thể tải dữ liệu"
+        setWonError(message)
+        setWonCount(0)
+        setWonThisMonth(0)
+      } finally {
+        setLoadingWon(false)
+      }
+    }
+
     loadActiveStats()
+    loadWonStats()
   }, [user?.id])
+
+  // Tính tỷ lệ thắng
+  const winRate = useMemo(() => {
+    const totalParticipated = activeCount + wonCount
+    if (totalParticipated === 0) return 0
+    return Math.round((wonCount / totalParticipated) * 100)
+  }, [activeCount, wonCount])
 
   const stats = useMemo(
     () => [
@@ -69,8 +114,12 @@ export function BuyerStats() {
       },
       {
         label: "Đã thắng",
-        value: "8",
-        change: "Tháng này",
+        value: loadingWon ? "..." : wonError ? "--" : wonCount.toString(),
+        change: loadingWon
+          ? "Đang tải dữ liệu"
+          : wonError
+            ? wonError
+            : `${wonThisMonth} tháng này`,
         icon: Trophy,
         color: "text-accent",
       },
@@ -83,13 +132,31 @@ export function BuyerStats() {
       },
       {
         label: "Tỷ lệ thắng",
-        value: "67%",
-        change: "+8% so với tháng trước",
+        value: loadingActive || loadingWon
+          ? "..."
+          : activeError || wonError
+            ? "--"
+            : `${winRate}%`,
+        change: loadingActive || loadingWon
+          ? "Đang tải dữ liệu"
+          : activeError || wonError
+            ? "Không thể tính toán"
+            : `${wonCount} / ${activeCount + wonCount} phiên`,
         icon: TrendingUp,
         color: "text-accent",
       },
     ],
-    [activeCount, activeError, endingSoonCount, loadingActive],
+    [
+      activeCount,
+      activeError,
+      endingSoonCount,
+      loadingActive,
+      wonCount,
+      wonThisMonth,
+      loadingWon,
+      wonError,
+      winRate,
+    ],
   )
 
   return (

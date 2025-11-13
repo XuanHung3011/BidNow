@@ -82,6 +82,7 @@ export const API_ENDPOINTS = {
     APPROVE: (id: number) => `/api/Auctions/${id}/approve`,
     REJECT: (id: number) => `/api/Auctions/${id}/reject`,
     GET_BUYER_ACTIVE_BIDS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/active`,
+    GET_BUYER_WON_AUCTIONS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/won`,
   }
 } as const;
 

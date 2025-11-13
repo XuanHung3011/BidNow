@@ -48,7 +48,7 @@ export function BuyerDashboard() {
         </TabsContent>
 
         <TabsContent value="won" className="mt-6">
-          <WonAuctionsList />
+          <WonAuctionsList bidderId={userId} />
         </TabsContent>
 
         <TabsContent value="watchlist" className="mt-6">

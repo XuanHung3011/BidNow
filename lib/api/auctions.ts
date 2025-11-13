@@ -83,6 +83,20 @@ export interface PaginatedResultA<T> {
   pageSize: number
 }
 
+export interface BuyerWonAuctionDto {
+  auctionId: number
+  itemTitle: string
+  itemImages?: string
+  categoryName?: string
+  finalBid: number
+  wonDate: string
+  endTime: string
+  status: string
+  sellerName?: string
+  sellerId: number
+  hasRated: boolean
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => null)
@@ -213,5 +227,11 @@ export const AuctionsAPI = {
     const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BUYER_ACTIVE_BIDS(bidderId)}?page=${page}&pageSize=${pageSize}`
     const res = await fetch(url, { cache: 'no-store' })
     return handleResponse<PaginatedResultA<BuyerActiveBidDto>>(res)
+  },
+
+  async getBuyerWonAuctions(bidderId: number, page = 1, pageSize = 10): Promise<PaginatedResultA<BuyerWonAuctionDto>> {
+    const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BUYER_WON_AUCTIONS(bidderId)}?page=${page}&pageSize=${pageSize}`
+    const res = await fetch(url, { cache: 'no-store' })
+    return handleResponse<PaginatedResultA<BuyerWonAuctionDto>>(res)
   }
 }
