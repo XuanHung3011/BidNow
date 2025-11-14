@@ -3,7 +3,9 @@
 import { Card } from "@/components/ui/card"
 import { TrendingUp, TrendingDown } from "lucide-react"
 import { useEffect, useState } from "react"
-import { PlatformAnalyticsAPI, PlatformAnalyticsDto } from "@/lib/api/platform-analytics"
+import { PlatformAnalyticsAPI, PlatformAnalyticsDto, PlatformAnalyticsDetailDto } from "@/lib/api/platform-analytics"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 function formatNumber(num: number): string {
   return new Intl.NumberFormat("vi-VN").format(num)
@@ -24,6 +26,8 @@ export function PlatformAnalytics() {
   const [analytics, setAnalytics] = useState<PlatformAnalyticsDto | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [chartData, setChartData] = useState<Record<string, PlatformAnalyticsDetailDto>>({})
+  const [loadingCharts, setLoadingCharts] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     async function fetchAnalytics() {
@@ -32,6 +36,22 @@ export function PlatformAnalytics() {
         setError(null)
         const data = await PlatformAnalyticsAPI.getAnalytics()
         setAnalytics(data)
+        
+        // Fetch chart data for all metrics
+        const chartTypes = ["newUsers", "newAuctions", "totalTransactions", "successRate"]
+        const chartPromises = chartTypes.map(async (type) => {
+          setLoadingCharts(prev => ({ ...prev, [type]: true }))
+          try {
+            const detailData = await PlatformAnalyticsAPI.getAnalyticsDetail(type)
+            setChartData(prev => ({ ...prev, [type]: detailData }))
+          } catch (err) {
+            console.error(`Error fetching chart data for ${type}:`, err)
+          } finally {
+            setLoadingCharts(prev => ({ ...prev, [type]: false }))
+          }
+        })
+        
+        await Promise.all(chartPromises)
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load analytics")
         console.error("Error fetching platform analytics:", err)
@@ -73,6 +93,7 @@ export function PlatformAnalytics() {
 
   const metrics = [
     {
+      id: "newUsers",
       title: "Người dùng mới",
       current: formatNumber(analytics.newUsers.current),
       previous: formatNumber(analytics.newUsers.previous),
@@ -80,8 +101,10 @@ export function PlatformAnalytics() {
         ? `+${analytics.newUsers.changePercent.toFixed(1)}%`
         : `${analytics.newUsers.changePercent.toFixed(1)}%`,
       trend: analytics.newUsers.changePercent >= 0 ? "up" : "down",
+      chartColor: "rgba(37,99,235,1)",
     },
     {
+      id: "newAuctions",
       title: "Phiên đấu giá mới",
       current: formatNumber(analytics.newAuctions.current),
       previous: formatNumber(analytics.newAuctions.previous),
@@ -89,8 +112,10 @@ export function PlatformAnalytics() {
         ? `+${analytics.newAuctions.changePercent.toFixed(1)}%`
         : `${analytics.newAuctions.changePercent.toFixed(1)}%`,
       trend: analytics.newAuctions.changePercent >= 0 ? "up" : "down",
+      chartColor: "rgba(249,115,22,1)",
     },
     {
+      id: "totalTransactions",
       title: "Tổng giao dịch",
       current: formatCurrency(analytics.totalTransactions.current),
       previous: formatCurrency(analytics.totalTransactions.previous),
@@ -98,8 +123,10 @@ export function PlatformAnalytics() {
         ? `+${analytics.totalTransactions.changePercent.toFixed(1)}%`
         : `${analytics.totalTransactions.changePercent.toFixed(1)}%`,
       trend: analytics.totalTransactions.changePercent >= 0 ? "up" : "down",
+      chartColor: "rgba(34,197,94,1)",
     },
     {
+      id: "successRate",
       title: "Tỷ lệ thành công",
       current: `${analytics.successRate.current}%`,
       previous: `${analytics.successRate.previous}%`,
@@ -107,6 +134,7 @@ export function PlatformAnalytics() {
         ? `+${analytics.successRate.changePercent.toFixed(1)}%`
         : `${analytics.successRate.changePercent.toFixed(1)}%`,
       trend: analytics.successRate.changePercent >= 0 ? "up" : "down",
+      chartColor: "rgba(168,85,247,1)",
     },
   ]
 
@@ -128,21 +156,86 @@ export function PlatformAnalytics() {
       <div>
         <h3 className="mb-4 text-lg font-semibold text-foreground">Chỉ số tháng này</h3>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {metrics.map((metric, index) => (
-            <Card key={index} className="p-6">
-              <p className="text-sm text-muted-foreground">{metric.title}</p>
-              <p className="mt-2 text-3xl font-bold text-foreground">{metric.current}</p>
-              <div className="mt-2 flex items-center gap-1 text-sm">
-                {metric.trend === "up" ? (
-                  <TrendingUp className="h-4 w-4 text-primary" />
-                ) : (
-                  <TrendingDown className="h-4 w-4 text-destructive" />
-                )}
-                <span className={metric.trend === "up" ? "text-primary" : "text-destructive"}>{metric.change}</span>
-                <span className="text-muted-foreground">so với tháng trước</span>
-              </div>
-            </Card>
-          ))}
+          {metrics.map((metric, index) => {
+            const currentChartData = chartData[metric.id]
+            const isLoadingChart = loadingCharts[metric.id]
+            
+            return (
+              <Card key={index} className="p-6">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{metric.title}</p>
+                    <p className="mt-2 text-3xl font-bold text-foreground">{metric.current}</p>
+                    <div className="mt-2 flex items-center gap-1 text-sm">
+                      {metric.trend === "up" ? (
+                        <TrendingUp className="h-4 w-4 text-primary" />
+                      ) : (
+                        <TrendingDown className="h-4 w-4 text-destructive" />
+                      )}
+                      <span className={metric.trend === "up" ? "text-primary" : "text-destructive"}>{metric.change}</span>
+                      <span className="text-muted-foreground">so với tháng trước</span>
+                    </div>
+                  </div>
+                  
+                  {/* Chart */}
+                  <div className="h-32 w-full">
+                    {isLoadingChart ? (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+                      </div>
+                    ) : currentChartData && currentChartData.chartData.length > 0 ? (
+                      <ChartContainer 
+                        config={{
+                          value: {
+                            label: metric.title,
+                            color: metric.chartColor,
+                          },
+                        }} 
+                        className="h-full w-full"
+                      >
+                        <AreaChart data={currentChartData.chartData.map(d => ({ name: d.name, value: Number(d.value) }))}>
+                          <defs>
+                            <linearGradient id={`gradient-${metric.id}`} x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={metric.chartColor} stopOpacity={0.4} />
+                              <stop offset="100%" stopColor={metric.chartColor} stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                          <XAxis 
+                            dataKey="name" 
+                            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                            hide
+                          />
+                          <YAxis 
+                            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                            width={30}
+                            hide
+                          />
+                          <ChartTooltip 
+                            content={<ChartTooltipContent 
+                              formatter={(value) => metric.id === "totalTransactions" ? formatCurrency(Number(value)) : 
+                                metric.id === "successRate" ? `${Number(value).toFixed(1)}%` : formatNumber(Number(value))}
+                            />} 
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="value"
+                            stroke={metric.chartColor}
+                            fill={`url(#gradient-${metric.id})`}
+                            strokeWidth={2}
+                          />
+                        </AreaChart>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
+                        Không có dữ liệu
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            )
+          })}
         </div>
       </div>
 

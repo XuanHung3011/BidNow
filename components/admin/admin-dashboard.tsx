@@ -13,7 +13,7 @@ export function AdminDashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Bảng điều khiển quản trị</h1>
+        <h1 className="text-3xl font-bold text-foreground">Tổng quan hệ thống</h1>
         <p className="text-muted-foreground">Quản lý nền tảng và giám sát hoạt động</p>
       </div>
 
