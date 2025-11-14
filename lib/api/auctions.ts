@@ -63,6 +63,55 @@ export interface AuctionResponseDto {
   createdAt?: string
 }
 
+export interface BuyerActiveBidDto {
+  auctionId: number
+  itemTitle: string
+  itemImages?: string
+  categoryName?: string
+  currentBid: number
+  yourHighestBid: number
+  isLeading: boolean
+  endTime: string
+  totalBids: number
+  yourBidCount: number
+}
+
+export interface PaginatedResultA<T> {
+  data: T[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
+export interface BuyerWonAuctionDto {
+  auctionId: number
+  itemTitle: string
+  itemImages?: string
+  categoryName?: string
+  finalBid: number
+  wonDate: string
+  endTime: string
+  status: string
+  sellerName?: string
+  sellerId: number
+  hasRated: boolean
+}
+
+export interface BiddingHistoryDto {
+  bidId: number
+  auctionId: number
+  itemTitle: string
+  itemImages?: string
+  categoryName?: string
+  yourBid: number
+  bidTime: string
+  status: 'leading' | 'outbid' | 'won' | 'lost'
+  currentBid?: number
+  endTime?: string
+  auctionStatus?: string
+  isAutoBid: boolean
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => null)
@@ -187,5 +236,23 @@ export const AuctionsAPI = {
     const response = await fetch(`${API_BASE}/api/auctions/${id}/bids/highest`)
     if (!response.ok) return null
     return response.json()
+  },
+
+  async getBuyerActiveBids(bidderId: number, page = 1, pageSize = 10): Promise<PaginatedResultA<BuyerActiveBidDto>> {
+    const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BUYER_ACTIVE_BIDS(bidderId)}?page=${page}&pageSize=${pageSize}`
+    const res = await fetch(url, { cache: 'no-store' })
+    return handleResponse<PaginatedResultA<BuyerActiveBidDto>>(res)
+  },
+
+  async getBuyerWonAuctions(bidderId: number, page = 1, pageSize = 10): Promise<PaginatedResultA<BuyerWonAuctionDto>> {
+    const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BUYER_WON_AUCTIONS(bidderId)}?page=${page}&pageSize=${pageSize}`
+    const res = await fetch(url, { cache: 'no-store' })
+    return handleResponse<PaginatedResultA<BuyerWonAuctionDto>>(res)
+  },
+
+  async getBiddingHistory(bidderId: number, page = 1, pageSize = 10): Promise<PaginatedResultA<BiddingHistoryDto>> {
+    const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BUYER_BIDDING_HISTORY(bidderId)}?page=${page}&pageSize=${pageSize}`
+    const res = await fetch(url, { cache: 'no-store' })
+    return handleResponse<PaginatedResultA<BiddingHistoryDto>>(res)
   }
 }

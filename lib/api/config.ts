@@ -81,6 +81,17 @@ export const API_ENDPOINTS = {
     GET_PENDING: "/api/Auctions/pending",
     APPROVE: (id: number) => `/api/Auctions/${id}/approve`,
     REJECT: (id: number) => `/api/Auctions/${id}/reject`,
+    GET_BUYER_ACTIVE_BIDS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/active`,
+    GET_BUYER_WON_AUCTIONS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/won`,
+    GET_BUYER_BIDDING_HISTORY: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/history`,
+  },
+  WATCHLIST: {
+    ADD: "/api/Watchlist/add",
+    REMOVE: "/api/Watchlist/remove",
+    GET_BY_USER: (userId: number) => `/api/Watchlist/user/${userId}`,
+    GET_DETAIL: (watchlistId: number) => `/api/Watchlist/detail/${watchlistId}`,
+    GET_BY_USER_AUCTION: (userId: number, auctionId: number) => 
+      `/api/Watchlist/user/${userId}/auction/${auctionId}`,
   }
 } as const;
 

@@ -1,93 +1,195 @@
+// app/(platform)/buyer/bidding-history.tsx
+"use client"
+
+import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { TrendingUp, TrendingDown, Trophy, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { TrendingUp, TrendingDown, Trophy, X, Loader2 } from "lucide-react"
+import { AuctionsAPI, type BiddingHistoryDto } from "@/lib/api/auctions"
+import { useAuth } from "@/lib/auth-context"
+import { formatCurrency, formatDateTime } from "@/lib/utils"
+import Link from "next/link"
 
 export function BiddingHistory() {
-  const history = [
-    {
-      id: "1",
-      title: "iPhone 15 Pro Max 256GB",
-      image: "/modern-smartphone.png",
-      yourBid: "₫25,000,000",
-      date: "14/04/2025 14:30",
-      status: "leading",
-      statusLabel: "Đang dẫn đầu",
-    },
-    {
-      id: "2",
-      title: "MacBook Pro M3 14 inch",
-      image: "/silver-macbook-on-desk.png",
-      yourBid: "₫37,000,000",
-      date: "14/04/2025 12:15",
-      status: "outbid",
-      statusLabel: "Bị vượt giá",
-    },
-    {
-      id: "7",
-      title: "Canon EOS R6 Mark II",
-      image: "/professional-camera.png",
-      yourBid: "₫42,500,000",
-      date: "12/04/2025 18:45",
-      status: "won",
-      statusLabel: "Đã thắng",
-    },
-    {
-      id: "13",
-      title: "Sony PlayStation 5 Pro",
-      image: "/gaming-console-setup.png",
-      yourBid: "₫15,000,000",
-      date: "10/04/2025 20:00",
-      status: "lost",
-      statusLabel: "Không thắng",
-    },
-  ]
+  const { user } = useAuth()
+  const [history, setHistory] = useState<BiddingHistoryDto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const pageSize = 10
+
+  useEffect(() => {
+    if (!user) return
+    loadHistory()
+  }, [user, page])
+
+  const loadHistory = async () => {
+    if (!user) return
+    
+    try {
+      setLoading(true)
+      const result = await AuctionsAPI.getBiddingHistory(parseInt(user.id), page, pageSize)
+      setHistory(result.data)
+      setTotalCount(result.totalCount)
+    } catch (error) {
+      console.error("Failed to load bidding history:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getStatusConfig = (status: string) => {
+    switch (status) {
+      case "leading":
+        return {
+          variant: "default" as const,
+          icon: <TrendingUp className="h-3 w-3" />,
+          label: "Đang dẫn đầu",
+        }
+      case "won":
+        return {
+          variant: "default" as const,
+          icon: <Trophy className="h-3 w-3" />,
+          label: "Đã thắng",
+        }
+      case "outbid":
+        return {
+          variant: "destructive" as const,
+          icon: <TrendingDown className="h-3 w-3" />,
+          label: "Bị vượt giá",
+        }
+      case "lost":
+        return {
+          variant: "secondary" as const,
+          icon: <X className="h-3 w-3" />,
+          label: "Không thắng",
+        }
+      default:
+        return {
+          variant: "secondary" as const,
+          icon: null,
+          label: status,
+        }
+    }
+  }
+
+  const getFirstImage = (images?: string) => {
+    if (!images) return "/placeholder.svg"
+    try {
+      const imageArray = JSON.parse(images)
+      return Array.isArray(imageArray) && imageArray.length > 0 
+        ? imageArray[0] 
+        : "/placeholder.svg"
+    } catch {
+      return "/placeholder.svg"
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (history.length === 0) {
+    return (
+      <Card className="p-12 text-center">
+        <p className="text-muted-foreground">Bạn chưa có lịch sử đấu giá nào</p>
+      </Card>
+    )
+  }
+
+  const totalPages = Math.ceil(totalCount / pageSize)
 
   return (
     <div className="space-y-4">
-      {history.map((item) => (
-        <Card key={item.id} className="p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex gap-4">
-              <img
-                src={item.image || "/placeholder.svg"}
-                alt={item.title}
-                className="h-20 w-20 rounded-lg object-cover"
-              />
-              <div className="flex-1">
-                <div className="flex items-start gap-2">
-                  <h3 className="font-semibold text-foreground">{item.title}</h3>
-                  <Badge
-                    variant={
-                      item.status === "leading"
-                        ? "default"
-                        : item.status === "won"
-                          ? "default"
-                          : item.status === "outbid"
-                            ? "destructive"
-                            : "secondary"
-                    }
-                    className="flex items-center gap-1"
-                  >
-                    {item.status === "leading" && <TrendingUp className="h-3 w-3" />}
-                    {item.status === "won" && <Trophy className="h-3 w-3" />}
-                    {item.status === "outbid" && <TrendingDown className="h-3 w-3" />}
-                    {item.status === "lost" && <X className="h-3 w-3" />}
-                    {item.statusLabel}
-                  </Badge>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-4 text-sm">
-                  <span className="text-muted-foreground">
-                    Giá đặt: <span className="font-semibold text-foreground">{item.yourBid}</span>
-                  </span>
-                  <span className="text-muted-foreground">
-                    Thời gian: <span className="font-semibold text-foreground">{item.date}</span>
-                  </span>
+      {history.map((item) => {
+        const statusConfig = getStatusConfig(item.status)
+        
+        return (
+          <Card key={item.bidId} className="p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-4">
+                <Link href={`/auctions/${item.auctionId}`}>
+                  <img
+                    src={getFirstImage(item.itemImages)}
+                    alt={item.itemTitle}
+                    className="h-20 w-20 rounded-lg object-cover hover:opacity-80 transition-opacity cursor-pointer"
+                  />
+                </Link>
+                <div className="flex-1">
+                  <div className="flex items-start gap-2 flex-wrap">
+                    <Link href={`/auctions/${item.auctionId}`}>
+                      <h3 className="font-semibold text-foreground hover:text-primary transition-colors cursor-pointer">
+                        {item.itemTitle}
+                      </h3>
+                    </Link>
+                    <Badge variant={statusConfig.variant} className="flex items-center gap-1">
+                      {statusConfig.icon}
+                      {statusConfig.label}
+                    </Badge>
+                    {item.isAutoBid && (
+                      <Badge variant="outline" className="text-xs">
+                        Auto Bid
+                      </Badge>
+                    )}
+                  </div>
+                  {item.categoryName && (
+                    <p className="text-sm text-muted-foreground mt-1">{item.categoryName}</p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-4 text-sm">
+                    <span className="text-muted-foreground">
+                      Giá đặt: <span className="font-semibold text-foreground">{formatCurrency(item.yourBid)}</span>
+                    </span>
+                    {item.currentBid && item.status !== "won" && item.status !== "lost" && (
+                      <span className="text-muted-foreground">
+                        Giá hiện tại: <span className="font-semibold text-foreground">{formatCurrency(item.currentBid)}</span>
+                      </span>
+                    )}
+                    <span className="text-muted-foreground">
+                      Thời gian: <span className="font-semibold text-foreground">{formatDateTime(item.bidTime)}</span>
+                    </span>
+                  </div>
+                  {item.endTime && (item.status === "leading" || item.status === "outbid") && (
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      Kết thúc: {formatDateTime(item.endTime)}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
+          </Card>
+        )
+      })}
+
+      {totalPages > 1 && (
+        <div className="flex justify-center gap-2 pt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+          >
+            Trước
+          </Button>
+          <div className="flex items-center gap-2 px-4">
+            <span className="text-sm text-muted-foreground">
+              Trang {page} / {totalPages}
+            </span>
           </div>
-        </Card>
-      ))}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+          >
+            Sau
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

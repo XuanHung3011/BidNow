@@ -7,8 +7,24 @@ import { WonAuctionsList } from "./won-auctions-list"
 import { WatchlistList } from "./watchlist-list"
 import { BiddingHistory } from "./bidding-history"
 import { FavoriteSellersList } from "./FavoriteSellersList"
+import { useAuth } from "@/lib/auth-context"
 
 export function BuyerDashboard() {
+  const { user } = useAuth()
+
+  // Guard clause - don't render if no user
+  if (!user) {
+    return (
+      <div className="space-y-8">
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Vui lòng đăng nhập để xem trang này</p>
+        </div>
+      </div>
+    )
+  }
+
+  const userId = parseInt(user.id)
+
   return (
     <div className="space-y-8">
       <div>
@@ -24,15 +40,15 @@ export function BuyerDashboard() {
           <TabsTrigger value="won">Đã thắng</TabsTrigger>
           <TabsTrigger value="watchlist">Theo dõi</TabsTrigger>
           <TabsTrigger value="history">Lịch sử</TabsTrigger>
-          <TabsTrigger value="favorites">Seller yêu thích</TabsTrigger> {/* Sửa value */}
+          <TabsTrigger value="favorites">Seller yêu thích</TabsTrigger>
         </TabsList>
 
         <TabsContent value="active" className="mt-6">
-          <ActiveBidsList />
+          <ActiveBidsList bidderId={userId} />
         </TabsContent>
 
         <TabsContent value="won" className="mt-6">
-          <WonAuctionsList />
+          <WonAuctionsList bidderId={userId} />
         </TabsContent>
 
         <TabsContent value="watchlist" className="mt-6">
