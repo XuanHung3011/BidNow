@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Gavel, Trophy, Eye, TrendingUp } from "lucide-react"
 import { AuctionsAPI } from "@/lib/api/auctions"
 import { useAuth } from "@/lib/auth-context"
+import { WatchlistAPI } from "@/lib/api/watchlist"
 
 export function BuyerStats() {
   const { user } = useAuth()
@@ -18,15 +19,55 @@ export function BuyerStats() {
   const [loadingWon, setLoadingWon] = useState(true)
   const [wonError, setWonError] = useState<string | null>(null)
 
+  const [watchlistCount, setWatchlistCount] = useState<number>(0)
+  const [watchlistStartingToday, setWatchlistStartingToday] = useState<number>(0)
+  const [loadingWatchlist, setLoadingWatchlist] = useState(true)
+  const [watchlistError, setWatchlistError] = useState<string | null>(null)
+
   useEffect(() => {
     const bidderId = user ? parseInt(user.id) : NaN
 
     if (!bidderId || Number.isNaN(bidderId)) {
       setLoadingActive(false)
       setLoadingWon(false)
+      setLoadingWatchlist(false)
       setActiveError("Không xác định được người dùng")
       setWonError("Không xác định được người dùng")
+      setWatchlistError("Không xác định được người dùng")
       return
+    }
+
+    const loadWatchlistStats = async () => {
+      try {
+        setLoadingWatchlist(true)
+        setWatchlistError(null)
+
+        const items = await WatchlistAPI.getByUser(bidderId)
+        setWatchlistCount(items.length)
+
+        // Tính số item "thêm hôm nay" — dùng addedAt nếu có, nếu không fallback sang endTime
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const tomorrow = new Date(today)
+        tomorrow.setDate(tomorrow.getDate() + 1)
+
+        const startingToday = items.filter(item => {
+          // Nếu API cung cấp addedAt (thời gian user thêm vào watchlist) dùng nó,
+          // nếu không có, fallback sang endTime (theo comment gốc của bạn).
+          const candidate = item.addedAt ? new Date(item.addedAt) : new Date(item.endTime)
+          return candidate >= today && candidate < tomorrow
+        }).length
+
+        setWatchlistStartingToday(startingToday)
+      } catch (error) {
+        console.error("Failed to load watchlist stats:", error)
+        const message = error instanceof Error ? error.message : "Không thể tải dữ liệu watchlist"
+        setWatchlistError(message)
+        setWatchlistCount(0)
+        setWatchlistStartingToday(0)
+      } finally {
+        setLoadingWatchlist(false)
+      }
     }
 
     const loadActiveStats = async () => {
@@ -90,6 +131,7 @@ export function BuyerStats() {
 
     loadActiveStats()
     loadWonStats()
+    loadWatchlistStats()
   }, [user?.id])
 
   // Tính tỷ lệ thắng
@@ -125,8 +167,12 @@ export function BuyerStats() {
       },
       {
         label: "Đang theo dõi",
-        value: "24",
-        change: "3 bắt đầu hôm nay",
+        value: loadingWatchlist ? "..." : watchlistError ? "--" : watchlistCount.toString(),
+        change: loadingWatchlist
+          ? "Đang tải dữ liệu"
+          : watchlistError
+            ? watchlistError
+            : `${watchlistStartingToday} thêm hôm nay`,
         icon: Eye,
         color: "text-primary",
       },
@@ -156,6 +202,10 @@ export function BuyerStats() {
       loadingWon,
       wonError,
       winRate,
+      watchlistCount,
+      watchlistStartingToday,
+      loadingWatchlist,
+      watchlistError,
     ],
   )
 

@@ -97,6 +97,21 @@ export interface BuyerWonAuctionDto {
   hasRated: boolean
 }
 
+export interface BiddingHistoryDto {
+  bidId: number
+  auctionId: number
+  itemTitle: string
+  itemImages?: string
+  categoryName?: string
+  yourBid: number
+  bidTime: string
+  status: 'leading' | 'outbid' | 'won' | 'lost'
+  currentBid?: number
+  endTime?: string
+  auctionStatus?: string
+  isAutoBid: boolean
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => null)
@@ -233,5 +248,11 @@ export const AuctionsAPI = {
     const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BUYER_WON_AUCTIONS(bidderId)}?page=${page}&pageSize=${pageSize}`
     const res = await fetch(url, { cache: 'no-store' })
     return handleResponse<PaginatedResultA<BuyerWonAuctionDto>>(res)
+  },
+
+  async getBiddingHistory(bidderId: number, page = 1, pageSize = 10): Promise<PaginatedResultA<BiddingHistoryDto>> {
+    const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BUYER_BIDDING_HISTORY(bidderId)}?page=${page}&pageSize=${pageSize}`
+    const res = await fetch(url, { cache: 'no-store' })
+    return handleResponse<PaginatedResultA<BiddingHistoryDto>>(res)
   }
 }
