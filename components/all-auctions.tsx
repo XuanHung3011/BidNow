@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ItemsAPI } from "@/lib/api/items"
 import type { ItemResponseDto, ItemFilterDto, CategoryDto } from "@/lib/api/types"
 import { useSearchParams } from "next/navigation"
+import { getImageUrls } from "@/lib/api/config"
 
 // helper nhỏ
 const formatCurrency = (v?: number) =>
@@ -352,14 +353,19 @@ useEffect(() => {
             ? Array.from({ length: pageSize }).map((_, i) => (
                 <div key={i} className="h-80 animate-pulse rounded-lg bg-gray-100" />
               ))
-            : sortedItems.map((auction) => (
+            : sortedItems
+                .filter(auction => auction.auctionId) // Chỉ hiển thị items có auctionId
+                .map((auction, index) => {
+                // Tạo key unique: luôn kết hợp với index để đảm bảo không trùng
+                const uniqueKey = `auction-${auction.auctionId}-${index}`;
+                return (
                 <AuctionCard
-                  key={auction.auctionId ?? auction.id}
+                  key={uniqueKey}
                   auction={{
-                    id: (auction.auctionId ?? auction.id)?.toString(),
+                    // Chỉ dùng auctionId vì API cần auctionId
+                    id: String(auction.auctionId!),
                     title: auction.title,
-                    image:
-                      (auction.images && auction.images[0]) || "/placeholder.jpg",
+                    image: getImageUrls(auction.images)[0] || "/placeholder.jpg",
                     currentBid:
                       auction.currentBid ??
                       auction.startingBid ??
@@ -374,7 +380,7 @@ useEffect(() => {
                     category: auction.categoryName ?? "Chưa phân loại",
                   }}
                 />
-              ))}
+              )})}
         </div>
 
         {/* Phân trang */}

@@ -17,6 +17,7 @@ import { Check, X, Eye, Loader2, Search } from "lucide-react"
 import { ItemsAPI } from "@/lib/api/items"
 import { ItemResponseDto, CategoryDto } from "@/lib/api/types"
 import { useToast } from "@/hooks/use-toast"
+import { getImageUrls } from "@/lib/api/config"
 
 export function PendingAuctions() {
   const { toast } = useToast()
@@ -178,27 +179,8 @@ export function PendingAuctions() {
   }
 
   const getImageUrl = (images?: string | string[]) => {
-    if (!images) return "/placeholder.svg"
-    
-    // If it's a string, try to parse as JSON
-    if (typeof images === "string") {
-      try {
-        const parsed = JSON.parse(images)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed[0]
-        }
-        return images
-      } catch {
-        return images
-      }
-    }
-    
-    // If it's an array
-    if (Array.isArray(images) && images.length > 0) {
-      return images[0]
-    }
-    
-    return "/placeholder.svg"
+    const urls = getImageUrls(images)
+    return urls[0] || "/placeholder.svg"
   }
 
   const handleResetFilters = () => {
@@ -482,20 +464,10 @@ export function PendingAuctions() {
                   <h3 className="text-sm font-medium mb-2">Hình ảnh</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {(() => {
-                      const images = typeof selectedItem.images === 'string' 
-                        ? (() => {
-                            try {
-                              const parsed = JSON.parse(selectedItem.images)
-                              return Array.isArray(parsed) ? parsed : [selectedItem.images]
-                            } catch {
-                              return [selectedItem.images]
-                            }
-                          })()
-                        : Array.isArray(selectedItem.images) 
-                          ? selectedItem.images 
-                          : []
+                      // Sử dụng getImageUrls để tạo URLs đầy đủ cho tất cả ảnh
+                      const imageUrls = getImageUrls(selectedItem.images)
                       
-                      if (images.length === 0) {
+                      if (imageUrls.length === 0 || (imageUrls.length === 1 && imageUrls[0] === "/placeholder.svg")) {
                         return (
                           <div className="aspect-square rounded-lg bg-muted flex items-center justify-center">
                             <span className="text-muted-foreground">Không có hình ảnh</span>
@@ -503,10 +475,10 @@ export function PendingAuctions() {
                         )
                       }
                       
-                      return images.map((img, idx) => (
+                      return imageUrls.map((imgUrl, idx) => (
                         <img
                           key={idx}
-                          src={img}
+                          src={imgUrl}
                           alt={`${selectedItem.title} - ${idx + 1}`}
                           className="aspect-square rounded-lg object-cover w-full"
                         />

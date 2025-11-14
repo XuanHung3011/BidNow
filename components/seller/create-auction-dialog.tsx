@@ -49,6 +49,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
   
   // Auction form
   const [startingBid, setStartingBid] = useState("")
+  const [buyNowOption, setBuyNowOption] = useState<string>("no") // "yes" hoặc "no"
   const [buyNowPrice, setBuyNowPrice] = useState("")
   const [duration, setDuration] = useState("7")
   const [customStartDate, setCustomStartDate] = useState("")
@@ -60,6 +61,17 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
     if (open && user) {
       loadApprovedItems()
       loadCategories()
+      // Reset form khi mở dialog
+      setStep(1)
+      setSelectedItemId("")
+      setStartingBid("")
+      setBuyNowOption("no")
+      setBuyNowPrice("")
+      setDuration("7")
+      setCustomStartDate("")
+      setCustomStartTime("")
+      setCustomEndDate("")
+      setCustomEndTime("")
     }
   }, [open, user])
 
@@ -68,6 +80,8 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
     try {
       setLoading(true)
       const sellerId = parseInt(user.id)
+      console.log('Loading items for sellerId:', sellerId, 'user.id:', user.id)
+      
       // Only load approved items - can only create auction for approved items
       const result = await ItemsAPI.getAllWithFilter({
         statuses: ["approved"],
@@ -77,11 +91,20 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
         sortBy: "CreatedAt",
         sortOrder: "desc"
       })
+      
+      console.log('Received items:', result.data.length, 'items')
+      console.log('Items sellerIds:', result.data.map(i => ({ id: i.id, title: i.title, sellerId: i.sellerId })))
+      
       // Filter out items that already have active auctions
       const availableItems = result.data.filter(item => 
         !item.auctionId || item.auctionStatus !== "active"
       )
-      setItems(availableItems)
+      
+      // Double-check: chỉ giữ lại items của seller hiện tại (bảo vệ bổ sung)
+      const ownItems = availableItems.filter(item => item.sellerId === sellerId)
+      console.log('Filtered to own items:', ownItems.length)
+      
+      setItems(ownItems)
     } catch (error) {
       toast({
         title: "Lỗi",
@@ -294,11 +317,34 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
         return
       }
 
+      // Validation: Đảm bảo item được chọn thuộc về seller hiện tại
+      const selectedItem = items.find(i => String(i.id) === selectedItemId)
+      if (!selectedItem) {
+        toast({
+          title: "Lỗi",
+          description: "Sản phẩm không tồn tại hoặc không thuộc về bạn",
+          variant: "destructive"
+        })
+        setLoading(false)
+        return
+      }
+      
+      if (selectedItem.sellerId !== sellerId) {
+        toast({
+          title: "Lỗi",
+          description: "Bạn chỉ có thể tạo phiên đấu giá cho sản phẩm của chính mình",
+          variant: "destructive"
+        })
+        setLoading(false)
+        return
+      }
+
       const auctionData = {
         itemId,
         sellerId,
         startingBid: parseFloat(startingBid),
-        buyNowPrice: buyNowPrice ? parseFloat(buyNowPrice) : undefined,
+        // Chỉ gửi buyNowPrice nếu chọn "Có" và có giá trị
+        buyNowPrice: buyNowOption === "yes" && buyNowPrice ? parseFloat(buyNowPrice) : undefined,
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString()
       }
@@ -322,6 +368,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
         setStep(1)
         setSelectedItemId("")
         setStartingBid("")
+        setBuyNowOption("no")
         setBuyNowPrice("")
         setDuration("7")
         setCustomStartDate("")
@@ -549,16 +596,36 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="buyNowPrice">Giá mua ngay (VNĐ, tùy chọn)</Label>
-                <Input 
-                  id="buyNowPrice" 
-                  type="number" 
-                  placeholder="VD: 5000000" 
-                  value={buyNowPrice}
-                  onChange={(e) => setBuyNowPrice(e.target.value)}
-                  min="0"
-                  step="1000"
-                />
+                <Label htmlFor="buyNowOption">Giá mua ngay</Label>
+                <Select value={buyNowOption} onValueChange={(value) => {
+                  setBuyNowOption(value)
+                  // Reset giá mua ngay khi chọn "Không"
+                  if (value === "no") {
+                    setBuyNowPrice("")
+                  }
+                }}>
+                  <SelectTrigger id="buyNowOption">
+                    <SelectValue placeholder="Chọn tùy chọn" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="no">Không</SelectItem>
+                    <SelectItem value="yes">Có</SelectItem>
+                  </SelectContent>
+                </Select>
+                {buyNowOption === "yes" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="buyNowPrice">Giá mua ngay (VNĐ) *</Label>
+                    <Input 
+                      id="buyNowPrice" 
+                      type="number" 
+                      placeholder="VD: 5000000" 
+                      value={buyNowPrice}
+                      onChange={(e) => setBuyNowPrice(e.target.value)}
+                      min="0"
+                      step="1000"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -647,7 +714,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                         <span className="text-muted-foreground">Giá khởi điểm:</span>
                         <span className="font-medium">{parseFloat(startingBid || "0").toLocaleString('vi-VN')} VNĐ</span>
                       </div>
-                      {buyNowPrice && (
+                      {buyNowOption === "yes" && buyNowPrice && (
                         <div className="grid grid-cols-2 gap-2">
                           <span className="text-muted-foreground">Giá mua ngay:</span>
                           <span className="font-medium">{parseFloat(buyNowPrice).toLocaleString('vi-VN')} VNĐ</span>

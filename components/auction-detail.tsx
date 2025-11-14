@@ -27,6 +27,7 @@ import { AutoBidDialog } from "@/components/auto-bid-dialog"
 import { AuctionsAPI, FavoriteSellersAPI, type AuctionDetailDto,type FavoriteSellerResponseDto } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { createAuctionHubConnection, type BidPlacedPayload } from "@/lib/realtime/auctionHub"
+import { getImageUrls } from "@/lib/api/config"
 
 
 interface AuctionDetailProps {
@@ -235,10 +236,8 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     )
   }
 
-  // Parse images from comma-separated string
-  const images = auction.itemImages 
-    ? auction.itemImages.split(',').map(img => img.trim())
-    : ['/placeholder.jpg']
+  // Parse images từ comma-separated string và tạo URLs đầy đủ
+  const images = getImageUrls(auction.itemImages)
 
   const minIncrement = 500000 // Có thể lấy từ config hoặc API
   const suggestedBid = (auction.currentBid || auction.startingBid) + minIncrement
