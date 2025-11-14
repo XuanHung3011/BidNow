@@ -41,39 +41,38 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  console.log('Response status:', res.status)
-  console.log('Response headers:', res.headers)
-  
   if (res.status === 401 || res.status === 403) {
     throw new Error('Vui lòng đăng nhập để tiếp tục')
   }
   
   // Xử lý 204 No Content - trả về response mặc định
   if (res.status === 204) {
-    console.warn('Received 204 No Content, returning default response')
     return { 
       success: true, 
       message: 'Thao tác thành công' 
     } as T
-  }
-  
-  if (!res.ok) {
-    const text = await res.text().catch(() => null)
-    throw new Error(text || `HTTP error ${res.status}`)
   }
   
   // Kiểm tra content type
   const contentType = res.headers.get('content-type')
   if (!contentType || !contentType.includes('application/json')) {
-    console.warn('Response is not JSON, returning default')
+    if (!res.ok) {
+      throw new Error(`HTTP error ${res.status}`)
+    }
     return { 
       success: true, 
       message: 'Thao tác thành công' 
     } as T
   }
   
+  // Parse JSON response
   const data = await res.json()
-  console.log('Response data:', data)
+  
+  // Nếu response không ok, throw error với message từ API
+  if (!res.ok) {
+    throw new Error(data.message || `HTTP error ${res.status}`)
+  }
+  
   return data
 }
 
@@ -83,7 +82,6 @@ export const FavoriteSellersAPI = {
     const url = `${API_BASE}${API_ENDPOINTS.FAVORITE_SELLERS.GET_MY_FAVORITES}`
     const res = await fetch(url, {
       headers: await getAuthHeaders(),
-    
       cache: 'no-store'
     })
     return handleResponse<FavoriteSellerDto[]>(res)
@@ -95,7 +93,6 @@ export const FavoriteSellersAPI = {
       const url = `${API_BASE}${API_ENDPOINTS.FAVORITE_SELLERS.CHECK_IS_FAVORITE(sellerId)}`
       const res = await fetch(url, {
         headers: await getAuthHeaders(),
-
         cache: 'no-store'
       })
       const result = await handleResponse<{ isFavorite: boolean }>(res)
@@ -108,39 +105,22 @@ export const FavoriteSellersAPI = {
   },
 
   // Thêm seller vào danh sách yêu thích
- // Thêm logging vào addFavorite
-addFavorite: async (sellerId: number): Promise<FavoriteSellerResponseDto> => {
-  try {
+  addFavorite: async (sellerId: number): Promise<FavoriteSellerResponseDto> => {
     const url = `${API_BASE}${API_ENDPOINTS.FAVORITE_SELLERS.ADD_FAVORITE}`
-    console.log('Adding favorite - URL:', url)
-    console.log('Adding favorite - sellerId:', sellerId)
-    
-    const headers = await getAuthHeaders()
-    console.log('Headers:', headers)
-    
     const res = await fetch(url, {
       method: 'POST',
-      headers: headers,
-
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ sellerId })
     })
-    
-    console.log('Response status:', res.status)
-    console.log('Response ok:', res.ok)
-    
     return handleResponse<FavoriteSellerResponseDto>(res)
-  } catch (error) {
-    console.error('Add favorite error:', error)
-    throw error
-  }
-},
+  },
+
   // Xóa seller khỏi danh sách yêu thích
   removeFavorite: async (sellerId: number): Promise<FavoriteSellerResponseDto> => {
     const url = `${API_BASE}${API_ENDPOINTS.FAVORITE_SELLERS.REMOVE_FAVORITE(sellerId)}`
     const res = await fetch(url, {
       method: 'DELETE',
       headers: await getAuthHeaders(),
-
     })
     return handleResponse<FavoriteSellerResponseDto>(res)
   }

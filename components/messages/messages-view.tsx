@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,8 @@ import { AdminMessaging } from "@/components/admin/admin-messaging"
 import { MessagesAPI } from "@/lib/api/messages"
 import { API_BASE } from "@/lib/api/config"
 import type { ConversationDto, MessageResponseDto } from "@/lib/api/types"
+import type { HubConnection } from "@microsoft/signalr"
+import { createMessageHubConnection } from "@/lib/realtime/messageHub"
 import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
@@ -45,6 +47,28 @@ export function MessagesView() {
   const { user } = useAuth()
   const { toast } = useToast()
 
+  const connectionRef = useRef<HubConnection | null>(null)
+  const selectedConversationRef = useRef<number | null>(null)
+  const selectedAuctionIdRef = useRef<number | null>(null)
+  const userIdRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    selectedConversationRef.current = selectedConversation
+  }, [selectedConversation])
+
+  useEffect(() => {
+    selectedAuctionIdRef.current = selectedAuctionId
+  }, [selectedAuctionId])
+
+  useEffect(() => {
+    if (user?.id != null) {
+      const parsed = Number(user.id)
+      userIdRef.current = Number.isNaN(parsed) ? null : parsed
+    } else {
+      userIdRef.current = null
+    }
+  }, [user?.id])
+
   if (user?.currentRole === "admin") {
     return <AdminMessaging />
   }
@@ -53,6 +77,130 @@ export function MessagesView() {
   useEffect(() => {
     if (user?.id) {
       loadConversations()
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    const currentUserId = userIdRef.current
+    if (!user?.id || !currentUserId) {
+      return
+    }
+
+    const connection = createMessageHubConnection()
+    let started = false
+
+    const handleMessageReceived = (message: MessageResponseDto) => {
+      const activeUserId = userIdRef.current
+      if (!activeUserId) return
+
+      const auctionKey = message.auctionId ?? null
+      const otherUserId = message.senderId === activeUserId ? message.receiverId : message.senderId
+      const isCurrentConversation =
+        selectedConversationRef.current === otherUserId &&
+        ((selectedAuctionIdRef.current ?? null) === (auctionKey ?? null))
+
+      const normalizedMessage: MessageResponseDto = {
+        ...message,
+        isRead:
+          message.isRead ||
+          (isCurrentConversation && message.receiverId === activeUserId ? true : message.isRead),
+      }
+
+      if (isCurrentConversation) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === normalizedMessage.id)) return prev
+          const next = [...prev, normalizedMessage]
+          return next.sort((a, b) => {
+            const timeA = a.sentAt ? new Date(a.sentAt).getTime() : 0
+            const timeB = b.sentAt ? new Date(b.sentAt).getTime() : 0
+            return timeA - timeB
+          })
+        })
+      }
+
+      setConversations((prev) => {
+        const updated = [...prev]
+        const idx = updated.findIndex(
+          (conv) =>
+            conv.otherUserId === otherUserId && (conv.auctionId ?? null) === (auctionKey ?? null)
+        )
+
+        const otherName =
+          message.senderId === activeUserId ? message.receiverName : message.senderName
+        const otherAvatar =
+          message.senderId === activeUserId ? message.receiverAvatarUrl : message.senderAvatarUrl
+
+        const baseConv = idx >= 0 ? updated[idx] : undefined
+        let unreadCount = baseConv?.unreadCount ?? 0
+        if (message.receiverId === activeUserId) {
+          unreadCount = isCurrentConversation ? 0 : unreadCount + 1
+        }
+
+        const newConversation: ConversationDto = {
+          otherUserId,
+          otherUserName: otherName || baseConv?.otherUserName || "Người dùng",
+          otherUserAvatarUrl: otherAvatar ?? baseConv?.otherUserAvatarUrl ?? null,
+          lastMessage: message.content,
+          lastMessageTime: message.sentAt ?? new Date().toISOString(),
+          unreadCount,
+          auctionId: auctionKey,
+          auctionTitle: message.auctionTitle ?? baseConv?.auctionTitle ?? null,
+        }
+
+        if (idx >= 0) {
+          updated[idx] = newConversation
+        } else {
+          updated.push(newConversation)
+        }
+
+        return updated.sort((a, b) => {
+          const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0
+          const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0
+          return timeB - timeA
+        })
+      })
+
+      if (message.receiverId === activeUserId && isCurrentConversation && !message.isRead) {
+        MessagesAPI.markAsRead(message.id).catch((err) => {
+          console.error("Failed to mark message as read (realtime):", err)
+        })
+      }
+    }
+
+    connection.on("MessageReceived", handleMessageReceived)
+
+    const startPromise = (async () => {
+      try {
+        await connection.start()
+        started = true
+        await connection.invoke("JoinUserGroup", String(user.id))
+      } catch (err) {
+        console.error("SignalR message hub connection error:", err)
+        throw err
+      }
+    })()
+    connectionRef.current = connection
+
+    return () => {
+      connection.off("MessageReceived", handleMessageReceived)
+      const cleanup = async () => {
+        try {
+          await startPromise.catch(() => {})
+          if (started) {
+            try {
+              await connection.invoke("LeaveUserGroup", String(user.id))
+            } catch (err) {
+              console.error("SignalR message hub leave error:", err)
+            }
+          }
+          await connection.stop()
+        } catch (err) {
+          console.error("SignalR message hub cleanup error:", err)
+        } finally {
+          connectionRef.current = null
+        }
+      }
+      cleanup()
     }
   }, [user?.id])
 
