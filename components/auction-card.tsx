@@ -10,7 +10,7 @@ import Image from "next/image"
 
 interface AuctionCardProps {
   auction: {
-    id: string | number
+    id: string
     title: string
     image: string
     currentBid: number
