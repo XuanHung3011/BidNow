@@ -1,13 +1,11 @@
 import { Footer } from "@/components/footer"
 import { CategoryAuctions } from "@/components/category-auctions"
 
-export default async function CategoryPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params
-
+export default function CategoryPage({ params }: { params: { slug: string } }) {
   return (
     <div className="min-h-screen">
       <main>
-        <CategoryAuctions categorySlug={slug} />
+        <CategoryAuctions categorySlug={params.slug} />
       </main>
       <Footer />
     </div>
