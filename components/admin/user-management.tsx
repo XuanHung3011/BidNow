@@ -40,6 +40,8 @@ export function UserManagement() {
       } else {
         data = await UsersAPI.getAll(page, pageSize)
       }
+
+      data = data.filter((user) => !user.roles?.includes("admin"))
       
       setUsers(data)
     } catch (error: any) {
