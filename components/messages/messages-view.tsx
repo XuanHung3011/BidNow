@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -28,8 +28,16 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { useRouter } from "next/navigation"
 
 export function MessagesView() {
+  const router = useRouter()
+  const handleViewProfile = () => {
+    const otherUserId = selectedConversationInfo?.otherUserId
+    if (!otherUserId) return
+    router.push(`/profile/${otherUserId}`)
+  }
+
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null)
   const [selectedAuctionId, setSelectedAuctionId] = useState<number | null>(null)
   const [messageInput, setMessageInput] = useState("")
@@ -51,6 +59,15 @@ export function MessagesView() {
   const selectedConversationRef = useRef<number | null>(null)
   const selectedAuctionIdRef = useRef<number | null>(null)
   const userIdRef = useRef<number | null>(null)
+
+  const emitUnreadSync = useCallback((count?: number) => {
+    if (typeof window === "undefined") return
+    window.dispatchEvent(
+      new CustomEvent("messages:unread-sync", {
+        detail: { count },
+      })
+    )
+  }, [])
 
   useEffect(() => {
     selectedConversationRef.current = selectedConversation
@@ -246,6 +263,8 @@ export function MessagesView() {
       
       // Update conversations state
       setConversations(data || [])
+      const totalUnread = (data || []).reduce((sum, conv) => sum + (conv?.unreadCount ?? 0), 0)
+      emitUnreadSync(totalUnread)
       
       // Update selected conversation info if it still exists
       if (selectedConversation && data) {
@@ -280,6 +299,7 @@ export function MessagesView() {
         })
       }
       setConversations([])
+      emitUnreadSync(0)
     } finally {
       if (showLoading) {
         setLoading(false)
@@ -756,9 +776,11 @@ export function MessagesView() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Xem hồ sơ</DropdownMenuItem>
-                    <DropdownMenuItem>Xem sản phẩm</DropdownMenuItem>
-                    <DropdownMenuItem className="text-destructive">Báo cáo</DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleViewProfile} disabled={!selectedConversationInfo?.otherUserId}>
+                      Xem hồ sơ
+                    </DropdownMenuItem>
+                    {/* <DropdownMenuItem>Xem sản phẩm</DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive">Báo cáo</DropdownMenuItem> */}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -821,12 +843,12 @@ export function MessagesView() {
               {/* Message Input */}
               <div className="border-t p-4 flex-shrink-0">
                 <div className="flex items-end gap-2">
-                  <Button variant="ghost" size="icon" className="shrink-0">
+                  {/* <Button variant="ghost" size="icon" className="shrink-0">
                     <ImageIcon className="h-5 w-5" />
                   </Button>
                   <Button variant="ghost" size="icon" className="shrink-0">
                     <Paperclip className="h-5 w-5" />
-                  </Button>
+                  </Button> */}
                   <Input
                     placeholder="Nhập tin nhắn..."
                     value={messageInput}
