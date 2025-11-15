@@ -10,7 +10,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Search, Send, MoreVertical, ImageIcon, Paperclip, Loader2, Plus, Mail } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { AdminMessaging } from "@/components/admin/admin-messaging"
 import { MessagesAPI } from "@/lib/api/messages"
 import { API_BASE } from "@/lib/api/config"
 import type { ConversationDto, MessageResponseDto } from "@/lib/api/types"
@@ -29,15 +28,12 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
+import { UsersAPI } from "@/lib/api/users"
+
+const SUPPORT_ADMIN_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_ADMIN_EMAIL || "admin@bidnow.local"
 
 export function MessagesView() {
   const router = useRouter()
-  const handleViewProfile = () => {
-    const otherUserId = selectedConversationInfo?.otherUserId
-    if (!otherUserId) return
-    router.push(`/profile/${otherUserId}`)
-  }
-
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null)
   const [selectedAuctionId, setSelectedAuctionId] = useState<number | null>(null)
   const [messageInput, setMessageInput] = useState("")
@@ -59,6 +55,7 @@ export function MessagesView() {
   const selectedConversationRef = useRef<number | null>(null)
   const selectedAuctionIdRef = useRef<number | null>(null)
   const userIdRef = useRef<number | null>(null)
+  const supportAdminIdRef = useRef<number | null>(null)
 
   const emitUnreadSync = useCallback((count?: number) => {
     if (typeof window === "undefined") return
@@ -85,10 +82,20 @@ export function MessagesView() {
       userIdRef.current = null
     }
   }, [user?.id])
-
-  if (user?.currentRole === "admin") {
-    return <AdminMessaging />
-  }
+  const getSupportAdminId = useCallback(async () => {
+    if (supportAdminIdRef.current) {
+      return supportAdminIdRef.current
+    }
+    try {
+      const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
+      const adminId = adminUser?.id ?? null
+      supportAdminIdRef.current = adminId
+      return adminId
+    } catch (error) {
+      console.error("Không thể lấy thông tin admin:", error)
+      return null
+    }
+  }, [])
 
   // Load conversations
   useEffect(() => {
@@ -585,14 +592,28 @@ export function MessagesView() {
     }
   }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Tin nhắn</h1>
-        <p className="text-muted-foreground">Trò chuyện với {user?.currentRole === "buyer" ? "người bán" : "người mua"}</p>
-      </div>
+  const otherUserNameLower = selectedConversationInfo?.otherUserName?.toLowerCase() ?? ""
+  const isAdminContact = otherUserNameLower.includes("admin")
+  const canViewProfile = Boolean(selectedConversationInfo?.otherUserId || isAdminContact)
 
-      <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
+  const handleViewProfile = useCallback(async () => {
+    let targetId = selectedConversationInfo?.otherUserId ?? null
+    if (!targetId && isAdminContact) {
+      targetId = await getSupportAdminId()
+    }
+    if (!targetId) {
+      toast({
+        title: "Không thể mở hồ sơ",
+        description: "Không tìm thấy thông tin người dùng.",
+        variant: "destructive",
+      })
+      return
+    }
+    router.push(`/profile/${targetId}`)
+  }, [selectedConversationInfo?.otherUserId, isAdminContact, getSupportAdminId, router, toast])
+
+  const conversationBody = (
+    <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
         {/* Conversations List */}
         <Card className="p-4">
           <div className="mb-4 space-y-2">
@@ -776,7 +797,7 @@ export function MessagesView() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={handleViewProfile} disabled={!selectedConversationInfo?.otherUserId}>
+                    <DropdownMenuItem onClick={handleViewProfile} disabled={!canViewProfile}>
                       Xem hồ sơ
                     </DropdownMenuItem>
                     {/* <DropdownMenuItem>Xem sản phẩm</DropdownMenuItem>
@@ -966,7 +987,20 @@ export function MessagesView() {
             </>
           )}
         </Card>
+    </div>
+  )
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-foreground">Tin nhắn</h1>
+        <p className="text-muted-foreground">
+          {user?.currentRole === "admin"
+            ? "Quản lý trao đổi với người dùng"
+            : `Trò chuyện với ${user?.currentRole === "buyer" ? "người bán" : "người mua"}`}
+        </p>
       </div>
+      {conversationBody}
     </div>
   )
 }
