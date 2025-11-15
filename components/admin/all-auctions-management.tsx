@@ -17,6 +17,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { AdminAuctionsAPI, AuctionListItemDto, AuctionDetailDto } from "@/lib/api/admin-auctions"
+import { useToast } from "@/hooks/use-toast"
+import { createAuctionHubConnection } from "@/lib/realtime/auctionHub"
 
 export function AllAuctionsManagement() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -30,6 +32,8 @@ export function AllAuctionsManagement() {
   const [error, setError] = useState<string | null>(null)
   const [totalCount, setTotalCount] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
+  const [suspendingId, setSuspendingId] = useState<number | null>(null)
+  const { toast } = useToast()
 
   // Fetch auctions
   const fetchAuctions = useCallback(async () => {
@@ -70,6 +74,40 @@ export function AllAuctionsManagement() {
     fetchAuctions()
   }, [fetchAuctions])
 
+  useEffect(() => {
+    const connection = createAuctionHubConnection()
+    let mounted = true
+    const startPromise = (async () => {
+      try {
+        await connection.start()
+        if (!mounted) {
+          await connection.stop()
+          return
+        }
+        await connection.invoke("JoinAdminSection", "auctions")
+      } catch (error) {
+        console.error("Admin auctions SignalR connection error:", error)
+      }
+    })()
+
+    connection.on("AdminAuctionStatusUpdated", () => {
+      fetchAuctions()
+    })
+
+    return () => {
+      mounted = false
+      connection.off("AdminAuctionStatusUpdated")
+      startPromise
+        .catch(() => {})
+        .finally(() => {
+          if (connection.state === "Connected") {
+            connection.invoke("LeaveAdminSection", "auctions").catch(() => {})
+          }
+          connection.stop().catch(() => {})
+        })
+    }
+  }, [fetchAuctions])
+
   // Reset to page 1 when search or filter changes
   useEffect(() => {
     setPage(1)
@@ -92,7 +130,7 @@ export function AllAuctionsManagement() {
         return <Badge className="bg-blue-500">Sắp diễn ra</Badge>
       case "completed":
         return <Badge className="bg-gray-500">Đã kết thúc</Badge>
-      case "suspended":
+      case "cancelled":
         return <Badge className="bg-red-500">Đã tạm dừng</Badge>
       default:
         return <Badge>{status}</Badge>
@@ -103,10 +141,32 @@ export function AllAuctionsManagement() {
     fetchAuctionDetail(auction.id)
   }
 
-  const handleSuspendAuction = (auctionId: number) => {
-    console.log("Suspending auction:", auctionId)
-    // TODO: Implement suspend auction API call
-  }
+  const handleSuspendAuction = useCallback(
+    async (auctionId: number) => {
+      const confirmed = window.confirm("Bạn có chắc muốn tạm dừng phiên đấu giá này? Hành động này không thể hoàn tác.")
+      if (!confirmed) return
+      setSuspendingId(auctionId)
+      try {
+        await AdminAuctionsAPI.updateStatus(auctionId, "cancelled")
+        toast({
+          title: "Đã tạm dừng phiên đấu giá",
+          description: "Trạng thái phiên đã được cập nhật thành công.",
+        })
+        fetchAuctions()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Không thể tạm dừng phiên đấu giá."
+        setError(message)
+        toast({
+          title: "Lỗi",
+          description: message,
+          variant: "destructive",
+        })
+      } finally {
+        setSuspendingId(null)
+      }
+    },
+    [fetchAuctions, toast]
+  )
 
   const formatDate = (dateString: string) => {
     try {
@@ -152,7 +212,7 @@ export function AllAuctionsManagement() {
               <SelectItem value="active">Đang diễn ra</SelectItem>
               <SelectItem value="scheduled">Sắp diễn ra</SelectItem>
               <SelectItem value="completed">Đã kết thúc</SelectItem>
-              <SelectItem value="suspended">Đã tạm dừng</SelectItem>
+              <SelectItem value="cancelled">Đã tạm dừng</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -210,8 +270,17 @@ export function AllAuctionsManagement() {
                           <Eye className="h-4 w-4" />
                         </Button>
                         {auction.displayStatus === "active" && (
-                          <Button variant="ghost" size="icon" onClick={() => handleSuspendAuction(auction.id)}>
-                            <Ban className="h-4 w-4 text-red-500" />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleSuspendAuction(auction.id)}
+                            disabled={suspendingId === auction.id}
+                          >
+                            <Ban
+                              className={`h-4 w-4 ${
+                                suspendingId === auction.id ? "animate-pulse text-muted-foreground" : "text-red-500"
+                              }`}
+                            />
                           </Button>
                         )}
                       </div>
@@ -315,12 +384,17 @@ export function AllAuctionsManagement() {
               <Button variant="outline" onClick={() => setShowDetailDialog(false)}>
                 Đóng
               </Button>
-              {selectedAuction && selectedAuction.status?.toLowerCase() === "active" && 
-               new Date(selectedAuction.endTime) > new Date() && (
-                <Button variant="destructive" onClick={() => handleSuspendAuction(selectedAuction.id)}>
-                  <Ban className="mr-2 h-4 w-4" />
-                  Tạm dừng phiên đấu giá
-                </Button>
+              {selectedAuction &&
+                selectedAuction.status?.toLowerCase() === "active" &&
+                new Date(selectedAuction.endTime) > new Date() && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => handleSuspendAuction(selectedAuction.id)}
+                    disabled={suspendingId === selectedAuction.id}
+                  >
+                    <Ban className="mr-2 h-4 w-4" />
+                    {suspendingId === selectedAuction.id ? "Đang tạm dừng..." : "Tạm dừng phiên đấu giá"}
+                  </Button>
               )}
             </DialogFooter>
           </DialogContent>
