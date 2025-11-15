@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Gavel, AlertCircle, Eye, EyeOff, LogIn } from "lucide-react"
-import { useAuth } from "@/lib/auth-context"
+import { useAuth, type UserRole } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 
@@ -25,6 +25,13 @@ export default function LoginPage() {
   const { toast } = useToast()
   const [showPassword, setShowPassword] = useState(false)
 
+  const getRedirectPath = (role?: UserRole) => {
+    if (role === "admin") {
+      return "/admin"
+    }
+    return "/"
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
@@ -34,7 +41,7 @@ export default function LoginPage() {
 
     if (result.ok) {
       toast({ title: "Đăng nhập thành công", description: "Chào mừng bạn trở lại BidNow!" })
-      router.push("/")
+      router.push(getRedirectPath(result.role))
     } else {
       const message =
         result.reason === "user_not_found"
@@ -55,9 +62,9 @@ export default function LoginPage() {
 
   const handleDemoLogin = async (demoEmail: string, demoPassword: string) => {
     setIsLoading(true)
-    const success = await login(demoEmail, demoPassword)
-    if (success) {
-      router.push("/")
+    const result = await login(demoEmail, demoPassword)
+    if (result.ok) {
+      router.push(getRedirectPath(result.role))
     }
     setIsLoading(false)
   }
