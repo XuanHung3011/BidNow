@@ -38,6 +38,14 @@ export interface PlatformAnalyticsDto {
   systemAlerts: SystemAlertsDto
 }
 
+export interface PlatformAnalyticsDetailDto {
+  chartData: Array<{
+    name: string
+    value: number | string
+  }>
+  summary?: Record<string, string | number>
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => null)
@@ -61,6 +69,14 @@ export const PlatformAnalyticsAPI = {
       cache: 'no-store',
     })
     return handleResponse<PlatformAnalyticsDto>(res)
+  },
+  // GET /api/PlatformAnalytics/detail/{type} - Get detailed analytics for a specific type
+  getAnalyticsDetail: async (type: string): Promise<PlatformAnalyticsDetailDto> => {
+    const url = `${API_BASE}${API_ENDPOINTS.PLATFORM_ANALYTICS.GET_ANALYTICS}/detail/${type}`
+    const res = await fetch(url, {
+      cache: 'no-store',
+    })
+    return handleResponse<PlatformAnalyticsDetailDto>(res)
   },
 }
 
