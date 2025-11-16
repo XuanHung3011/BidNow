@@ -131,6 +131,15 @@ export const API_ENDPOINTS = {
     GET_PENDING: "/api/Auctions/pending",
     APPROVE: (id: number) => `/api/Auctions/${id}/approve`,
     REJECT: (id: number) => `/api/Auctions/${id}/reject`,
+  },
+  NOTIFICATIONS: {
+    GET_ALL: (userId: number) => `/api/Notifications/user/${userId}`,
+    GET_UNREAD: (userId: number) => `/api/Notifications/user/${userId}/unread`,
+    GET_UNREAD_COUNT: (userId: number) => `/api/Notifications/user/${userId}/unread-count`,
+    CREATE: "/api/Notifications",
+    MARK_AS_READ: (id: number) => `/api/Notifications/${id}/read`,
+    MARK_ALL_AS_READ: (userId: number) => `/api/Notifications/user/${userId}/mark-all-read`,
+    DELETE: (id: number) => `/api/Notifications/${id}`,
   }
 } as const;
 
