@@ -75,6 +75,17 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
     }
   }, [open, user])
 
+  // Tự động điền giá khởi điểm từ basePrice của item khi chọn sản phẩm
+  useEffect(() => {
+    if (selectedItemId) {
+      const selectedItem = items.find(i => String(i.id) === selectedItemId)
+      if (selectedItem && selectedItem.basePrice) {
+        // Điền giá khởi điểm từ basePrice của item
+        setStartingBid(selectedItem.basePrice.toString())
+      }
+    }
+  }, [selectedItemId, items])
+
   const loadApprovedItems = async () => {
     if (!user) return
     try {
@@ -447,7 +458,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                           <p className="text-muted-foreground">{item.description}</p>
                         )}
                         <div className="grid grid-cols-2 gap-2">
-                          <p>Giá cơ bản: <span className="font-medium">{item.basePrice?.toLocaleString('vi-VN')} VNĐ</span></p>
+                          <p>Giá khởi điểm: <span className="font-medium">{item.basePrice?.toLocaleString('vi-VN')} VNĐ</span></p>
                           <p>Danh mục: <span className="font-medium">{item.categoryName}</span></p>
                         </div>
                         <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-800 p-2 mt-2">
@@ -504,7 +515,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="newItemBasePrice">Giá cơ bản (VNĐ) *</Label>
+                      <Label htmlFor="newItemBasePrice">Giá khởi điểm (VNĐ) *</Label>
                       <Input 
                         id="newItemBasePrice" 
                         type="number" 
@@ -583,7 +594,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
           <div className="space-y-4 py-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="startPrice">Giá khởi điểm (VNĐ) *</Label>
+                <Label htmlFor="startPrice">Bạn muốn thay đổi giá khởi điểm? (VNĐ) *</Label>
                 <Input 
                   id="startPrice" 
                   type="number" 
@@ -593,10 +604,18 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                   min="0"
                   step="1000"
                 />
+                {selectedItemId && (() => {
+                  const item = items.find(i => String(i.id) === selectedItemId)
+                  return item?.basePrice ? (
+                    <p className="text-xs text-muted-foreground">
+                      Giá khởi điểm ban đầu: {item.basePrice.toLocaleString('vi-VN')} VNĐ
+                    </p>
+                  ) : null
+                })()}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="buyNowOption">Giá mua ngay</Label>
+                <Label htmlFor="buyNowOption">Bạn có muốn thiếp lập giá mua ngay?</Label>
                 <Select value={buyNowOption} onValueChange={(value) => {
                   setBuyNowOption(value)
                   // Reset giá mua ngay khi chọn "Không"
@@ -630,7 +649,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="duration">Thời gian đấu giá</Label>
+              <Label htmlFor="duration">Thiết lập thời gian đấu giá</Label>
               <Select value={duration} onValueChange={setDuration}>
                 <SelectTrigger id="duration">
                   <SelectValue placeholder="Chọn thời gian" />
