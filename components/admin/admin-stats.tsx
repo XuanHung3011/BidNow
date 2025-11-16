@@ -2,10 +2,11 @@
 
 import { Card } from "@/components/ui/card"
 import { Users, Gavel, DollarSign } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { AdminStatsAPI, AdminStatsDto, AdminStatsDetailDto } from "@/lib/api/admin-stats"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Bar, BarChart, Line, LineChart, ResponsiveContainer } from "recharts"
+import { createAuctionHubConnection } from "@/lib/realtime/auctionHub"
 
 function formatNumber(num: number): string {
   return new Intl.NumberFormat("vi-VN").format(num)
@@ -29,39 +30,72 @@ export function AdminStats() {
   const [chartData, setChartData] = useState<Record<string, AdminStatsDetailDto>>({})
   const [loadingCharts, setLoadingCharts] = useState<Record<string, boolean>>({})
 
-  useEffect(() => {
-    async function fetchStats() {
-      try {
-        setLoading(true)
-        setError(null)
-        const data = await AdminStatsAPI.getStats()
-        setStats(data)
-        
-        // Fetch chart data for all stats
-        const chartTypes = ["users", "auctions", "revenue"]
-        const chartPromises = chartTypes.map(async (type) => {
-          setLoadingCharts(prev => ({ ...prev, [type]: true }))
-          try {
-            const detailData = await AdminStatsAPI.getStatsDetail(type)
-            setChartData(prev => ({ ...prev, [type]: detailData }))
-          } catch (err) {
-            console.error(`Error fetching chart data for ${type}:`, err)
-          } finally {
-            setLoadingCharts(prev => ({ ...prev, [type]: false }))
-          }
-        })
-        
-        await Promise.all(chartPromises)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load stats")
-        console.error("Error fetching admin stats:", err)
-      } finally {
-        setLoading(false)
-      }
-    }
+  const fetchStats = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await AdminStatsAPI.getStats()
+      setStats(data)
 
-    fetchStats()
+      const chartTypes = ["users", "auctions", "revenue"]
+      const chartPromises = chartTypes.map(async (type) => {
+        setLoadingCharts((prev) => ({ ...prev, [type]: true }))
+        try {
+          const detailData = await AdminStatsAPI.getStatsDetail(type)
+          setChartData((prev) => ({ ...prev, [type]: detailData }))
+        } catch (err) {
+          console.error(`Error fetching chart data for ${type}:`, err)
+        } finally {
+          setLoadingCharts((prev) => ({ ...prev, [type]: false }))
+        }
+      })
+
+      await Promise.all(chartPromises)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load stats")
+      console.error("Error fetching admin stats:", err)
+    } finally {
+      setLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetchStats()
+  }, [fetchStats])
+
+  useEffect(() => {
+    const connection = createAuctionHubConnection()
+    let isMounted = true
+    const startPromise = (async () => {
+      try {
+        await connection.start()
+        if (!isMounted) {
+          await connection.stop()
+          return
+        }
+        await connection.invoke("JoinAdminSection", "stats")
+      } catch (error) {
+        console.error("Admin stats SignalR connection error:", error)
+      }
+    })()
+
+    connection.on("AdminStatsUpdated", () => {
+      fetchStats()
+    })
+
+    return () => {
+      isMounted = false
+      connection.off("AdminStatsUpdated")
+      startPromise
+        .catch(() => {})
+        .finally(() => {
+          if (connection.state === "Connected") {
+            connection.invoke("LeaveAdminSection", "stats").catch(() => {})
+          }
+          connection.stop().catch(() => {})
+        })
+    }
+  }, [fetchStats])
 
   if (loading) {
     return (
