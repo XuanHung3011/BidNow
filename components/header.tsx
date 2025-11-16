@@ -1,8 +1,9 @@
 "use client"
 
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Search, Bell, User, Gavel, LogOut, Settings, Package, ShoppingBag, Shield, MessageSquare, ArrowUpDown } from "lucide-react"
+import { Search, Bell, User, Gavel, LogOut, Settings, Package, ShoppingBag, Shield, MessageSquare, ArrowUpDown, Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import {
   DropdownMenu,
@@ -17,35 +18,56 @@ import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { NotificationsAPI } from "@/lib/api/notifications"
 import { NotificationResponseDto } from "@/lib/api/types"
-import { useState, useEffect, useCallback } from "react"
+import { MessagesAPI } from "@/lib/api/messages"
+import { createMessageHubConnection } from "@/lib/realtime/messageHub"
+import type { MessageResponseDto } from "@/lib/api/types"
 import { useToast } from "@/hooks/use-toast"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2 } from "lucide-react"
 
 export function Header() {
   const { user, logout, switchRole } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
+  
+  // Notifications state
   const [notifications, setNotifications] = useState<NotificationResponseDto[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false)
+  
+  // Messages state
+  const [unreadMessages, setUnreadMessages] = useState(0)
+  
+  const userIdNumber = user?.id ? Number(user.id) : null
 
-  const unreadMessages = 3
+  // Fetch unread messages count
+  const fetchUnreadMessagesCount = useCallback(async () => {
+    if (!userIdNumber) {
+      setUnreadMessages(0)
+      return
+    }
 
-  // Fetch unread count
-  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const unread = await MessagesAPI.getUnreadMessages(userIdNumber)
+      setUnreadMessages(unread?.length ?? 0)
+    } catch (error) {
+      console.error("Failed to fetch unread messages:", error)
+    }
+  }, [userIdNumber])
+
+  // Fetch unread notifications count
+  const fetchUnreadNotificationsCount = useCallback(async () => {
     if (!user) return
     
     try {
       const count = await NotificationsAPI.getUnreadCount(parseInt(user.id))
       setUnreadCount(count)
     } catch (error) {
-      console.error("Error fetching unread count:", error)
+      console.error("Error fetching unread notifications count:", error)
     }
   }, [user])
 
-  // Fetch notifications
+  // Fetch notifications list
   const fetchNotifications = useCallback(async () => {
     if (!user) return
     
@@ -65,7 +87,7 @@ export function Header() {
     }
   }, [user, toast])
 
-  // Initial load và auto refresh
+  // Initial load và auto refresh for notifications
   useEffect(() => {
     if (!user) {
       setNotifications([])
@@ -73,15 +95,15 @@ export function Header() {
       return
     }
 
-    fetchUnreadCount()
+    fetchUnreadNotificationsCount()
     
     // Auto refresh mỗi 30 giây
     const interval = setInterval(() => {
-      fetchUnreadCount()
+      fetchUnreadNotificationsCount()
     }, 30000)
 
     return () => clearInterval(interval)
-  }, [user, fetchUnreadCount])
+  }, [user, fetchUnreadNotificationsCount])
 
   // Load notifications khi mở dropdown
   useEffect(() => {
@@ -89,6 +111,81 @@ export function Header() {
       fetchNotifications()
     }
   }, [notificationDropdownOpen, user, fetchNotifications])
+
+  // Messages: Initial load và SignalR connection
+  useEffect(() => {
+    fetchUnreadMessagesCount()
+  }, [fetchUnreadMessagesCount])
+
+  useEffect(() => {
+    if (!userIdNumber) return
+
+    const connection = createMessageHubConnection()
+    let started = false
+
+    const handleMessageReceived = (message: MessageResponseDto) => {
+      if (message.receiverId === userIdNumber && !message.isRead) {
+        setUnreadMessages((prev) => prev + 1)
+      }
+    }
+
+    connection.on("MessageReceived", handleMessageReceived)
+
+    const startPromise = (async () => {
+      try {
+        await connection.start()
+        started = true
+        await connection.invoke("JoinUserGroup", String(userIdNumber))
+      } catch (err) {
+        console.error("SignalR message hub connection error (header):", err)
+      }
+    })()
+
+    return () => {
+      connection.off("MessageReceived", handleMessageReceived)
+      const cleanup = async () => {
+        try {
+          await startPromise.catch(() => {})
+          if (started) {
+            try {
+              await connection.invoke("LeaveUserGroup", String(userIdNumber))
+            } catch (err) {
+              console.error("SignalR leave group error (header):", err)
+            }
+          }
+          await connection.stop()
+        } catch (err) {
+          console.error("SignalR cleanup error (header):", err)
+        }
+      }
+      cleanup()
+    }
+  }, [userIdNumber])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const handleUnreadSync = (event: Event) => {
+      const customEvent = event as CustomEvent<{ count?: number }>
+      if (typeof customEvent.detail?.count === "number") {
+        setUnreadMessages(customEvent.detail.count)
+      } else {
+        fetchUnreadMessagesCount()
+      }
+    }
+
+    const handleWindowFocus = () => {
+      fetchUnreadMessagesCount()
+    }
+
+    window.addEventListener("messages:unread-sync", handleUnreadSync)
+    window.addEventListener("focus", handleWindowFocus)
+
+    return () => {
+      window.removeEventListener("messages:unread-sync", handleUnreadSync)
+      window.removeEventListener("focus", handleWindowFocus)
+    }
+  }, [fetchUnreadMessagesCount])
 
   // Mark notification as read
   const handleMarkAsRead = async (notificationId: number) => {
@@ -111,7 +208,7 @@ export function Header() {
     }
   }
 
-  // Mark all as read
+  // Mark all notifications as read
   const handleMarkAllAsRead = async () => {
     if (!user) return
     

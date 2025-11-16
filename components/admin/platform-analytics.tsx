@@ -2,10 +2,11 @@
 
 import { Card } from "@/components/ui/card"
 import { TrendingUp, TrendingDown } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { PlatformAnalyticsAPI, PlatformAnalyticsDto, PlatformAnalyticsDetailDto } from "@/lib/api/platform-analytics"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
+import { createAuctionHubConnection } from "@/lib/realtime/auctionHub"
 
 function formatNumber(num: number): string {
   return new Intl.NumberFormat("vi-VN").format(num)
@@ -29,39 +30,72 @@ export function PlatformAnalytics() {
   const [chartData, setChartData] = useState<Record<string, PlatformAnalyticsDetailDto>>({})
   const [loadingCharts, setLoadingCharts] = useState<Record<string, boolean>>({})
 
-  useEffect(() => {
-    async function fetchAnalytics() {
-      try {
-        setLoading(true)
-        setError(null)
-        const data = await PlatformAnalyticsAPI.getAnalytics()
-        setAnalytics(data)
-        
-        // Fetch chart data for all metrics
-        const chartTypes = ["newUsers", "newAuctions", "totalTransactions", "successRate"]
-        const chartPromises = chartTypes.map(async (type) => {
-          setLoadingCharts(prev => ({ ...prev, [type]: true }))
-          try {
-            const detailData = await PlatformAnalyticsAPI.getAnalyticsDetail(type)
-            setChartData(prev => ({ ...prev, [type]: detailData }))
-          } catch (err) {
-            console.error(`Error fetching chart data for ${type}:`, err)
-          } finally {
-            setLoadingCharts(prev => ({ ...prev, [type]: false }))
-          }
-        })
-        
-        await Promise.all(chartPromises)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load analytics")
-        console.error("Error fetching platform analytics:", err)
-      } finally {
-        setLoading(false)
-      }
-    }
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await PlatformAnalyticsAPI.getAnalytics()
+      setAnalytics(data)
 
-    fetchAnalytics()
+      const chartTypes = ["newUsers", "newAuctions", "totalTransactions", "successRate"]
+      const chartPromises = chartTypes.map(async (type) => {
+        setLoadingCharts((prev) => ({ ...prev, [type]: true }))
+        try {
+          const detailData = await PlatformAnalyticsAPI.getAnalyticsDetail(type)
+          setChartData((prev) => ({ ...prev, [type]: detailData }))
+        } catch (err) {
+          console.error(`Error fetching chart data for ${type}:`, err)
+        } finally {
+          setLoadingCharts((prev) => ({ ...prev, [type]: false }))
+        }
+      })
+
+      await Promise.all(chartPromises)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load analytics")
+      console.error("Error fetching platform analytics:", err)
+    } finally {
+      setLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetchAnalytics()
+  }, [fetchAnalytics])
+
+  useEffect(() => {
+    const connection = createAuctionHubConnection()
+    let mounted = true
+    const startPromise = (async () => {
+      try {
+        await connection.start()
+        if (!mounted) {
+          await connection.stop()
+          return
+        }
+        await connection.invoke("JoinAdminSection", "analytics")
+      } catch (error) {
+        console.error("Platform analytics SignalR connection error:", error)
+      }
+    })()
+
+    connection.on("AdminAnalyticsUpdated", () => {
+      fetchAnalytics()
+    })
+
+    return () => {
+      mounted = false
+      connection.off("AdminAnalyticsUpdated")
+      startPromise
+        .catch(() => {})
+        .finally(() => {
+          if (connection.state === "Connected") {
+            connection.invoke("LeaveAdminSection", "analytics").catch(() => {})
+          }
+          connection.stop().catch(() => {})
+        })
+    }
+  }, [fetchAnalytics])
 
   if (loading) {
     return (
@@ -263,7 +297,7 @@ export function PlatformAnalytics() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-1">
         <Card className="p-6">
           <h4 className="mb-4 font-semibold text-foreground">Hoạt động gần đây</h4>
           <div className="space-y-3 text-sm">
@@ -286,7 +320,7 @@ export function PlatformAnalytics() {
           </div>
         </Card>
 
-        <Card className="p-6">
+        {/* <Card className="p-6">
           <h4 className="mb-4 font-semibold text-foreground">Cảnh báo hệ thống</h4>
           <div className="space-y-3 text-sm">
             <div className="flex items-start gap-2">
@@ -317,7 +351,7 @@ export function PlatformAnalytics() {
               </div>
             )}
           </div>
-        </Card>
+        </Card> */}
       </div>
     </div>
   )
