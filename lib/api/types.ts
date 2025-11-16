@@ -227,3 +227,25 @@ export interface ConversationDto {
   auctionId?: number | null;
   auctionTitle?: string | null;
 }
+
+// Notification Types
+export interface NotificationResponseDto {
+  id: number;
+  userId: number;
+  type?: string | null;
+  message: string;
+  link?: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface CreateNotificationDto {
+  userId: number;
+  type?: string | null;
+  message: string;
+  link?: string | null;
+}
+
+export interface UnreadNotificationCountDto {
+  count: number;
+}
