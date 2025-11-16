@@ -28,7 +28,7 @@ import { AuctionsAPI, FavoriteSellersAPI, type AuctionDetailDto,type FavoriteSel
 import { useAuth } from "@/lib/auth-context"
 import { createAuctionHubConnection, type BidPlacedPayload } from "@/lib/realtime/auctionHub"
 import { getImageUrls } from "@/lib/api/config"
-
+import { WatchlistAPI } from "@/lib/api"
 
 interface AuctionDetailProps {
   auctionId: string
@@ -52,7 +52,10 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const [isFavoriteSeller, setIsFavoriteSeller] = useState(false)
   const [loadingFavorite, setLoadingFavorite] = useState(false)
   const [favoriteMessage, setFavoriteMessage] = useState<string | null>(null)
-  
+  //watch list
+  const [loadingWatchlist, setLoadingWatchlist] = useState(false)
+  const [watchlistMessage, setWatchlistMessage] = useState<string | null>(null)
+
   // Fetch auction detail
   useEffect(() => {
     let mounted = true
@@ -145,6 +148,25 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     checkFavorite()
     return () => { mounted = false }
   }, [auction?.sellerId])
+
+  // 3. USEEFFECT - Thêm useEffect mới để check watchlist
+  useEffect(() => {
+    if (!user?.id || !auctionId) return
+
+    let mounted = true
+    const checkWatchlist = async () => {
+      try {
+        const exists = await WatchlistAPI.checkExists(Number(user.id), Number(auctionId))
+        if (!mounted) return
+        setIsWatching(exists)
+      } catch (err) {
+        console.error('Failed to check watchlist:', err)
+      }
+    }
+
+    checkWatchlist()
+    return () => { mounted = false }
+  }, [user?.id, auctionId])
   
   // Update countdown timer
   useEffect(() => {
@@ -236,6 +258,46 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     )
   }
 
+  //  FUNCTION - Thêm function toggleWatchlist
+  const toggleWatchlist = async () => {
+    if (!user?.id) {
+      setWatchlistMessage("Vui lòng đăng nhập để thêm vào danh sách theo dõi")
+      setTimeout(() => setWatchlistMessage(null), 3000)
+      return
+    }
+
+    setLoadingWatchlist(true)
+    setWatchlistMessage(null)
+
+    try {
+      const request = {
+        userId: Number(user.id),
+        auctionId: Number(auctionId)
+      }
+
+      let result: { message: string }
+
+      if (isWatching) {
+        result = await WatchlistAPI.remove(request)
+        setIsWatching(false)
+      } else {
+        result = await WatchlistAPI.add(request)
+        setIsWatching(true)
+      }
+
+      setWatchlistMessage(result.message)
+      setTimeout(() => setWatchlistMessage(null), 3000)
+
+    } catch (err: any) {
+      console.error('Toggle watchlist error:', err)
+      setWatchlistMessage(err.message || "Không thể thực hiện thao tác")
+      setTimeout(() => setWatchlistMessage(null), 3000)
+    } finally {
+      setLoadingWatchlist(false)
+    }
+  }
+
+
   // Parse images từ comma-separated string và tạo URLs đầy đủ
   const images = getImageUrls(auction.itemImages)
 
@@ -273,15 +335,30 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 size="icon"
                 variant="secondary"
                 className="bg-background/90 backdrop-blur"
-                onClick={() => setIsWatching(!isWatching)}
+                onClick={toggleWatchlist}
+                disabled={loadingWatchlist}
+                title={isWatching ? "Bỏ theo dõi" : "Thêm vào theo dõi"}
               >
-                <Heart className={`h-5 w-5 ${isWatching ? "fill-accent text-accent" : ""}`} />
+                {loadingWatchlist ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Heart className={`h-5 w-5 transition-all duration-300 ${isWatching ? "fill-accent text-accent scale-110" : ""
+                    }`} />
+                )}
               </Button>
-              <Button size="icon" variant="secondary" className="bg-background/90 backdrop-blur">
-                <Share2 className="h-5 w-5" />
-              </Button>
+
             </div>
           </div>
+          {watchlistMessage && (
+            <div className={`mx-4 mt-4 rounded-lg border p-3 text-sm ${watchlistMessage.toLowerCase().includes('error') ||
+                watchlistMessage.toLowerCase().includes('fail') ||
+                watchlistMessage.toLowerCase().includes('không thể')
+                ? 'bg-red-50 border-red-200 text-red-800'
+                : 'bg-green-50 border-green-200 text-green-800'
+              }`}>
+              {watchlistMessage}
+            </div>
+          )}
 
           <div className="flex gap-2 overflow-x-auto p-4">
             {images.map((image, index) => (
