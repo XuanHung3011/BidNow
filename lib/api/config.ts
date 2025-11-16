@@ -132,6 +132,10 @@ export const API_ENDPOINTS = {
     GET_PENDING: "/api/Auctions/pending",
     APPROVE: (id: number) => `/api/Auctions/${id}/approve`,
     REJECT: (id: number) => `/api/Auctions/${id}/reject`,
+    // Buyer endpoints
+    GET_BUYER_ACTIVE_BIDS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/active`,
+    GET_BUYER_WON_AUCTIONS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/won`,
+    GET_BUYER_BIDDING_HISTORY: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/history`,
   },
   NOTIFICATIONS: {
     GET_ALL: (userId: number) => `/api/Notifications/user/${userId}`,
@@ -141,9 +145,6 @@ export const API_ENDPOINTS = {
     MARK_AS_READ: (id: number) => `/api/Notifications/${id}/read`,
     MARK_ALL_AS_READ: (userId: number) => `/api/Notifications/user/${userId}/mark-all-read`,
     DELETE: (id: number) => `/api/Notifications/${id}`,
-    GET_BUYER_ACTIVE_BIDS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/active`,
-    GET_BUYER_WON_AUCTIONS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/won`,
-    GET_BUYER_BIDDING_HISTORY: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/history`,
   },
   WATCHLIST: {
     ADD: "/api/Watchlist/add",
@@ -152,10 +153,6 @@ export const API_ENDPOINTS = {
     GET_DETAIL: (watchlistId: number) => `/api/Watchlist/detail/${watchlistId}`,
     GET_BY_USER_AUCTION: (userId: number, auctionId: number) => 
       `/api/Watchlist/user/${userId}/auction/${auctionId}`,
-  
-
-
-
-}
+  }
 } as const;
 
