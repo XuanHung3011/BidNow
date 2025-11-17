@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Search, Bell, User, Gavel, LogOut, Settings, Package, ShoppingBag, Shield, MessageSquare, ArrowUpDown } from "lucide-react"
@@ -15,12 +16,104 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
+import { MessagesAPI } from "@/lib/api/messages"
+import { createMessageHubConnection } from "@/lib/realtime/messageHub"
+import type { MessageResponseDto } from "@/lib/api/types"
 
 export function Header() {
   const { user, logout, switchRole } = useAuth()
   const router = useRouter()
+  const [unreadMessages, setUnreadMessages] = useState(0)
 
-  const unreadMessages = 3
+  const userIdNumber = user?.id ? Number(user.id) : null
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (!userIdNumber) {
+      setUnreadMessages(0)
+      return
+    }
+
+    try {
+      const unread = await MessagesAPI.getUnreadMessages(userIdNumber)
+      setUnreadMessages(unread?.length ?? 0)
+    } catch (error) {
+      console.error("Failed to fetch unread messages:", error)
+    }
+  }, [userIdNumber])
+
+  useEffect(() => {
+    fetchUnreadCount()
+  }, [fetchUnreadCount])
+
+  useEffect(() => {
+    if (!userIdNumber) return
+
+    const connection = createMessageHubConnection()
+    let started = false
+
+    const handleMessageReceived = (message: MessageResponseDto) => {
+      if (message.receiverId === userIdNumber && !message.isRead) {
+        setUnreadMessages((prev) => prev + 1)
+      }
+    }
+
+    connection.on("MessageReceived", handleMessageReceived)
+
+    const startPromise = (async () => {
+      try {
+        await connection.start()
+        started = true
+        await connection.invoke("JoinUserGroup", String(userIdNumber))
+      } catch (err) {
+        console.error("SignalR message hub connection error (header):", err)
+      }
+    })()
+
+    return () => {
+      connection.off("MessageReceived", handleMessageReceived)
+      const cleanup = async () => {
+        try {
+          await startPromise.catch(() => {})
+          if (started) {
+            try {
+              await connection.invoke("LeaveUserGroup", String(userIdNumber))
+            } catch (err) {
+              console.error("SignalR leave group error (header):", err)
+            }
+          }
+          await connection.stop()
+        } catch (err) {
+          console.error("SignalR cleanup error (header):", err)
+        }
+      }
+      cleanup()
+    }
+  }, [userIdNumber])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const handleUnreadSync = (event: Event) => {
+      const customEvent = event as CustomEvent<{ count?: number }>
+      if (typeof customEvent.detail?.count === "number") {
+        setUnreadMessages(customEvent.detail.count)
+      } else {
+        fetchUnreadCount()
+      }
+    }
+
+    const handleWindowFocus = () => {
+      fetchUnreadCount()
+    }
+
+    window.addEventListener("messages:unread-sync", handleUnreadSync)
+    window.addEventListener("focus", handleWindowFocus)
+
+    return () => {
+      window.removeEventListener("messages:unread-sync", handleUnreadSync)
+      window.removeEventListener("focus", handleWindowFocus)
+    }
+  }, [fetchUnreadCount])
 
   const handleLogout = () => {
     logout()

@@ -6,6 +6,7 @@ import { ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { ItemsAPI } from "@/lib/api/items"
+import { getImageUrls } from "@/lib/api/config"
 
 type CardAuction = {
   id: string
@@ -28,11 +29,11 @@ export function LiveAuctionsSection() {
       try {
         const items = await ItemsAPI.getHot(8)
         const mapped: CardAuction[] = items
-          .filter(i => i.auctionStatus === "active")
+          .filter(i => i.auctionStatus === "active" && i.auctionId) // Chỉ lấy items có auctionId
           .map(i => ({
-            id: String(i.id),
+            id: String(i.auctionId!), // Chỉ dùng auctionId, không fallback
             title: i.title,
-            image: (i.images && i.images[0]) || "/placeholder.jpg",
+            image: getImageUrls(i.images)[0] || "/placeholder.jpg",
             currentBid: Number(i.currentBid || i.startingBid || 0),
             startingBid: Number(i.startingBid || 0),
             endTime: i.auctionEndTime ? new Date(i.auctionEndTime) as any : new Date(),

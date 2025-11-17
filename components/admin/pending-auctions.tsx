@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +17,8 @@ import { Check, X, Eye, Loader2, Search } from "lucide-react"
 import { ItemsAPI } from "@/lib/api/items"
 import { ItemResponseDto, CategoryDto } from "@/lib/api/types"
 import { useToast } from "@/hooks/use-toast"
+import { getImageUrls } from "@/lib/api/config"
+import { createAuctionHubConnection } from "@/lib/realtime/auctionHub"
 
 export function PendingAuctions() {
   const { toast } = useToast()
@@ -43,25 +45,7 @@ export function PendingAuctions() {
   const [selectedItem, setSelectedItem] = useState<ItemResponseDto | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
 
-  useEffect(() => {
-    fetchCategories()
-    fetchPendingItems()
-  }, [])
-
-  useEffect(() => {
-    fetchPendingItems()
-  }, [selectedCategory, sortBy, sortOrder, page])
-
-  const fetchCategories = async () => {
-    try {
-      const cats = await ItemsAPI.getCategories()
-      setCategories(cats)
-    } catch (error) {
-      console.error("Error fetching categories:", error)
-    }
-  }
-
-  const fetchPendingItems = async () => {
+  const fetchPendingItems = useCallback(async () => {
     try {
       setLoading(true)
       const result = await ItemsAPI.getAllWithFilter({
@@ -86,6 +70,23 @@ export function PendingAuctions() {
     } finally {
       setLoading(false)
     }
+  }, [selectedCategory, sortBy, sortOrder, page, pageSize, toast])
+
+  useEffect(() => {
+    fetchCategories()
+  }, [])
+
+  useEffect(() => {
+    fetchPendingItems()
+  }, [fetchPendingItems])
+
+  const fetchCategories = async () => {
+    try {
+      const cats = await ItemsAPI.getCategories()
+      setCategories(cats)
+    } catch (error) {
+      console.error("Error fetching categories:", error)
+    }
   }
 
   // Client-side search filter
@@ -104,6 +105,40 @@ export function PendingAuctions() {
     })
     setItems(filtered)
   }, [searchQuery, allItems])
+
+  useEffect(() => {
+    const connection = createAuctionHubConnection()
+    let mounted = true
+    const startPromise = (async () => {
+      try {
+        await connection.start()
+        if (!mounted) {
+          await connection.stop()
+          return
+        }
+        await connection.invoke("JoinAdminSection", "pending")
+      } catch (error) {
+        console.error("Pending auctions SignalR connection error:", error)
+      }
+    })()
+
+    connection.on("AdminPendingItemsChanged", () => {
+      fetchPendingItems()
+    })
+
+    return () => {
+      mounted = false
+      connection.off("AdminPendingItemsChanged")
+      startPromise
+        .catch(() => {})
+        .finally(() => {
+          if (connection.state === "Connected") {
+            connection.invoke("LeaveAdminSection", "pending").catch(() => {})
+          }
+          connection.stop().catch(() => {})
+        })
+    }
+  }, [fetchPendingItems])
 
   const handleApprove = async (itemId: number) => {
     try {
@@ -178,27 +213,8 @@ export function PendingAuctions() {
   }
 
   const getImageUrl = (images?: string | string[]) => {
-    if (!images) return "/placeholder.svg"
-    
-    // If it's a string, try to parse as JSON
-    if (typeof images === "string") {
-      try {
-        const parsed = JSON.parse(images)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed[0]
-        }
-        return images
-      } catch {
-        return images
-      }
-    }
-    
-    // If it's an array
-    if (Array.isArray(images) && images.length > 0) {
-      return images[0]
-    }
-    
-    return "/placeholder.svg"
+    const urls = getImageUrls(images)
+    return urls[0] || "/placeholder.svg"
   }
 
   const handleResetFilters = () => {
@@ -482,20 +498,10 @@ export function PendingAuctions() {
                   <h3 className="text-sm font-medium mb-2">Hình ảnh</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {(() => {
-                      const images = typeof selectedItem.images === 'string' 
-                        ? (() => {
-                            try {
-                              const parsed = JSON.parse(selectedItem.images)
-                              return Array.isArray(parsed) ? parsed : [selectedItem.images]
-                            } catch {
-                              return [selectedItem.images]
-                            }
-                          })()
-                        : Array.isArray(selectedItem.images) 
-                          ? selectedItem.images 
-                          : []
+                      // Sử dụng getImageUrls để tạo URLs đầy đủ cho tất cả ảnh
+                      const imageUrls = getImageUrls(selectedItem.images)
                       
-                      if (images.length === 0) {
+                      if (imageUrls.length === 0 || (imageUrls.length === 1 && imageUrls[0] === "/placeholder.svg")) {
                         return (
                           <div className="aspect-square rounded-lg bg-muted flex items-center justify-center">
                             <span className="text-muted-foreground">Không có hình ảnh</span>
@@ -503,10 +509,10 @@ export function PendingAuctions() {
                         )
                       }
                       
-                      return images.map((img, idx) => (
+                      return imageUrls.map((imgUrl, idx) => (
                         <img
                           key={idx}
-                          src={img}
+                          src={imgUrl}
                           alt={`${selectedItem.title} - ${idx + 1}`}
                           className="aspect-square rounded-lg object-cover w-full"
                         />

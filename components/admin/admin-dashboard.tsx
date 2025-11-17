@@ -8,12 +8,13 @@ import { DisputeManagement } from "./dispute-management"
 import { PlatformAnalytics } from "./platform-analytics"
 import { AllAuctionsManagement } from "./all-auctions-management"
 import { CategoryManagement } from "./category-management"
+import { AdminMessaging } from "./admin-messaging"
 
 export function AdminDashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Bảng điều khiển quản trị</h1>
+        <h1 className="text-3xl font-bold text-foreground">Tổng quan hệ thống</h1>
         <p className="text-muted-foreground">Quản lý nền tảng và giám sát hoạt động</p>
       </div>
 
@@ -24,8 +25,9 @@ export function AdminDashboard() {
           <TabsTrigger value="auctions">Sản phẩm</TabsTrigger>
           <TabsTrigger value="pending">Chờ duyệt</TabsTrigger>
           <TabsTrigger value="users">Người dùng</TabsTrigger>
-          <TabsTrigger value="disputes">Tranh chấp</TabsTrigger>
+          {/* <TabsTrigger value="disputes">Tranh chấp</TabsTrigger> */}
           <TabsTrigger value="categories">Danh mục</TabsTrigger>
+        
           <TabsTrigger value="analytics">Phân tích</TabsTrigger>
         </TabsList>
 
@@ -48,6 +50,8 @@ export function AdminDashboard() {
         <TabsContent value="categories" className="mt-6">
           <CategoryManagement />
         </TabsContent>
+
+       
 
         <TabsContent value="analytics" className="mt-6">
           <PlatformAnalytics />

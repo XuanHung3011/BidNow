@@ -24,16 +24,22 @@ import {
 import { BidHistory } from "@/components/bid-history"
 import { LiveChat } from "@/components/live-chat"
 import { AutoBidDialog } from "@/components/auto-bid-dialog"
-import { AuctionsAPI, FavoriteSellersAPI, type AuctionDetailDto } from "@/lib/api"
-
+import { AuctionsAPI, FavoriteSellersAPI, type AuctionDetailDto,type FavoriteSellerResponseDto } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
+import { createAuctionHubConnection, type BidPlacedPayload } from "@/lib/realtime/auctionHub"
+import { getImageUrls } from "@/lib/api/config"
+import { WatchlistAPI } from "@/lib/api"
 
 interface AuctionDetailProps {
   auctionId: string
 }
 
 export function AuctionDetail({ auctionId }: AuctionDetailProps) {
+  const { user } = useAuth()
   const [timeLeft, setTimeLeft] = useState("")
   const [bidAmount, setBidAmount] = useState("")
+  const [placing, setPlacing] = useState(false)
+  const [placeError, setPlaceError] = useState<string | null>(null)
   const [isWatching, setIsWatching] = useState(false)
   const [selectedImage, setSelectedImage] = useState(0)
   
@@ -46,7 +52,10 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const [isFavoriteSeller, setIsFavoriteSeller] = useState(false)
   const [loadingFavorite, setLoadingFavorite] = useState(false)
   const [favoriteMessage, setFavoriteMessage] = useState<string | null>(null)
-  
+  //watch list
+  const [loadingWatchlist, setLoadingWatchlist] = useState(false)
+  const [watchlistMessage, setWatchlistMessage] = useState<string | null>(null)
+
   // Fetch auction detail
   useEffect(() => {
     let mounted = true
@@ -74,6 +83,52 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     return () => { mounted = false }
   }, [auctionId])
   
+  // SignalR: subscribe to BidPlaced and update UI in real-time
+  useEffect(() => {
+    let isMounted = true
+    const connection = createAuctionHubConnection()
+    let started = false
+
+    const start = async () => {
+      try {
+        await connection.start()
+        started = true
+        await connection.invoke("JoinAuctionGroup", String(auctionId))
+      } catch (e) {
+        // ignore transient connection errors
+      }
+    }
+
+    connection.on("BidPlaced", (payload: BidPlacedPayload) => {
+      if (!isMounted) return
+      if (!auction) return
+      if (payload.auctionId !== Number(auctionId)) return
+      setAuction({
+        ...auction,
+        currentBid: payload.currentBid,
+        bidCount: payload.bidCount,
+      })
+    })
+
+    start()
+
+    return () => {
+      isMounted = false
+      const leaveAndStop = async () => {
+        try {
+          if (started) {
+            await connection.invoke("LeaveAuctionGroup", String(auctionId))
+            await connection.stop()
+          }
+        } catch {
+          // ignore
+        }
+      }
+      void leaveAndStop()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auctionId, auction?.id])
+
   // Check if seller is favorite
   useEffect(() => {
     if (!auction?.sellerId) return
@@ -93,6 +148,25 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     checkFavorite()
     return () => { mounted = false }
   }, [auction?.sellerId])
+
+  // 3. USEEFFECT - Thêm useEffect mới để check watchlist
+  useEffect(() => {
+    if (!user?.id || !auctionId) return
+
+    let mounted = true
+    const checkWatchlist = async () => {
+      try {
+        const exists = await WatchlistAPI.checkExists(Number(user.id), Number(auctionId))
+        if (!mounted) return
+        setIsWatching(exists)
+      } catch (err) {
+        console.error('Failed to check watchlist:', err)
+      }
+    }
+
+    checkWatchlist()
+    return () => { mounted = false }
+  }, [user?.id, auctionId])
   
   // Update countdown timer
   useEffect(() => {
@@ -127,39 +201,42 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     }).format(price)
   }
 
-const addFavoriteSeller = async () => {
-  if (!auction?.sellerId) return
-  if (isFavoriteSeller) return
-  
-  setLoadingFavorite(true)
-  setFavoriteMessage(null)
-  
-  try {
-    console.log('=== Adding favorite seller ===')
-    console.log('SellerId:', auction.sellerId)
-    console.log('Current user:', localStorage.getItem('bidnow_user'))
+  // Toggle favorite seller
+  const toggleFavoriteSeller = async () => {
+    if (!auction?.sellerId) return
     
-    const result = await FavoriteSellersAPI.addFavorite(auction.sellerId)
+    setLoadingFavorite(true)
+    setFavoriteMessage(null)
     
-    console.log('Add favorite result:', result)
-    
-    if (result.success) {
-      setIsFavoriteSeller(true)
+    try {
+      let result: FavoriteSellerResponseDto
+      
+      if (isFavoriteSeller) {
+        // Nếu đã yêu thích -> XÓA
+        result = await FavoriteSellersAPI.removeFavorite(auction.sellerId)
+        if (result.success) {
+          setIsFavoriteSeller(false)
+        }
+      } else {
+        // Nếu chưa yêu thích -> THÊM
+        result = await FavoriteSellersAPI.addFavorite(auction.sellerId)
+        if (result.success) {
+          setIsFavoriteSeller(true)
+        }
+      }
+      
+      // Luôn hiển thị message từ API
       setFavoriteMessage(result.message)
       setTimeout(() => setFavoriteMessage(null), 3000)
-    } else {
-      setFavoriteMessage(result.message)
+      
+    } catch (err: any) {
+      console.error('Toggle favorite error:', err)
+      setFavoriteMessage(err.message || "Không thể thực hiện thao tác. Vui lòng đăng nhập.")
       setTimeout(() => setFavoriteMessage(null), 3000)
+    } finally {
+      setLoadingFavorite(false)
     }
-  } catch (err: any) {
-    console.error('=== Add favorite error ===')
-    console.error('Error details:', err)
-    setFavoriteMessage(err.message || "Không thể thêm vào yêu thích")
-    setTimeout(() => setFavoriteMessage(null), 3000)
-  } finally {
-    setLoadingFavorite(false)
   }
-}
 
   // Loading state
   if (loading) {
@@ -181,10 +258,48 @@ const addFavoriteSeller = async () => {
     )
   }
 
-  // Parse images from comma-separated string
-  const images = auction.itemImages 
-    ? auction.itemImages.split(',').map(img => img.trim())
-    : ['/placeholder.jpg']
+  //  FUNCTION - Thêm function toggleWatchlist
+  const toggleWatchlist = async () => {
+    if (!user?.id) {
+      setWatchlistMessage("Vui lòng đăng nhập để thêm vào danh sách theo dõi")
+      setTimeout(() => setWatchlistMessage(null), 3000)
+      return
+    }
+
+    setLoadingWatchlist(true)
+    setWatchlistMessage(null)
+
+    try {
+      const request = {
+        userId: Number(user.id),
+        auctionId: Number(auctionId)
+      }
+
+      let result: { message: string }
+
+      if (isWatching) {
+        result = await WatchlistAPI.remove(request)
+        setIsWatching(false)
+      } else {
+        result = await WatchlistAPI.add(request)
+        setIsWatching(true)
+      }
+
+      setWatchlistMessage(result.message)
+      setTimeout(() => setWatchlistMessage(null), 3000)
+
+    } catch (err: any) {
+      console.error('Toggle watchlist error:', err)
+      setWatchlistMessage(err.message || "Không thể thực hiện thao tác")
+      setTimeout(() => setWatchlistMessage(null), 3000)
+    } finally {
+      setLoadingWatchlist(false)
+    }
+  }
+
+
+  // Parse images từ comma-separated string và tạo URLs đầy đủ
+  const images = getImageUrls(auction.itemImages)
 
   const minIncrement = 500000 // Có thể lấy từ config hoặc API
   const suggestedBid = (auction.currentBid || auction.startingBid) + minIncrement
@@ -220,15 +335,30 @@ const addFavoriteSeller = async () => {
                 size="icon"
                 variant="secondary"
                 className="bg-background/90 backdrop-blur"
-                onClick={() => setIsWatching(!isWatching)}
+                onClick={toggleWatchlist}
+                disabled={loadingWatchlist}
+                title={isWatching ? "Bỏ theo dõi" : "Thêm vào theo dõi"}
               >
-                <Heart className={`h-5 w-5 ${isWatching ? "fill-accent text-accent" : ""}`} />
+                {loadingWatchlist ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Heart className={`h-5 w-5 transition-all duration-300 ${isWatching ? "fill-accent text-accent scale-110" : ""
+                    }`} />
+                )}
               </Button>
-              <Button size="icon" variant="secondary" className="bg-background/90 backdrop-blur">
-                <Share2 className="h-5 w-5" />
-              </Button>
+
             </div>
           </div>
+          {watchlistMessage && (
+            <div className={`mx-4 mt-4 rounded-lg border p-3 text-sm ${watchlistMessage.toLowerCase().includes('error') ||
+                watchlistMessage.toLowerCase().includes('fail') ||
+                watchlistMessage.toLowerCase().includes('không thể')
+                ? 'bg-red-50 border-red-200 text-red-800'
+                : 'bg-green-50 border-green-200 text-green-800'
+              }`}>
+              {watchlistMessage}
+            </div>
+          )}
 
           <div className="flex gap-2 overflow-x-auto p-4">
             {images.map((image, index) => (
@@ -275,7 +405,7 @@ const addFavoriteSeller = async () => {
             </TabsContent>
 
             <TabsContent value="history" className="mt-6">
-              <BidHistory />
+              <BidHistory auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} />
             </TabsContent>
 
             <TabsContent value="seller" className="mt-6">
@@ -287,26 +417,36 @@ const addFavoriteSeller = async () => {
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <h3 className="text-2xl font-semibold text-foreground">{seller.name}</h3>
-                      {/* Button thêm seller yêu thích */}
+                      {/* Button toggle yêu thích */}
                       <Button
                         size="sm"
                         variant={isFavoriteSeller ? "secondary" : "default"}
-                        onClick={addFavoriteSeller}
-                        disabled={loadingFavorite || isFavoriteSeller}
-                        className="flex items-center gap-2"
+                        onClick={toggleFavoriteSeller}
+                        disabled={loadingFavorite}
+                        className={`flex items-center gap-2 transition-all duration-300 ${
+                          isFavoriteSeller ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200' : ''
+                        }`}
                       >
                         {loadingFavorite ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <Heart className={`h-4 w-4 ${isFavoriteSeller ? "fill-current" : ""}`} />
+                          <Heart
+                            className={`h-4 w-4 transition-all duration-300 ${
+                              isFavoriteSeller ? "fill-red-500 text-red-500 scale-110" : ""
+                            }`}
+                          />
                         )}
-                        {isFavoriteSeller ? "Đã yêu thích" : "Yêu thích"}
+                        {isFavoriteSeller ? "Bỏ yêu thích" : "Yêu thích"}
                       </Button>
                     </div>
 
                     {/* Hiển thị message */}
                     {favoriteMessage && (
-                      <div className="mt-3 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-800">
+                      <div className={`mt-3 rounded-lg border p-3 text-sm ${
+                        favoriteMessage.includes('thành công') || favoriteMessage.includes('Đã')
+                          ? 'bg-green-50 border-green-200 text-green-800'
+                          : 'bg-red-50 border-red-200 text-red-800'
+                      }`}>
                         {favoriteMessage}
                       </div>
                     )}
@@ -427,8 +567,37 @@ const addFavoriteSeller = async () => {
                 onChange={(e) => setBidAmount(e.target.value)}
                 className="flex-1"
               />
-              <Button className="px-6">Đặt giá</Button>
+              <Button 
+                className="px-6"
+                disabled={placing || !user}
+                onClick={async () => {
+                  if (!auction) return
+                  setPlaceError(null)
+                  const amount = Number(bidAmount)
+                  if (!amount || isNaN(amount)) { setPlaceError("Vui lòng nhập số hợp lệ"); return }
+                  if (amount < suggestedBid) { setPlaceError(`Giá tối thiểu ${formatPrice(suggestedBid)}`); return }
+                  if (!user) { setPlaceError("Bạn cần đăng nhập để đặt giá"); return }
+                  try {
+                    setPlacing(true)
+                    const res = await AuctionsAPI.placeBid(Number(auctionId), { bidderId: Number(user.id), amount })
+                    // Update UI with new values
+                    setAuction({
+                      ...auction,
+                      currentBid: res.currentBid,
+                      bidCount: res.bidCount,
+                    })
+                    setBidAmount("")
+                  } catch (err: any) {
+                    setPlaceError(err.message || "Đặt giá thất bại")
+                  } finally {
+                    setPlacing(false)
+                  }
+                }}
+              >
+                {placing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Đặt giá"}
+              </Button>
             </div>
+            {placeError && <div className="text-sm text-destructive">{placeError}</div>}
 
             <div className="flex gap-2">
               <Button

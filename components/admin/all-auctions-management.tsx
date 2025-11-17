@@ -1,13 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Eye, Ban } from "lucide-react"
+import { Search, Eye, Ban, ChevronLeft, ChevronRight } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -16,70 +16,111 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-
-const mockAuctions = [
-  {
-    id: 1,
-    title: "iPhone 15 Pro Max 256GB",
-    seller: "Nguyễn Văn A",
-    category: "Điện tử",
-    currentBid: 25000000,
-    startPrice: 20000000,
-    endTime: "2024-01-20 15:00",
-    status: "active",
-    bids: 45,
-  },
-  {
-    id: 2,
-    title: "Đồng hồ Rolex Submariner",
-    seller: "Trần Thị B",
-    category: "Sưu tầm",
-    currentBid: 180000000,
-    startPrice: 150000000,
-    endTime: "2024-01-21 18:00",
-    status: "active",
-    bids: 32,
-  },
-  {
-    id: 3,
-    title: "Tranh sơn dầu trừu tượng",
-    seller: "Lê Văn C",
-    category: "Nghệ thuật",
-    currentBid: 15000000,
-    startPrice: 10000000,
-    endTime: "2024-01-19 20:00",
-    status: "active",
-    bids: 18,
-  },
-  {
-    id: 4,
-    title: "MacBook Pro M3 Max",
-    seller: "Phạm Thị D",
-    category: "Điện tử",
-    currentBid: 0,
-    startPrice: 45000000,
-    endTime: "2024-01-25 10:00",
-    status: "scheduled",
-    bids: 0,
-  },
-  {
-    id: 5,
-    title: "Túi xách Louis Vuitton",
-    seller: "Hoàng Văn E",
-    category: "Thời trang",
-    currentBid: 35000000,
-    startPrice: 30000000,
-    endTime: "2024-01-18 14:00",
-    status: "completed",
-    bids: 67,
-  },
-]
+import { AdminAuctionsAPI, AuctionListItemDto, AuctionDetailDto } from "@/lib/api/admin-auctions"
+import { useToast } from "@/hooks/use-toast"
+import { createAuctionHubConnection } from "@/lib/realtime/auctionHub"
 
 export function AllAuctionsManagement() {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [selectedAuction, setSelectedAuction] = useState<any>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(10)
+  const [auctions, setAuctions] = useState<AuctionListItemDto[]>([])
+  const [selectedAuction, setSelectedAuction] = useState<AuctionDetailDto | null>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [totalCount, setTotalCount] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [suspendingId, setSuspendingId] = useState<number | null>(null)
+  const { toast } = useToast()
+
+  // Fetch auctions
+  const fetchAuctions = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const result = await AdminAuctionsAPI.getAll({
+        searchTerm: searchQuery || undefined,
+        statuses: statusFilter !== "all" ? statusFilter : undefined,
+        page,
+        pageSize,
+      })
+      setAuctions(result.data)
+      setTotalCount(result.totalCount)
+      setTotalPages(result.totalPages)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load auctions")
+      console.error("Error fetching auctions:", err)
+    } finally {
+      setLoading(false)
+    }
+  }, [searchQuery, statusFilter, page, pageSize])
+
+  // Fetch auction detail
+  const fetchAuctionDetail = useCallback(async (id: number) => {
+    try {
+      const detail = await AdminAuctionsAPI.getById(id)
+      setSelectedAuction(detail)
+      setShowDetailDialog(true)
+    } catch (err) {
+      console.error("Error fetching auction detail:", err)
+      setError(err instanceof Error ? err.message : "Failed to load auction detail")
+    }
+  }, [])
+
+  // Load auctions on mount and when filters change
+  useEffect(() => {
+    fetchAuctions()
+  }, [fetchAuctions])
+
+  useEffect(() => {
+    const connection = createAuctionHubConnection()
+    let mounted = true
+    const startPromise = (async () => {
+      try {
+        await connection.start()
+        if (!mounted) {
+          await connection.stop()
+          return
+        }
+        await connection.invoke("JoinAdminSection", "auctions")
+      } catch (error) {
+        console.error("Admin auctions SignalR connection error:", error)
+      }
+    })()
+
+    connection.on("AdminAuctionStatusUpdated", () => {
+      fetchAuctions()
+    })
+
+    return () => {
+      mounted = false
+      connection.off("AdminAuctionStatusUpdated")
+      startPromise
+        .catch(() => {})
+        .finally(() => {
+          if (connection.state === "Connected") {
+            connection.invoke("LeaveAdminSection", "auctions").catch(() => {})
+          }
+          connection.stop().catch(() => {})
+        })
+    }
+  }, [fetchAuctions])
+
+  // Reset to page 1 when search or filter changes
+  useEffect(() => {
+    setPage(1)
+  }, [searchQuery, statusFilter])
+
+  // Debounce search
+  const [searchDebounce, setSearchDebounce] = useState("")
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchDebounce)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [searchDebounce])
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -89,30 +130,62 @@ export function AllAuctionsManagement() {
         return <Badge className="bg-blue-500">Sắp diễn ra</Badge>
       case "completed":
         return <Badge className="bg-gray-500">Đã kết thúc</Badge>
-      case "suspended":
+      case "cancelled":
         return <Badge className="bg-red-500">Đã tạm dừng</Badge>
       default:
         return <Badge>{status}</Badge>
     }
   }
 
-  const handleViewDetails = (auction: any) => {
-    setSelectedAuction(auction)
-    setShowDetailDialog(true)
+  const handleViewDetails = (auction: AuctionListItemDto) => {
+    fetchAuctionDetail(auction.id)
   }
 
-  const handleSuspendAuction = (auctionId: number) => {
-    console.log("[v0] Suspending auction:", auctionId)
-    // Logic to suspend auction
+  const handleSuspendAuction = useCallback(
+    async (auctionId: number) => {
+      const confirmed = window.confirm("Bạn có chắc muốn tạm dừng phiên đấu giá này? Hành động này không thể hoàn tác.")
+      if (!confirmed) return
+      setSuspendingId(auctionId)
+      try {
+        await AdminAuctionsAPI.updateStatus(auctionId, "cancelled")
+        toast({
+          title: "Đã tạm dừng phiên đấu giá",
+          description: "Trạng thái phiên đã được cập nhật thành công.",
+        })
+        fetchAuctions()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Không thể tạm dừng phiên đấu giá."
+        setError(message)
+        toast({
+          title: "Lỗi",
+          description: message,
+          variant: "destructive",
+        })
+      } finally {
+        setSuspendingId(null)
+      }
+    },
+    [fetchAuctions, toast]
+  )
+
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString)
+      return new Intl.DateTimeFormat("vi-VN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(date)
+    } catch {
+      return dateString
+    }
   }
 
-  const filteredAuctions = mockAuctions.filter((auction) => {
-    const matchesSearch =
-      auction.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      auction.seller.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = statusFilter === "all" || auction.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("vi-VN").format(amount) + "đ"
+  }
 
   return (
     <Card>
@@ -125,8 +198,8 @@ export function AllAuctionsManagement() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Tìm kiếm sản phẩm hoặc người bán..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchDebounce}
+              onChange={(e) => setSearchDebounce(e.target.value)}
               className="pl-10"
             />
           </div>
@@ -139,10 +212,16 @@ export function AllAuctionsManagement() {
               <SelectItem value="active">Đang diễn ra</SelectItem>
               <SelectItem value="scheduled">Sắp diễn ra</SelectItem>
               <SelectItem value="completed">Đã kết thúc</SelectItem>
-              <SelectItem value="suspended">Đã tạm dừng</SelectItem>
+              <SelectItem value="cancelled">Đã tạm dừng</SelectItem>
             </SelectContent>
           </Select>
         </div>
+
+        {error && (
+          <div className="mb-4 rounded-md bg-destructive/10 p-4 text-destructive">
+            {error}
+          </div>
+        )}
 
         <div className="rounded-md border">
           <Table>
@@ -159,36 +238,91 @@ export function AllAuctionsManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAuctions.map((auction) => (
-                <TableRow key={auction.id}>
-                  <TableCell className="font-medium">{auction.title}</TableCell>
-                  <TableCell>{auction.seller}</TableCell>
-                  <TableCell>{auction.category}</TableCell>
-                  <TableCell>
-                    {auction.currentBid > 0
-                      ? `${auction.currentBid.toLocaleString("vi-VN")}đ`
-                      : `${auction.startPrice.toLocaleString("vi-VN")}đ`}
-                  </TableCell>
-                  <TableCell>{auction.bids}</TableCell>
-                  <TableCell>{getStatusBadge(auction.status)}</TableCell>
-                  <TableCell>{auction.endTime}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="icon" onClick={() => handleViewDetails(auction)}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      {auction.status === "active" && (
-                        <Button variant="ghost" size="icon" onClick={() => handleSuspendAuction(auction.id)}>
-                          <Ban className="h-4 w-4 text-red-500" />
-                        </Button>
-                      )}
-                    </div>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8">
+                    Đang tải...
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : auctions.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    Không tìm thấy phiên đấu giá nào
+                  </TableCell>
+                </TableRow>
+              ) : (
+                auctions.map((auction) => (
+                  <TableRow key={auction.id}>
+                    <TableCell className="font-medium">{auction.itemTitle}</TableCell>
+                    <TableCell>{auction.sellerName || "N/A"}</TableCell>
+                    <TableCell>{auction.categoryName || "N/A"}</TableCell>
+                    <TableCell>
+                      {auction.currentBid && auction.currentBid > 0
+                        ? formatCurrency(auction.currentBid)
+                        : formatCurrency(auction.startingBid)}
+                    </TableCell>
+                    <TableCell>{auction.bidCount}</TableCell>
+                    <TableCell>{getStatusBadge(auction.displayStatus)}</TableCell>
+                    <TableCell>{formatDate(auction.endTime)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => handleViewDetails(auction)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {auction.displayStatus === "active" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleSuspendAuction(auction.id)}
+                            disabled={suspendingId === auction.id}
+                          >
+                            <Ban
+                              className={`h-4 w-4 ${
+                                suspendingId === auction.id ? "animate-pulse text-muted-foreground" : "text-red-500"
+                              }`}
+                            />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>
+
+        {/* Pagination */}
+        {!loading && totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Hiển thị {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, totalCount)} trong tổng số {totalCount} phiên đấu giá
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Trước
+              </Button>
+              <div className="text-sm">
+                Trang {page} / {totalPages}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                Sau
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
           <DialogContent className="max-w-2xl">
@@ -196,20 +330,20 @@ export function AllAuctionsManagement() {
               <DialogTitle>Chi tiết phiên đấu giá</DialogTitle>
               <DialogDescription>Thông tin chi tiết về sản phẩm và phiên đấu giá</DialogDescription>
             </DialogHeader>
-            {selectedAuction && (
+            {selectedAuction ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Tên sản phẩm</p>
-                    <p className="text-base font-semibold">{selectedAuction.title}</p>
+                    <p className="text-base font-semibold">{selectedAuction.itemTitle}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Người bán</p>
-                    <p className="text-base font-semibold">{selectedAuction.seller}</p>
+                    <p className="text-base font-semibold">{selectedAuction.sellerName || "N/A"}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Danh mục</p>
-                    <p className="text-base font-semibold">{selectedAuction.category}</p>
+                    <p className="text-base font-semibold">{selectedAuction.categoryName || "N/A"}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Trạng thái</p>
@@ -217,36 +351,50 @@ export function AllAuctionsManagement() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Giá khởi điểm</p>
-                    <p className="text-base font-semibold">{selectedAuction.startPrice.toLocaleString("vi-VN")}đ</p>
+                    <p className="text-base font-semibold">{formatCurrency(selectedAuction.startingBid)}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Giá hiện tại</p>
                     <p className="text-base font-semibold text-primary">
-                      {selectedAuction.currentBid > 0
-                        ? `${selectedAuction.currentBid.toLocaleString("vi-VN")}đ`
+                      {selectedAuction.currentBid && selectedAuction.currentBid > 0
+                        ? formatCurrency(selectedAuction.currentBid)
                         : "Chưa có giá thầu"}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Số lượt đấu giá</p>
-                    <p className="text-base font-semibold">{selectedAuction.bids}</p>
+                    <p className="text-base font-semibold">{selectedAuction.bidCount || 0}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Thời gian kết thúc</p>
-                    <p className="text-base font-semibold">{selectedAuction.endTime}</p>
+                    <p className="text-base font-semibold">{formatDate(selectedAuction.endTime)}</p>
                   </div>
+                  {selectedAuction.itemDescription && (
+                    <div className="col-span-2">
+                      <p className="text-sm font-medium text-muted-foreground">Mô tả</p>
+                      <p className="text-base">{selectedAuction.itemDescription}</p>
+                    </div>
+                  )}
                 </div>
               </div>
+            ) : (
+              <div className="py-4 text-center text-muted-foreground">Đang tải chi tiết...</div>
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowDetailDialog(false)}>
                 Đóng
               </Button>
-              {selectedAuction?.status === "active" && (
-                <Button variant="destructive" onClick={() => handleSuspendAuction(selectedAuction.id)}>
-                  <Ban className="mr-2 h-4 w-4" />
-                  Tạm dừng phiên đấu giá
-                </Button>
+              {selectedAuction &&
+                selectedAuction.status?.toLowerCase() === "active" &&
+                new Date(selectedAuction.endTime) > new Date() && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => handleSuspendAuction(selectedAuction.id)}
+                    disabled={suspendingId === selectedAuction.id}
+                  >
+                    <Ban className="mr-2 h-4 w-4" />
+                    {suspendingId === selectedAuction.id ? "Đang tạm dừng..." : "Tạm dừng phiên đấu giá"}
+                  </Button>
               )}
             </DialogFooter>
           </DialogContent>
