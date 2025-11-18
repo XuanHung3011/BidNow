@@ -66,8 +66,12 @@ export const WatchlistAPI = {
     try {
       const url = `${API_BASE}${API_ENDPOINTS.WATCHLIST.GET_BY_USER_AUCTION(userId, auctionId)}`
       const res = await fetch(url, { cache: 'no-store' })
-      return res.ok
+      // 404 means item doesn't exist in watchlist, which is fine
+      if (res.status === 404) return false
+      if (!res.ok) return false
+      return true
     } catch {
+      // Network error or other issues - assume not in watchlist
       return false
     }
   }
