@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Search, Bell, User, Gavel, LogOut, Settings, Package, ShoppingBag, Shield, MessageSquare, ArrowUpDown } from "lucide-react"
+import { Search, Bell, User, Gavel, LogOut, Settings, Package, ShoppingBag, Shield, MessageSquare, ArrowUpDown, Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import {
   DropdownMenu,
@@ -16,18 +16,32 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
+import { NotificationsAPI } from "@/lib/api/notifications"
+import { NotificationResponseDto } from "@/lib/api/types"
 import { MessagesAPI } from "@/lib/api/messages"
 import { createMessageHubConnection } from "@/lib/realtime/messageHub"
 import type { MessageResponseDto } from "@/lib/api/types"
+import { useToast } from "@/hooks/use-toast"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 export function Header() {
   const { user, logout, switchRole } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
+  
+  // Notifications state
+  const [notifications, setNotifications] = useState<NotificationResponseDto[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false)
+  
+  // Messages state
   const [unreadMessages, setUnreadMessages] = useState(0)
-
+  
   const userIdNumber = user?.id ? Number(user.id) : null
 
-  const fetchUnreadCount = useCallback(async () => {
+  // Fetch unread messages count
+  const fetchUnreadMessagesCount = useCallback(async () => {
     if (!userIdNumber) {
       setUnreadMessages(0)
       return
@@ -41,9 +55,67 @@ export function Header() {
     }
   }, [userIdNumber])
 
+  // Fetch unread notifications count
+  const fetchUnreadNotificationsCount = useCallback(async () => {
+    if (!user) return
+    
+    try {
+      const count = await NotificationsAPI.getUnreadCount(parseInt(user.id))
+      setUnreadCount(count)
+    } catch (error) {
+      console.error("Error fetching unread notifications count:", error)
+    }
+  }, [user])
+
+  // Fetch notifications list
+  const fetchNotifications = useCallback(async () => {
+    if (!user) return
+    
+    try {
+      setLoadingNotifications(true)
+      const data = await NotificationsAPI.getUnread(parseInt(user.id), 1, 10)
+      setNotifications(data)
+    } catch (error) {
+      console.error("Error fetching notifications:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải thông báo",
+        variant: "destructive"
+      })
+    } finally {
+      setLoadingNotifications(false)
+    }
+  }, [user, toast])
+
+  // Initial load và auto refresh for notifications
   useEffect(() => {
-    fetchUnreadCount()
-  }, [fetchUnreadCount])
+    if (!user) {
+      setNotifications([])
+      setUnreadCount(0)
+      return
+    }
+
+    fetchUnreadNotificationsCount()
+    
+    // Auto refresh mỗi 30 giây
+    const interval = setInterval(() => {
+      fetchUnreadNotificationsCount()
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [user, fetchUnreadNotificationsCount])
+
+  // Load notifications khi mở dropdown
+  useEffect(() => {
+    if (notificationDropdownOpen && user) {
+      fetchNotifications()
+    }
+  }, [notificationDropdownOpen, user, fetchNotifications])
+
+  // Messages: Initial load và SignalR connection
+  useEffect(() => {
+    fetchUnreadMessagesCount()
+  }, [fetchUnreadMessagesCount])
 
   useEffect(() => {
     if (!userIdNumber) return
@@ -98,12 +170,12 @@ export function Header() {
       if (typeof customEvent.detail?.count === "number") {
         setUnreadMessages(customEvent.detail.count)
       } else {
-        fetchUnreadCount()
+        fetchUnreadMessagesCount()
       }
     }
 
     const handleWindowFocus = () => {
-      fetchUnreadCount()
+      fetchUnreadMessagesCount()
     }
 
     window.addEventListener("messages:unread-sync", handleUnreadSync)
@@ -113,7 +185,82 @@ export function Header() {
       window.removeEventListener("messages:unread-sync", handleUnreadSync)
       window.removeEventListener("focus", handleWindowFocus)
     }
-  }, [fetchUnreadCount])
+  }, [fetchUnreadMessagesCount])
+
+  // Mark notification as read
+  const handleMarkAsRead = async (notificationId: number) => {
+    if (!user) return
+    
+    try {
+      await NotificationsAPI.markAsRead(notificationId, parseInt(user.id))
+      // Update local state
+      setNotifications(prev => 
+        prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
+      )
+      setUnreadCount(prev => Math.max(0, prev - 1))
+    } catch (error) {
+      console.error("Error marking notification as read:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể đánh dấu đã đọc",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Mark all notifications as read
+  const handleMarkAllAsRead = async () => {
+    if (!user) return
+    
+    try {
+      await NotificationsAPI.markAllAsRead(parseInt(user.id))
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+      setUnreadCount(0)
+      toast({
+        title: "Thành công",
+        description: "Đã đánh dấu tất cả đã đọc"
+      })
+    } catch (error) {
+      console.error("Error marking all as read:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể đánh dấu tất cả đã đọc",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Handle notification click
+  const handleNotificationClick = async (notification: NotificationResponseDto) => {
+    if (!notification.isRead) {
+      await handleMarkAsRead(notification.id)
+    }
+    
+    if (notification.link) {
+      setNotificationDropdownOpen(false)
+      // Use replace to update URL and trigger re-render
+      router.replace(notification.link)
+      // Force a small delay to ensure navigation completes
+      setTimeout(() => {
+        router.refresh()
+      }, 100)
+    }
+  }
+
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return "Vừa xong"
+    if (diffMins < 60) return `${diffMins} phút trước`
+    if (diffHours < 24) return `${diffHours} giờ trước`
+    if (diffDays < 7) return `${diffDays} ngày trước`
+    return date.toLocaleDateString('vi-VN')
+  }
 
   const handleLogout = () => {
     logout()
@@ -195,9 +342,87 @@ export function Header() {
                 )}
               </Button>
 
-              <Button variant="ghost" size="icon">
-                <Bell className="h-5 w-5" />
-              </Button>
+              <DropdownMenu open={notificationDropdownOpen} onOpenChange={setNotificationDropdownOpen}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative">
+                    <Bell className="h-5 w-5" />
+                    {unreadCount > 0 && (
+                      <Badge
+                        variant="destructive"
+                        className="absolute -right-1 -top-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                      >
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-80" align="end">
+                  <DropdownMenuLabel className="flex items-center justify-between">
+                    <span>Thông báo</span>
+                    {unreadCount > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleMarkAllAsRead()
+                        }}
+                      >
+                        Đánh dấu tất cả đã đọc
+                      </Button>
+                    )}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <ScrollArea className="h-[400px]">
+                    {loadingNotifications ? (
+                      <div className="flex items-center justify-center p-8">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="p-8 text-center text-sm text-muted-foreground">
+                        <Bell className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                        <p>Không có thông báo mới</p>
+                      </div>
+                    ) : (
+                      <div className="py-1">
+                        {notifications.map((notification) => (
+                          <DropdownMenuItem
+                            key={notification.id}
+                            className="flex flex-col items-start p-3 cursor-pointer hover:bg-accent"
+                            onClick={() => handleNotificationClick(notification)}
+                          >
+                            <div className="flex items-start justify-between w-full gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-sm ${!notification.isRead ? "font-semibold" : ""}`}>
+                                  {notification.message}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {formatTime(notification.createdAt)}
+                                </p>
+                              </div>
+                              {!notification.isRead && (
+                                <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1" />
+                              )}
+                            </div>
+                          </DropdownMenuItem>
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                  {notifications.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="justify-center text-xs text-muted-foreground cursor-pointer"
+                        onClick={() => router.push("/notifications")}
+                      >
+                        Xem tất cả thông báo
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

@@ -132,9 +132,19 @@ export const API_ENDPOINTS = {
     GET_PENDING: "/api/Auctions/pending",
     APPROVE: (id: number) => `/api/Auctions/${id}/approve`,
     REJECT: (id: number) => `/api/Auctions/${id}/reject`,
+    // Buyer endpoints
     GET_BUYER_ACTIVE_BIDS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/active`,
     GET_BUYER_WON_AUCTIONS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/won`,
     GET_BUYER_BIDDING_HISTORY: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/history`,
+  },
+  NOTIFICATIONS: {
+    GET_ALL: (userId: number) => `/api/Notifications/user/${userId}`,
+    GET_UNREAD: (userId: number) => `/api/Notifications/user/${userId}/unread`,
+    GET_UNREAD_COUNT: (userId: number) => `/api/Notifications/user/${userId}/unread-count`,
+    CREATE: "/api/Notifications",
+    MARK_AS_READ: (id: number) => `/api/Notifications/${id}/read`,
+    MARK_ALL_AS_READ: (userId: number) => `/api/Notifications/user/${userId}/mark-all-read`,
+    DELETE: (id: number) => `/api/Notifications/${id}`,
   },
   WATCHLIST: {
     ADD: "/api/Watchlist/add",
