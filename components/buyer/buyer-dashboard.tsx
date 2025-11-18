@@ -35,9 +35,11 @@ export function BuyerDashboard() {
       <BuyerStats />
 
       <Tabs defaultValue="active" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 lg:w-auto">
+        <TabsList className="grid w-full grid-cols-4 lg:w-auto">
           <TabsTrigger value="active">Đang đấu giá</TabsTrigger>
+          {/*
           <TabsTrigger value="won">Đã thắng</TabsTrigger>
+          */}
           <TabsTrigger value="watchlist">Theo dõi</TabsTrigger>
           <TabsTrigger value="history">Lịch sử</TabsTrigger>
           <TabsTrigger value="favorites">Seller yêu thích</TabsTrigger>
@@ -46,11 +48,11 @@ export function BuyerDashboard() {
         <TabsContent value="active" className="mt-6">
           <ActiveBidsList bidderId={userId} />
         </TabsContent>
-
+        {/*
         <TabsContent value="won" className="mt-6">
           <WonAuctionsList bidderId={userId} />
         </TabsContent>
-
+        */}
         <TabsContent value="watchlist" className="mt-6">
           <WatchlistList />
         </TabsContent>

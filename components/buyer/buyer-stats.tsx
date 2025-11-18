@@ -15,6 +15,7 @@ export function BuyerStats() {
   const [activeError, setActiveError] = useState<string | null>(null)
   
   const [wonCount, setWonCount] = useState<number>(0)
+  const [lostCount, setLostCount] = useState<number>(0)
   const [wonThisMonth, setWonThisMonth] = useState<number>(0)
   const [loadingWon, setLoadingWon] = useState(true)
   const [wonError, setWonError] = useState<string | null>(null)
@@ -45,15 +46,12 @@ export function BuyerStats() {
         const items = await WatchlistAPI.getByUser(bidderId)
         setWatchlistCount(items.length)
 
-        // Tính số item "thêm hôm nay" — dùng addedAt nếu có, nếu không fallback sang endTime
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         const tomorrow = new Date(today)
         tomorrow.setDate(tomorrow.getDate() + 1)
 
         const startingToday = items.filter(item => {
-          // Nếu API cung cấp addedAt (thời gian user thêm vào watchlist) dùng nó,
-          // nếu không có, fallback sang endTime (theo comment gốc của bạn).
           const candidate = item.addedAt ? new Date(item.addedAt) : new Date(item.endTime)
           return candidate >= today && candidate < tomorrow
         }).length
@@ -75,13 +73,11 @@ export function BuyerStats() {
         setLoadingActive(true)
         setActiveError(null)
 
-        const pageSize = 50
-        const result = await AuctionsAPI.getBuyerActiveBids(bidderId, 1, pageSize)
-
+        const result = await AuctionsAPI.getBuyerActiveBids(bidderId, 1, 1000)
         setActiveCount(result.totalCount)
 
         const now = Date.now()
-        const soonThreshold = now + 24 * 60 * 60 * 1000 // 24 hours
+        const soonThreshold = now + 24 * 60 * 60 * 1000
         const endingSoon = result.data.filter((bid) => {
           const end = new Date(bid.endTime).getTime()
           return end > now && end <= soonThreshold
@@ -104,17 +100,22 @@ export function BuyerStats() {
         setLoadingWon(true)
         setWonError(null)
 
-        const pageSize = 50
-        const result = await AuctionsAPI.getBuyerWonAuctions(bidderId, 1, pageSize)
-
-        setWonCount(result.totalCount)
+        // Lấy tất cả lịch sử đấu giá để tính chính xác won/lost
+        const historyResult = await AuctionsAPI.getBiddingHistory(bidderId, 1, 10000)
+        
+        // Đếm số phiên thắng và thua
+        const wonAuctions = historyResult.data.filter(h => h.status === 'won')
+        const lostAuctions = historyResult.data.filter(h => h.status === 'lost')
+        
+        setWonCount(wonAuctions.length)
+        setLostCount(lostAuctions.length)
 
         // Tính số đã thắng trong tháng này
         const now = new Date()
         const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-        const wonThisMonthCount = result.data.filter((auction) => {
-          const wonDate = new Date(auction.wonDate)
-          return wonDate >= firstDayOfMonth
+        const wonThisMonthCount = wonAuctions.filter((auction) => {
+          const bidDate = new Date(auction.bidTime)
+          return bidDate >= firstDayOfMonth
         }).length
 
         setWonThisMonth(wonThisMonthCount)
@@ -123,6 +124,7 @@ export function BuyerStats() {
         const message = error instanceof Error ? error.message : "Không thể tải dữ liệu"
         setWonError(message)
         setWonCount(0)
+        setLostCount(0)
         setWonThisMonth(0)
       } finally {
         setLoadingWon(false)
@@ -134,12 +136,13 @@ export function BuyerStats() {
     loadWatchlistStats()
   }, [user?.id])
 
-  // Tính tỷ lệ thắng
+  // Tính tỷ lệ thắng dựa trên các phiên ĐÃ KẾT THÚC
+  // Công thức: (Số đã thắng) / (Số đã thắng + Số đã thua) * 100
   const winRate = useMemo(() => {
-    const totalParticipated = activeCount + wonCount
-    if (totalParticipated === 0) return 0
-    return Math.round((wonCount / totalParticipated) * 100)
-  }, [activeCount, wonCount])
+    const totalCompleted = wonCount + lostCount
+    if (totalCompleted === 0) return 0
+    return Math.round((wonCount / totalCompleted) * 100)
+  }, [wonCount, lostCount])
 
   const stats = useMemo(
     () => [
@@ -178,16 +181,18 @@ export function BuyerStats() {
       },
       {
         label: "Tỷ lệ thắng",
-        value: loadingActive || loadingWon
+        value: loadingWon
           ? "..."
-          : activeError || wonError
+          : wonError
             ? "--"
             : `${winRate}%`,
-        change: loadingActive || loadingWon
+        change: loadingWon
           ? "Đang tải dữ liệu"
-          : activeError || wonError
+          : wonError
             ? "Không thể tính toán"
-            : `${wonCount} / ${activeCount + wonCount} phiên`,
+            : wonCount + lostCount === 0
+              ? "Chưa có phiên nào kết thúc"
+              : `${wonCount} / ${wonCount + lostCount} phiên`,
         icon: TrendingUp,
         color: "text-accent",
       },
@@ -198,6 +203,7 @@ export function BuyerStats() {
       endingSoonCount,
       loadingActive,
       wonCount,
+      lostCount,
       wonThisMonth,
       loadingWon,
       wonError,

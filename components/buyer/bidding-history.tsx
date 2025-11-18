@@ -160,6 +160,14 @@ export function BiddingHistory() {
                   )}
                 </div>
               </div>
+                            <div className="flex items-center gap-2">
+                <Link href={`/auction/${item.auctionId}`}>
+                  <Button variant="outline" size="sm">
+                    Xem chi tiết
+                  </Button>
+                </Link>
+                
+              </div>
             </div>
           </Card>
         )

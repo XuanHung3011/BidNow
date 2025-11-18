@@ -153,6 +153,9 @@ export const API_ENDPOINTS = {
     GET_DETAIL: (watchlistId: number) => `/api/Watchlist/detail/${watchlistId}`,
     GET_BY_USER_AUCTION: (userId: number, auctionId: number) => 
       `/api/Watchlist/user/${userId}/auction/${auctionId}`,
+  },
+  RECOMMENDATIONS: {
+    PERSONALIZED: "/api/Recommendations/personalized",
   }
 } as const;
 
