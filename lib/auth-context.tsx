@@ -19,7 +19,7 @@ export interface User {
 
 interface AuthContextType {
   user: User | null
-  login: (email: string, password: string) => Promise<{ ok: boolean; reason?: string }>
+  login: (email: string, password: string) => Promise<{ ok: boolean; reason?: string; role?: UserRole }>
   register: (email: string, password: string, name: string) => Promise<{ ok: boolean; verifyToken?: string; reason?: string }>
   switchRole: (role: UserRole) => void
   addRole: (role: UserRole) => void
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, pathname, isLoading, router])
 
-  const login = async (email: string, password: string): Promise<{ ok: boolean; reason?: string }> => {
+  const login = async (email: string, password: string): Promise<{ ok: boolean; reason?: string; role?: UserRole }> => {
     const result = await AuthAPI.login({ email, password })
     
     if (result.ok && result.data) {
@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setUser(mapped)
       localStorage.setItem("bidnow_user", JSON.stringify(mapped))
-      return { ok: true }
+      return { ok: true, role: mapped.currentRole }
     }
     
     return { ok: false, reason: result.reason }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +18,7 @@ import { ItemsAPI } from "@/lib/api/items"
 import { ItemResponseDto, CategoryDto } from "@/lib/api/types"
 import { useToast } from "@/hooks/use-toast"
 import { getImageUrls } from "@/lib/api/config"
+import { createAuctionHubConnection } from "@/lib/realtime/auctionHub"
 
 export function PendingAuctions() {
   const { toast } = useToast()
@@ -44,25 +45,7 @@ export function PendingAuctions() {
   const [selectedItem, setSelectedItem] = useState<ItemResponseDto | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
 
-  useEffect(() => {
-    fetchCategories()
-    fetchPendingItems()
-  }, [])
-
-  useEffect(() => {
-    fetchPendingItems()
-  }, [selectedCategory, sortBy, sortOrder, page])
-
-  const fetchCategories = async () => {
-    try {
-      const cats = await ItemsAPI.getCategories()
-      setCategories(cats)
-    } catch (error) {
-      console.error("Error fetching categories:", error)
-    }
-  }
-
-  const fetchPendingItems = async () => {
+  const fetchPendingItems = useCallback(async () => {
     try {
       setLoading(true)
       const result = await ItemsAPI.getAllWithFilter({
@@ -87,6 +70,23 @@ export function PendingAuctions() {
     } finally {
       setLoading(false)
     }
+  }, [selectedCategory, sortBy, sortOrder, page, pageSize, toast])
+
+  useEffect(() => {
+    fetchCategories()
+  }, [])
+
+  useEffect(() => {
+    fetchPendingItems()
+  }, [fetchPendingItems])
+
+  const fetchCategories = async () => {
+    try {
+      const cats = await ItemsAPI.getCategories()
+      setCategories(cats)
+    } catch (error) {
+      console.error("Error fetching categories:", error)
+    }
   }
 
   // Client-side search filter
@@ -105,6 +105,40 @@ export function PendingAuctions() {
     })
     setItems(filtered)
   }, [searchQuery, allItems])
+
+  useEffect(() => {
+    const connection = createAuctionHubConnection()
+    let mounted = true
+    const startPromise = (async () => {
+      try {
+        await connection.start()
+        if (!mounted) {
+          await connection.stop()
+          return
+        }
+        await connection.invoke("JoinAdminSection", "pending")
+      } catch (error) {
+        console.error("Pending auctions SignalR connection error:", error)
+      }
+    })()
+
+    connection.on("AdminPendingItemsChanged", () => {
+      fetchPendingItems()
+    })
+
+    return () => {
+      mounted = false
+      connection.off("AdminPendingItemsChanged")
+      startPromise
+        .catch(() => {})
+        .finally(() => {
+          if (connection.state === "Connected") {
+            connection.invoke("LeaveAdminSection", "pending").catch(() => {})
+          }
+          connection.stop().catch(() => {})
+        })
+    }
+  }, [fetchPendingItems])
 
   const handleApprove = async (itemId: number) => {
     try {

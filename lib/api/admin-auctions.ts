@@ -106,5 +106,29 @@ export const AdminAuctionsAPI = {
     })
     return handleResponse<AuctionDetailDto>(res)
   },
+
+  // PUT /api/AdminAuctions/{id}/status - Update auction status (e.g., cancel/suspend)
+  updateStatus: async (id: number, status: "draft" | "active" | "completed" | "cancelled"): Promise<void> => {
+    const url = `${API_BASE}${API_ENDPOINTS.ADMIN_AUCTIONS.UPDATE_STATUS(id)}`
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ status }),
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => null)
+      let errorMessage = `HTTP error ${res.status}`
+      try {
+        const error = JSON.parse(text || '{}')
+        errorMessage = error.message || errorMessage
+      } catch {
+        errorMessage = text || errorMessage
+      }
+      throw new Error(errorMessage)
+    }
+  },
 }
 
