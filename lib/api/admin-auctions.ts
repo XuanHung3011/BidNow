@@ -68,6 +68,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json()
 }
 
+type UpdateAuctionStatusPayload = {
+  reason?: string
+  adminSignature?: string
+}
+
 export const AdminAuctionsAPI = {
   // GET /api/AdminAuctions - Get all auctions with pagination, search, and filtering
   getAll: async (params?: AuctionFilterParams): Promise<PaginatedResult<AuctionListItemDto>> => {
@@ -108,14 +113,22 @@ export const AdminAuctionsAPI = {
   },
 
   // PUT /api/AdminAuctions/{id}/status - Update auction status (e.g., cancel/suspend)
-  updateStatus: async (id: number, status: "draft" | "active" | "completed" | "cancelled"): Promise<void> => {
+  updateStatus: async (
+    id: number,
+    status: "draft" | "active" | "completed" | "cancelled",
+    payload?: UpdateAuctionStatusPayload
+  ): Promise<void> => {
     const url = `${API_BASE}${API_ENDPOINTS.ADMIN_AUCTIONS.UPDATE_STATUS(id)}`
     const res = await fetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({
+        status,
+        reason: payload?.reason,
+        adminSignature: payload?.adminSignature,
+      }),
       cache: 'no-store',
     })
     if (!res.ok) {

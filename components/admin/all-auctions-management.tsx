@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
 import { AdminAuctionsAPI, AuctionListItemDto, AuctionDetailDto } from "@/lib/api/admin-auctions"
 import { useToast } from "@/hooks/use-toast"
 import { createAuctionHubConnection } from "@/lib/realtime/auctionHub"
@@ -33,6 +34,16 @@ export function AllAuctionsManagement() {
   const [totalCount, setTotalCount] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [suspendingId, setSuspendingId] = useState<number | null>(null)
+  const [suspendDialogOpen, setSuspendDialogOpen] = useState(false)
+  type SuspendTarget = {
+    id: number
+    itemTitle: string
+    sellerName?: string
+    displayStatus: string
+  }
+  const [pendingSuspendAuction, setPendingSuspendAuction] = useState<SuspendTarget | null>(null)
+  const [suspendReason, setSuspendReason] = useState("")
+  const [adminSignature, setAdminSignature] = useState("")
   const { toast } = useToast()
 
   // Fetch auctions
@@ -141,32 +152,52 @@ export function AllAuctionsManagement() {
     fetchAuctionDetail(auction.id)
   }
 
-  const handleSuspendAuction = useCallback(
-    async (auctionId: number) => {
-      const confirmed = window.confirm("Bạn có chắc muốn tạm dừng phiên đấu giá này? Hành động này không thể hoàn tác.")
-      if (!confirmed) return
-      setSuspendingId(auctionId)
-      try {
-        await AdminAuctionsAPI.updateStatus(auctionId, "cancelled")
-        toast({
-          title: "Đã tạm dừng phiên đấu giá",
-          description: "Trạng thái phiên đã được cập nhật thành công.",
-        })
-        fetchAuctions()
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Không thể tạm dừng phiên đấu giá."
-        setError(message)
-        toast({
-          title: "Lỗi",
-          description: message,
-          variant: "destructive",
-        })
-      } finally {
-        setSuspendingId(null)
-      }
-    },
-    [fetchAuctions, toast]
-  )
+  const openSuspendDialog = useCallback((auction: SuspendTarget) => {
+    setPendingSuspendAuction(auction)
+    setSuspendReason("")
+    setAdminSignature("")
+    setSuspendDialogOpen(true)
+  }, [])
+
+  const closeSuspendDialog = useCallback(() => {
+    setSuspendDialogOpen(false)
+    setPendingSuspendAuction(null)
+    setSuspendReason("")
+    setAdminSignature("")
+  }, [])
+
+  const isSuspendFormValid = suspendReason.trim().length >= 10 && adminSignature.trim() === "Admin"
+
+  const handleConfirmSuspend = useCallback(async () => {
+    if (!pendingSuspendAuction || !isSuspendFormValid) {
+      return
+    }
+    const auctionId = pendingSuspendAuction.id
+    setSuspendingId(auctionId)
+    try {
+      await AdminAuctionsAPI.updateStatus(auctionId, "cancelled", {
+        reason: suspendReason.trim(),
+        adminSignature: adminSignature.trim(),
+      })
+      toast({
+        title: "Đã tạm dừng phiên đấu giá",
+        description: `Lý do: ${suspendReason.trim()}`,
+      })
+      setError(null)
+      fetchAuctions()
+      closeSuspendDialog()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Không thể tạm dừng phiên đấu giá."
+      setError(message)
+      toast({
+        title: "Lỗi",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setSuspendingId(null)
+    }
+  }, [pendingSuspendAuction, isSuspendFormValid, suspendReason, adminSignature, fetchAuctions, toast, closeSuspendDialog])
 
   const formatDate = (dateString: string) => {
     try {
@@ -273,7 +304,14 @@ export function AllAuctionsManagement() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleSuspendAuction(auction.id)}
+                            onClick={() =>
+                              openSuspendDialog({
+                                id: auction.id,
+                                itemTitle: auction.itemTitle,
+                                sellerName: auction.sellerName,
+                                displayStatus: auction.displayStatus,
+                              })
+                            }
                             disabled={suspendingId === auction.id}
                           >
                             <Ban
@@ -389,13 +427,78 @@ export function AllAuctionsManagement() {
                 new Date(selectedAuction.endTime) > new Date() && (
                   <Button
                     variant="destructive"
-                    onClick={() => handleSuspendAuction(selectedAuction.id)}
+                    onClick={() =>
+                      openSuspendDialog({
+                        id: selectedAuction.id,
+                        itemTitle: selectedAuction.itemTitle,
+                        sellerName: selectedAuction.sellerName,
+                        displayStatus: selectedAuction.status?.toLowerCase() ?? "active",
+                      })
+                    }
                     disabled={suspendingId === selectedAuction.id}
                   >
                     <Ban className="mr-2 h-4 w-4" />
                     {suspendingId === selectedAuction.id ? "Đang tạm dừng..." : "Tạm dừng phiên đấu giá"}
                   </Button>
               )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={suspendDialogOpen} onOpenChange={(open) => (open ? setSuspendDialogOpen(true) : closeSuspendDialog())}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Xác nhận tạm dừng phiên đấu giá</DialogTitle>
+              <DialogDescription>
+                Vui lòng ghi rõ nguyên nhân tạm dừng và ký xác nhận bằng cách nhập &quot;Admin&quot; trước khi tiếp tục.
+              </DialogDescription>
+            </DialogHeader>
+            {pendingSuspendAuction ? (
+              <div className="space-y-4">
+                <div className="rounded-md bg-muted p-4 text-sm">
+                  <p className="font-semibold text-foreground">{pendingSuspendAuction.itemTitle}</p>
+                  <p className="text-muted-foreground">Người bán: {pendingSuspendAuction.sellerName || "Không rõ"}</p>
+                  <p className="text-muted-foreground">Trạng thái: {getStatusBadge(pendingSuspendAuction.displayStatus)}</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="suspend-reason">
+                    Nguyên nhân tạm dừng
+                  </label>
+                  <Textarea
+                    id="suspend-reason"
+                    placeholder="Nhập tối thiểu 10 ký tự để mô tả lý do tạm dừng..."
+                    value={suspendReason}
+                    onChange={(e) => setSuspendReason(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="admin-signature">
+                    Ký xác nhận (nhập &quot;Admin&quot;)
+                  </label>
+                  <Input
+                    id="admin-signature"
+                    placeholder='Nhập "Admin" để xác nhận'
+                    value={adminSignature}
+                    onChange={(e) => setAdminSignature(e.target.value)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="py-4 text-center text-muted-foreground text-sm">Chưa chọn phiên đấu giá.</div>
+            )}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={closeSuspendDialog}>
+                Hủy
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmSuspend}
+                disabled={!pendingSuspendAuction || !isSuspendFormValid || suspendingId === pendingSuspendAuction?.id}
+              >
+                {suspendingId === pendingSuspendAuction?.id ? "Đang tạm dừng..." : "Xác nhận tạm dừng"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
