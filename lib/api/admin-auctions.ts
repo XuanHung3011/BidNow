@@ -8,6 +8,7 @@ export interface AuctionListItemDto {
   categoryName?: string
   startingBid: number
   currentBid?: number
+  startTime: string
   endTime: string
   status: string
   displayStatus: string // active, scheduled, completed, suspended
@@ -73,6 +74,10 @@ type UpdateAuctionStatusPayload = {
   adminSignature?: string
 }
 
+type ResumeAuctionPayload = {
+  reason?: string
+}
+
 export const AdminAuctionsAPI = {
   // GET /api/AdminAuctions - Get all auctions with pagination, search, and filtering
   getAll: async (params?: AuctionFilterParams): Promise<PaginatedResult<AuctionListItemDto>> => {
@@ -128,6 +133,31 @@ export const AdminAuctionsAPI = {
         status,
         reason: payload?.reason,
         adminSignature: payload?.adminSignature,
+      }),
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => null)
+      let errorMessage = `HTTP error ${res.status}`
+      try {
+        const error = JSON.parse(text || '{}')
+        errorMessage = error.message || errorMessage
+      } catch {
+        errorMessage = text || errorMessage
+      }
+      throw new Error(errorMessage)
+    }
+  },
+
+  resume: async (id: number, payload?: ResumeAuctionPayload): Promise<void> => {
+    const url = `${API_BASE}${API_ENDPOINTS.ADMIN_AUCTIONS.RESUME(id)}`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        reason: payload?.reason,
       }),
       cache: 'no-store',
     })

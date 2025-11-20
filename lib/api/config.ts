@@ -122,6 +122,7 @@ export const API_ENDPOINTS = {
     GET_ALL: "/api/AdminAuctions",
     GET_BY_ID: (id: number) => `/api/AdminAuctions/${id}`,
     UPDATE_STATUS: (id: number) => `/api/AdminAuctions/${id}/status`,
+    RESUME: (id: number) => `/api/AdminAuctions/${id}/resume`,
   },
   PLATFORM_ANALYTICS: {
     GET_ANALYTICS: "/api/PlatformAnalytics",

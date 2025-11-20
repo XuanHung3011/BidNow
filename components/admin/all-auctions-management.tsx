@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Eye, Ban, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Eye, Ban, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,95 @@ import { Textarea } from "@/components/ui/textarea"
 import { AdminAuctionsAPI, AuctionListItemDto, AuctionDetailDto } from "@/lib/api/admin-auctions"
 import { useToast } from "@/hooks/use-toast"
 import { createAuctionHubConnection } from "@/lib/realtime/auctionHub"
+
+type DisplayStatus = "active" | "scheduled" | "completed" | "cancelled" | "unknown"
+
+type AdminAuctionSummary = {
+  id: number
+  itemTitle: string
+  sellerName?: string
+  status: string
+  startTime: string
+  endTime: string
+  displayStatus?: string
+}
+
+function computeDisplayStatus({
+  status,
+  startTime,
+  endTime,
+  fallback,
+}: {
+  status?: string | null
+  startTime?: string | null
+  endTime?: string | null
+  fallback?: string | null
+}): DisplayStatus {
+  const normalized = status?.toLowerCase() ?? ""
+  if (normalized === "cancelled") return "cancelled"
+  if (normalized === "completed") return "completed"
+
+  const now = Date.now()
+  const start = startTime ? new Date(startTime).getTime() : undefined
+  const end = endTime ? new Date(endTime).getTime() : undefined
+
+  if (normalized === "active") {
+    if (start && start > now) return "scheduled"
+    if (!end || end > now) return "active"
+    return "completed"
+  }
+
+  if (end && end <= now) {
+    return "completed"
+  }
+
+  if (start && start > now) {
+    return "scheduled"
+  }
+
+  if (normalized) return (normalized as DisplayStatus) ?? "unknown"
+
+  return ((fallback as DisplayStatus) ?? "unknown")
+}
+
+function getListDisplayStatus(auction: AuctionListItemDto): DisplayStatus {
+  return computeDisplayStatus({
+    status: auction.status,
+    startTime: auction.startTime,
+    endTime: auction.endTime,
+    fallback: auction.displayStatus,
+  })
+}
+
+function getDetailDisplayStatus(auction?: AuctionDetailDto | null): string {
+  if (!auction) return ""
+  const now = new Date()
+  const status = auction.status?.toLowerCase() ?? ""
+  if (status === "cancelled") {
+    return "cancelled"
+  }
+  if (status === "completed") {
+    return "completed"
+  }
+  const start = new Date(auction.startTime)
+  const end = new Date(auction.endTime)
+
+  if (status === "active") {
+    if (start > now) return "scheduled"
+    if (end > now) return "active"
+    return "completed"
+  }
+
+  if (end <= now) {
+    return "completed"
+  }
+
+  if (start > now) {
+    return "scheduled"
+  }
+
+  return status || "unknown"
+}
 
 export function AllAuctionsManagement() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -34,17 +123,22 @@ export function AllAuctionsManagement() {
   const [totalCount, setTotalCount] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [suspendingId, setSuspendingId] = useState<number | null>(null)
+  const [resumingId, setResumingId] = useState<number | null>(null)
   const [suspendDialogOpen, setSuspendDialogOpen] = useState(false)
-  type SuspendTarget = {
-    id: number
-    itemTitle: string
-    sellerName?: string
-    displayStatus: string
-  }
-  const [pendingSuspendAuction, setPendingSuspendAuction] = useState<SuspendTarget | null>(null)
+  const [resumeDialogOpen, setResumeDialogOpen] = useState(false)
+  const [pendingSuspendAuction, setPendingSuspendAuction] = useState<AdminAuctionSummary | null>(null)
+  const [pendingResumeAuction, setPendingResumeAuction] = useState<AdminAuctionSummary | null>(null)
   const [suspendReason, setSuspendReason] = useState("")
   const [adminSignature, setAdminSignature] = useState("")
+  const [resumeReason, setResumeReason] = useState("")
   const { toast } = useToast()
+  const selectedAuctionDisplayStatus = selectedAuction
+    ? computeDisplayStatus({
+        status: selectedAuction.status,
+        startTime: selectedAuction.startTime,
+        endTime: selectedAuction.endTime,
+      })
+    : null
 
   // Fetch auctions
   const fetchAuctions = useCallback(async () => {
@@ -152,7 +246,7 @@ export function AllAuctionsManagement() {
     fetchAuctionDetail(auction.id)
   }
 
-  const openSuspendDialog = useCallback((auction: SuspendTarget) => {
+  const openSuspendDialog = useCallback((auction: AdminAuctionSummary) => {
     setPendingSuspendAuction(auction)
     setSuspendReason("")
     setAdminSignature("")
@@ -164,6 +258,18 @@ export function AllAuctionsManagement() {
     setPendingSuspendAuction(null)
     setSuspendReason("")
     setAdminSignature("")
+  }, [])
+
+  const openResumeDialog = useCallback((auction: AdminAuctionSummary) => {
+    setPendingResumeAuction(auction)
+    setResumeReason("")
+    setResumeDialogOpen(true)
+  }, [])
+
+  const closeResumeDialog = useCallback(() => {
+    setResumeDialogOpen(false)
+    setPendingResumeAuction(null)
+    setResumeReason("")
   }, [])
 
   const isSuspendFormValid = suspendReason.trim().length >= 10 && adminSignature.trim() === "Admin"
@@ -185,6 +291,7 @@ export function AllAuctionsManagement() {
       })
       setError(null)
       fetchAuctions()
+      setShowDetailDialog(false)
       closeSuspendDialog()
     } catch (err) {
       const message = err instanceof Error ? err.message : "Không thể tạm dừng phiên đấu giá."
@@ -198,6 +305,55 @@ export function AllAuctionsManagement() {
       setSuspendingId(null)
     }
   }, [pendingSuspendAuction, isSuspendFormValid, suspendReason, adminSignature, fetchAuctions, toast, closeSuspendDialog])
+
+  const handleConfirmResume = useCallback(async () => {
+    if (!pendingResumeAuction) {
+      return
+    }
+    const auctionId = pendingResumeAuction.id
+    setResumingId(auctionId)
+    try {
+      await AdminAuctionsAPI.resume(auctionId, {
+        reason: resumeReason.trim() || undefined,
+      })
+      toast({
+        title: "Đã tiếp tục phiên đấu giá",
+        description: resumeReason.trim() ? `Ghi chú: ${resumeReason.trim()}` : undefined,
+      })
+      setError(null)
+      fetchAuctions()
+      setShowDetailDialog(false)
+      closeResumeDialog()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Không thể tiếp tục phiên đấu giá."
+      setError(message)
+      toast({
+        title: "Lỗi",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setResumingId(null)
+    }
+  }, [pendingResumeAuction, resumeReason, fetchAuctions, toast, closeResumeDialog])
+
+  const pendingSuspendDisplayStatus = pendingSuspendAuction
+    ? computeDisplayStatus({
+        status: pendingSuspendAuction.status,
+        startTime: pendingSuspendAuction.startTime,
+        endTime: pendingSuspendAuction.endTime,
+        fallback: pendingSuspendAuction.displayStatus,
+      })
+    : null
+
+  const pendingResumeDisplayStatus = pendingResumeAuction
+    ? computeDisplayStatus({
+        status: pendingResumeAuction.status,
+        startTime: pendingResumeAuction.startTime,
+        endTime: pendingResumeAuction.endTime,
+        fallback: pendingResumeAuction.displayStatus,
+      })
+    : null
 
   const formatDate = (dateString: string) => {
     try {
@@ -282,49 +438,79 @@ export function AllAuctionsManagement() {
                   </TableCell>
                 </TableRow>
               ) : (
-                auctions.map((auction) => (
-                  <TableRow key={auction.id}>
-                    <TableCell className="font-medium">{auction.itemTitle}</TableCell>
-                    <TableCell>{auction.sellerName || "N/A"}</TableCell>
-                    <TableCell>{auction.categoryName || "N/A"}</TableCell>
-                    <TableCell>
-                      {auction.currentBid && auction.currentBid > 0
-                        ? formatCurrency(auction.currentBid)
-                        : formatCurrency(auction.startingBid)}
-                    </TableCell>
-                    <TableCell>{auction.bidCount}</TableCell>
-                    <TableCell>{getStatusBadge(auction.displayStatus)}</TableCell>
-                    <TableCell>{formatDate(auction.endTime)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleViewDetails(auction)}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {auction.displayStatus === "active" && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() =>
-                              openSuspendDialog({
-                                id: auction.id,
-                                itemTitle: auction.itemTitle,
-                                sellerName: auction.sellerName,
-                                displayStatus: auction.displayStatus,
-                              })
-                            }
-                            disabled={suspendingId === auction.id}
-                          >
-                            <Ban
-                              className={`h-4 w-4 ${
-                                suspendingId === auction.id ? "animate-pulse text-muted-foreground" : "text-red-500"
-                              }`}
-                            />
+                auctions.map((auction) => {
+                  const rowDisplayStatus = getListDisplayStatus(auction)
+                  return (
+                    <TableRow key={auction.id}>
+                      <TableCell className="font-medium">{auction.itemTitle}</TableCell>
+                      <TableCell>{auction.sellerName || "N/A"}</TableCell>
+                      <TableCell>{auction.categoryName || "N/A"}</TableCell>
+                      <TableCell>
+                        {auction.currentBid && auction.currentBid > 0
+                          ? formatCurrency(auction.currentBid)
+                          : formatCurrency(auction.startingBid)}
+                      </TableCell>
+                      <TableCell>{auction.bidCount}</TableCell>
+                      <TableCell>{getStatusBadge(rowDisplayStatus)}</TableCell>
+                      <TableCell>{formatDate(auction.endTime)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="icon" onClick={() => handleViewDetails(auction)}>
+                            <Eye className="h-4 w-4" />
                           </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                          {(rowDisplayStatus === "active" || rowDisplayStatus === "scheduled") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                openSuspendDialog({
+                                  id: auction.id,
+                                  itemTitle: auction.itemTitle,
+                                  sellerName: auction.sellerName,
+                                  status: auction.status,
+                                  startTime: auction.startTime,
+                                  endTime: auction.endTime,
+                                  displayStatus: rowDisplayStatus,
+                                })
+                              }
+                              disabled={suspendingId === auction.id}
+                            >
+                              <Ban
+                                className={`h-4 w-4 ${
+                                  suspendingId === auction.id ? "animate-pulse text-muted-foreground" : "text-red-500"
+                                }`}
+                              />
+                            </Button>
+                          )}
+                          {rowDisplayStatus === "cancelled" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                openResumeDialog({
+                                  id: auction.id,
+                                  itemTitle: auction.itemTitle,
+                                  sellerName: auction.sellerName,
+                                  status: auction.status,
+                                  startTime: auction.startTime,
+                                  endTime: auction.endTime,
+                                  displayStatus: rowDisplayStatus,
+                                })
+                              }
+                              disabled={resumingId === auction.id}
+                            >
+                              <RotateCcw
+                                className={`h-4 w-4 ${
+                                  resumingId === auction.id ? "animate-pulse text-muted-foreground" : "text-primary"
+                                }`}
+                              />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               )}
             </TableBody>
           </Table>
@@ -385,7 +571,7 @@ export function AllAuctionsManagement() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Trạng thái</p>
-                    <div className="mt-1">{getStatusBadge(selectedAuction.status)}</div>
+                    <div className="mt-1">{getStatusBadge(selectedAuctionDisplayStatus || selectedAuction.status)}</div>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Giá khởi điểm</p>
@@ -422,24 +608,49 @@ export function AllAuctionsManagement() {
               <Button variant="outline" onClick={() => setShowDetailDialog(false)}>
                 Đóng
               </Button>
-              {selectedAuction &&
-                selectedAuction.status?.toLowerCase() === "active" &&
-                new Date(selectedAuction.endTime) > new Date() && (
-                  <Button
-                    variant="destructive"
-                    onClick={() =>
-                      openSuspendDialog({
-                        id: selectedAuction.id,
-                        itemTitle: selectedAuction.itemTitle,
-                        sellerName: selectedAuction.sellerName,
-                        displayStatus: selectedAuction.status?.toLowerCase() ?? "active",
-                      })
-                    }
-                    disabled={suspendingId === selectedAuction.id}
-                  >
-                    <Ban className="mr-2 h-4 w-4" />
-                    {suspendingId === selectedAuction.id ? "Đang tạm dừng..." : "Tạm dừng phiên đấu giá"}
-                  </Button>
+              {selectedAuction && new Date(selectedAuction.endTime) > new Date() && (
+                <>
+                  {selectedAuctionDisplayStatus && ["active", "scheduled"].includes(selectedAuctionDisplayStatus) && (
+                    <Button
+                      variant="destructive"
+                      onClick={() =>
+                        openSuspendDialog({
+                          id: selectedAuction.id,
+                          itemTitle: selectedAuction.itemTitle,
+                          sellerName: selectedAuction.sellerName,
+                          status: selectedAuction.status,
+                          startTime: selectedAuction.startTime,
+                          endTime: selectedAuction.endTime,
+                          displayStatus: selectedAuctionDisplayStatus,
+                        })
+                      }
+                      disabled={suspendingId === selectedAuction.id}
+                    >
+                      <Ban className="mr-2 h-4 w-4" />
+                      {suspendingId === selectedAuction.id ? "Đang tạm dừng..." : "Tạm dừng phiên đấu giá"}
+                    </Button>
+                  )}
+                  {selectedAuctionDisplayStatus === "cancelled" && (
+                    <Button
+                      variant="secondary"
+                      onClick={() =>
+                        openResumeDialog({
+                          id: selectedAuction.id,
+                          itemTitle: selectedAuction.itemTitle,
+                          sellerName: selectedAuction.sellerName,
+                          status: selectedAuction.status,
+                          startTime: selectedAuction.startTime,
+                          endTime: selectedAuction.endTime,
+                          displayStatus: selectedAuctionDisplayStatus,
+                        })
+                      }
+                      disabled={resumingId === selectedAuction.id}
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      {resumingId === selectedAuction.id ? "Đang tiếp tục..." : "Tiếp tục phiên đấu giá"}
+                    </Button>
+                  )}
+                </>
               )}
             </DialogFooter>
           </DialogContent>
@@ -458,7 +669,9 @@ export function AllAuctionsManagement() {
                 <div className="rounded-md bg-muted p-4 text-sm">
                   <p className="font-semibold text-foreground">{pendingSuspendAuction.itemTitle}</p>
                   <p className="text-muted-foreground">Người bán: {pendingSuspendAuction.sellerName || "Không rõ"}</p>
-                  <p className="text-muted-foreground">Trạng thái: {getStatusBadge(pendingSuspendAuction.displayStatus)}</p>
+                  <p className="text-muted-foreground">
+                    Trạng thái: {getStatusBadge(pendingSuspendDisplayStatus || "unknown")}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground" htmlFor="suspend-reason">
@@ -498,6 +711,53 @@ export function AllAuctionsManagement() {
                 disabled={!pendingSuspendAuction || !isSuspendFormValid || suspendingId === pendingSuspendAuction?.id}
               >
                 {suspendingId === pendingSuspendAuction?.id ? "Đang tạm dừng..." : "Xác nhận tạm dừng"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={resumeDialogOpen} onOpenChange={(open) => (open ? setResumeDialogOpen(true) : closeResumeDialog())}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Tiếp tục phiên đấu giá</DialogTitle>
+              <DialogDescription>
+                Xác nhận mở lại phiên đấu giá đã bị tạm dừng. Bạn có thể thêm ghi chú gửi đến người bán (không bắt buộc).
+              </DialogDescription>
+            </DialogHeader>
+            {pendingResumeAuction ? (
+              <div className="space-y-4">
+                <div className="rounded-md bg-muted p-4 text-sm">
+                  <p className="font-semibold text-foreground">{pendingResumeAuction.itemTitle}</p>
+                  <p className="text-muted-foreground">Người bán: {pendingResumeAuction.sellerName || "Không rõ"}</p>
+                  <p className="text-muted-foreground">
+                    Trạng thái hiện tại: {getStatusBadge(pendingResumeDisplayStatus || "unknown")}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="resume-reason">
+                    Ghi chú gửi người bán (tùy chọn)
+                  </label>
+                  <Textarea
+                    id="resume-reason"
+                    placeholder="Nhập ghi chú ngắn (nếu cần)..."
+                    value={resumeReason}
+                    onChange={(e) => setResumeReason(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="py-4 text-center text-muted-foreground text-sm">Chưa chọn phiên đấu giá.</div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={closeResumeDialog}>
+                Hủy
+              </Button>
+              <Button
+                onClick={handleConfirmResume}
+                disabled={!pendingResumeAuction || resumingId === pendingResumeAuction?.id}
+              >
+                {resumingId === pendingResumeAuction?.id ? "Đang tiếp tục..." : "Xác nhận tiếp tục"}
               </Button>
             </DialogFooter>
           </DialogContent>

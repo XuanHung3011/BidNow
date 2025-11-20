@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { NotificationsAPI } from "@/lib/api/notifications"
 import { NotificationResponseDto } from "@/lib/api/types"
@@ -188,7 +188,7 @@ export function Header() {
   }, [fetchUnreadMessagesCount])
 
   // Mark notification as read
-  const handleMarkAsRead = async (notificationId: number) => {
+  const handleMarkAsRead = useCallback(async (notificationId: number) => {
     if (!user) return
     
     try {
@@ -206,7 +206,7 @@ export function Header() {
         variant: "destructive"
       })
     }
-  }
+  }, [toast, user])
 
   // Mark all notifications as read
   const handleMarkAllAsRead = async () => {
@@ -231,6 +231,21 @@ export function Header() {
   }
 
   // Handle notification click
+  const buildNotificationUrl = (link: string | null | undefined, notificationId: number) => {
+    if (!link) return null
+    try {
+      if (typeof window !== "undefined") {
+        const url = new URL(link, window.location.origin)
+        url.searchParams.set("notificationId", notificationId.toString())
+        return `${url.pathname}${url.search}${url.hash}`
+      }
+    } catch {
+      // fallback handled below
+    }
+    const separator = link.includes("?") ? "&" : "?"
+    return `${link}${separator}notificationId=${notificationId}`
+  }
+
   const handleNotificationClick = async (notification: NotificationResponseDto) => {
     if (!notification.isRead) {
       await handleMarkAsRead(notification.id)
@@ -238,14 +253,35 @@ export function Header() {
     
     if (notification.link) {
       setNotificationDropdownOpen(false)
+      const target = buildNotificationUrl(notification.link, notification.id) ?? notification.link
       // Use replace to update URL and trigger re-render
-      router.replace(notification.link)
+      router.replace(target)
       // Force a small delay to ensure navigation completes
       setTimeout(() => {
         router.refresh()
       }, 100)
     }
   }
+
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (!user) return
+    const notificationIdParam = searchParams.get("notificationId")
+    if (!notificationIdParam) return
+    const notificationId = Number(notificationIdParam)
+    if (Number.isNaN(notificationId) || notificationId <= 0) return
+
+    handleMarkAsRead(notificationId).catch(() => {})
+
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(searchParams.toString())
+      params.delete("notificationId")
+      const newQuery = params.toString()
+      router.replace(`${pathname}${newQuery ? `?${newQuery}` : ""}`, { scroll: false })
+    }
+  }, [handleMarkAsRead, pathname, router, searchParams, user])
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString)
