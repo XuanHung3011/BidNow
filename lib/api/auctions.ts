@@ -38,6 +38,7 @@ export interface AuctionDetailDto {
   endTime: string
   status: string
   bidCount?: number
+  pausedAt?: string
 }
 
 export interface CreateAuctionDto {

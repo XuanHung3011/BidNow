@@ -13,6 +13,7 @@ export interface AuctionListItemDto {
   status: string
   displayStatus: string // active, scheduled, completed, suspended
   bidCount: number
+  pausedAt?: string
 }
 
 export interface AuctionDetailDto {
@@ -33,6 +34,7 @@ export interface AuctionDetailDto {
   endTime: string
   status: string
   bidCount?: number
+  pausedAt?: string
 }
 
 export interface PaginatedResult<T> {

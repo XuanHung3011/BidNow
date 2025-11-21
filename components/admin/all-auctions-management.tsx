@@ -322,7 +322,12 @@ export function AllAuctionsManagement() {
       })
       setError(null)
       fetchAuctions()
-      setShowDetailDialog(false)
+      // Refresh detail nếu đang mở detail dialog
+      if (selectedAuction && selectedAuction.id === auctionId) {
+        await fetchAuctionDetail(auctionId)
+      } else {
+        setShowDetailDialog(false)
+      }
       closeResumeDialog()
     } catch (err) {
       const message = err instanceof Error ? err.message : "Không thể tiếp tục phiên đấu giá."
@@ -335,7 +340,7 @@ export function AllAuctionsManagement() {
     } finally {
       setResumingId(null)
     }
-  }, [pendingResumeAuction, resumeReason, fetchAuctions, toast, closeResumeDialog])
+  }, [pendingResumeAuction, resumeReason, fetchAuctions, toast, closeResumeDialog, selectedAuction, fetchAuctionDetail])
 
   const pendingSuspendDisplayStatus = pendingSuspendAuction
     ? computeDisplayStatus({
@@ -593,6 +598,12 @@ export function AllAuctionsManagement() {
                     <p className="text-sm font-medium text-muted-foreground">Thời gian kết thúc</p>
                     <p className="text-base font-semibold">{formatDate(selectedAuction.endTime)}</p>
                   </div>
+                  {selectedAuction.pausedAt && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Thời gian tạm dừng</p>
+                      <p className="text-base font-semibold text-orange-600">{formatDate(selectedAuction.pausedAt)}</p>
+                    </div>
+                  )}
                   {selectedAuction.itemDescription && (
                     <div className="col-span-2">
                       <p className="text-sm font-medium text-muted-foreground">Mô tả</p>
