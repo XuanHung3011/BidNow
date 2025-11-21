@@ -8,10 +8,12 @@ export interface AuctionListItemDto {
   categoryName?: string
   startingBid: number
   currentBid?: number
+  startTime: string
   endTime: string
   status: string
   displayStatus: string // active, scheduled, completed, suspended
   bidCount: number
+  pausedAt?: string
 }
 
 export interface AuctionDetailDto {
@@ -32,6 +34,7 @@ export interface AuctionDetailDto {
   endTime: string
   status: string
   bidCount?: number
+  pausedAt?: string
 }
 
 export interface PaginatedResult<T> {
@@ -66,6 +69,15 @@ async function handleResponse<T>(res: Response): Promise<T> {
     throw new Error(errorMessage)
   }
   return res.json()
+}
+
+type UpdateAuctionStatusPayload = {
+  reason?: string
+  adminSignature?: string
+}
+
+type ResumeAuctionPayload = {
+  reason?: string
 }
 
 export const AdminAuctionsAPI = {
@@ -108,14 +120,47 @@ export const AdminAuctionsAPI = {
   },
 
   // PUT /api/AdminAuctions/{id}/status - Update auction status (e.g., cancel/suspend)
-  updateStatus: async (id: number, status: "draft" | "active" | "completed" | "cancelled"): Promise<void> => {
+  updateStatus: async (
+    id: number,
+    status: "draft" | "active" | "completed" | "cancelled",
+    payload?: UpdateAuctionStatusPayload
+  ): Promise<void> => {
     const url = `${API_BASE}${API_ENDPOINTS.ADMIN_AUCTIONS.UPDATE_STATUS(id)}`
     const res = await fetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({
+        status,
+        reason: payload?.reason,
+        adminSignature: payload?.adminSignature,
+      }),
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => null)
+      let errorMessage = `HTTP error ${res.status}`
+      try {
+        const error = JSON.parse(text || '{}')
+        errorMessage = error.message || errorMessage
+      } catch {
+        errorMessage = text || errorMessage
+      }
+      throw new Error(errorMessage)
+    }
+  },
+
+  resume: async (id: number, payload?: ResumeAuctionPayload): Promise<void> => {
+    const url = `${API_BASE}${API_ENDPOINTS.ADMIN_AUCTIONS.RESUME(id)}`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        reason: payload?.reason,
+      }),
       cache: 'no-store',
     })
     if (!res.ok) {

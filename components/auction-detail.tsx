@@ -36,7 +36,7 @@ import {
 } from "@/lib/api"
 import type { BidDto } from "@/lib/api/auctions"
 import { useAuth } from "@/lib/auth-context"
-import { createAuctionHubConnection, type BidPlacedPayload } from "@/lib/realtime/auctionHub"
+import { createAuctionHubConnection, type BidPlacedPayload, type AuctionStatusUpdatedPayload } from "@/lib/realtime/auctionHub"
 import { getImageUrls } from "@/lib/api/config"
 import { WatchlistAPI } from "@/lib/api"
 
@@ -155,10 +155,27 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       })
     })
 
+    // Listen for auction status updates (pause/resume)
+    connection.on("AuctionStatusUpdated", async (payload: AuctionStatusUpdatedPayload) => {
+      if (!isMounted) return
+      if (payload.auctionId !== Number(auctionId)) return
+      
+      // Refresh auction data khi status thay đổi
+      try {
+        const data = await AuctionsAPI.getDetail(Number(auctionId))
+        if (!isMounted) return
+        setAuction(data)
+      } catch (err) {
+        console.error('Failed to refresh auction after status update:', err)
+      }
+    })
+
     start()
 
     return () => {
       isMounted = false
+      connection.off("BidPlaced")
+      connection.off("AuctionStatusUpdated")
       const leaveAndStop = async () => {
         try {
           if (started) {
@@ -250,6 +267,24 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   // Update countdown timer
   useEffect(() => {
     if (!auction) return
+
+    // Nếu auction bị tạm dừng, dừng timer và hiển thị thời gian tạm dừng
+    if (auction.status?.toLowerCase() === "cancelled") {
+      if (auction.pausedAt) {
+        const pausedDate = new Date(auction.pausedAt)
+        const pausedTime = pausedDate.toLocaleString("vi-VN", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+        setTimeLeft(`Tạm dừng từ ${pausedTime}`)
+      } else {
+        setTimeLeft("Đã tạm dừng")
+      }
+      return
+    }
 
     const updateTimer = () => {
       const now = new Date().getTime()
@@ -497,13 +532,35 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
               <div className="space-y-6">
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
-                    <Badge className="bg-primary text-primary-foreground">Đang mở</Badge>
+                    {auction.status?.toLowerCase() === "cancelled" ? (
+                      <Badge className="bg-orange-500 text-white">Đã tạm dừng</Badge>
+                    ) : (
+                      <Badge className="bg-primary text-primary-foreground">Đang mở</Badge>
+                    )}
                     <span className="text-xs uppercase tracking-wider text-muted-foreground">{auction.categoryName || "Danh mục"}</span>
                   </div>
                   <div>
                     <h1 className="text-3xl font-bold leading-tight text-foreground lg:text-4xl">{auction.itemTitle}</h1>
                     <p className="mt-1 text-sm text-muted-foreground">{auction.status}</p>
                   </div>
+                  {auction.status?.toLowerCase() === "cancelled" && (
+                    <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-orange-900">Phiên đấu giá đang tạm dừng</p>
+                          <p className="mt-1 text-sm text-orange-700">
+                            Phiên đấu giá này đã bị tạm dừng bởi quản trị viên. Bạn không thể đặt giá trong thời gian này.
+                            {auction.pausedAt && (
+                              <span className="block mt-1">
+                                Thời gian tạm dừng: {new Date(auction.pausedAt).toLocaleString("vi-VN")}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-3 gap-4 rounded-xl border border-border bg-muted/30 p-4">
@@ -654,9 +711,10 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 value={bidAmount}
                 onChange={(e) => setBidAmount(e.target.value)}
                 className="flex-1"
+                disabled={auction.status?.toLowerCase() === "cancelled"}
               />
               <Button 
-                disabled={placing || !user}
+                disabled={placing || !user || auction.status?.toLowerCase() === "cancelled"}
                 onClick={async () => {
                   if (!auction) return
                   setPlaceError(null)
@@ -700,12 +758,15 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 variant="outline"
                 className="flex-1 bg-transparent text-xs"
                         onClick={() => setBidAmount((suggestedBid + minIncrement * idx).toString())}
+                        disabled={auction.status?.toLowerCase() === "cancelled"}
               >
                         <span className="truncate">{formatPriceCompact(suggestedBid + minIncrement * idx)}</span>
               </Button>
                     ))}
             </div>
-            <AutoBidDialog auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} minIncrement={minIncrement} />
+            {auction.status?.toLowerCase() !== "cancelled" && (
+              <AutoBidDialog auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} minIncrement={minIncrement} />
+            )}
           </div>
           <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-4 text-sm">
             <div className="flex items-start gap-2">

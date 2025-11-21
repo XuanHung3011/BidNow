@@ -13,6 +13,12 @@ export type BidPlacedPayload = {
   }
 }
 
+export type AuctionStatusUpdatedPayload = {
+  auctionId: number
+  status: string
+  timestamp: string
+}
+
 export function createAuctionHubConnection(): HubConnection {
   const connection = new HubConnectionBuilder()
     .withUrl(`${API_BASE}/hubs/auction`, {
