@@ -129,7 +129,25 @@ export function Header() {
       }
     }
 
+    const handleNotificationReceived = (notification: NotificationResponseDto) => {
+      if (notification.userId === userIdNumber && !notification.isRead) {
+        // Tăng unread count
+        setUnreadCount((prev) => prev + 1)
+        
+        // Nếu đang mở dropdown, thêm notification vào danh sách
+        setNotifications((prev) => {
+          // Kiểm tra xem notification đã có chưa (tránh duplicate)
+          const exists = prev.some(n => n.id === notification.id)
+          if (exists) return prev
+          
+          // Thêm vào đầu danh sách
+          return [notification, ...prev]
+        })
+      }
+    }
+
     connection.on("MessageReceived", handleMessageReceived)
+    connection.on("NotificationReceived", handleNotificationReceived)
 
     const startPromise = (async () => {
       try {
@@ -143,6 +161,7 @@ export function Header() {
 
     return () => {
       connection.off("MessageReceived", handleMessageReceived)
+      connection.off("NotificationReceived", handleNotificationReceived)
       const cleanup = async () => {
         try {
           await startPromise.catch(() => {})

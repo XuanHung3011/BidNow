@@ -36,7 +36,7 @@ import {
 } from "@/lib/api"
 import type { BidDto } from "@/lib/api/auctions"
 import { useAuth } from "@/lib/auth-context"
-import { createAuctionHubConnection, type BidPlacedPayload } from "@/lib/realtime/auctionHub"
+import { createAuctionHubConnection, type BidPlacedPayload, type AuctionStatusUpdatedPayload } from "@/lib/realtime/auctionHub"
 import { getImageUrls } from "@/lib/api/config"
 import { WatchlistAPI } from "@/lib/api"
 
@@ -155,10 +155,27 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       })
     })
 
+    // Listen for auction status updates (pause/resume)
+    connection.on("AuctionStatusUpdated", async (payload: AuctionStatusUpdatedPayload) => {
+      if (!isMounted) return
+      if (payload.auctionId !== Number(auctionId)) return
+      
+      // Refresh auction data khi status thay đổi
+      try {
+        const data = await AuctionsAPI.getDetail(Number(auctionId))
+        if (!isMounted) return
+        setAuction(data)
+      } catch (err) {
+        console.error('Failed to refresh auction after status update:', err)
+      }
+    })
+
     start()
 
     return () => {
       isMounted = false
+      connection.off("BidPlaced")
+      connection.off("AuctionStatusUpdated")
       const leaveAndStop = async () => {
         try {
           if (started) {
