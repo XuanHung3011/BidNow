@@ -30,44 +30,32 @@ export function AdminStats() {
   const [chartData, setChartData] = useState<Record<string, AdminStatsDetailDto>>({})
   const [loadingCharts, setLoadingCharts] = useState<Record<string, boolean>>({})
 
-  const fetchStats = useCallback(async (options?: { silent?: boolean }) => {
-    const silent = options?.silent ?? false
-
+  const fetchStats = useCallback(async () => {
     try {
-      if (!silent) {
-        setLoading(true)
-      }
+      setLoading(true)
+      setError(null)
       const data = await AdminStatsAPI.getStats()
       setStats(data)
-      setError(null)
 
       const chartTypes = ["users", "auctions", "revenue"]
       const chartPromises = chartTypes.map(async (type) => {
-        if (!silent) {
-          setLoadingCharts((prev) => ({ ...prev, [type]: true }))
-        }
+        setLoadingCharts((prev) => ({ ...prev, [type]: true }))
         try {
           const detailData = await AdminStatsAPI.getStatsDetail(type)
           setChartData((prev) => ({ ...prev, [type]: detailData }))
         } catch (err) {
           console.error(`Error fetching chart data for ${type}:`, err)
         } finally {
-          if (!silent) {
-            setLoadingCharts((prev) => ({ ...prev, [type]: false }))
-          }
+          setLoadingCharts((prev) => ({ ...prev, [type]: false }))
         }
       })
 
       await Promise.all(chartPromises)
     } catch (err) {
-      if (!silent) {
-        setError(err instanceof Error ? err.message : "Failed to load stats")
-      }
+      setError(err instanceof Error ? err.message : "Failed to load stats")
       console.error("Error fetching admin stats:", err)
     } finally {
-      if (!silent) {
-        setLoading(false)
-      }
+      setLoading(false)
     }
   }, [])
 
@@ -85,39 +73,26 @@ export function AdminStats() {
           await connection.stop()
           return
         }
-        await Promise.all([
-          connection.invoke("JoinAdminSection", "stats"),
-          connection.invoke("JoinAdminSection", "auctions"),
-        ])
+        await connection.invoke("JoinAdminSection", "stats")
       } catch (error) {
         console.error("Admin stats SignalR connection error:", error)
       }
     })()
 
-    const handleRealtimeUpdate = () => {
-      fetchStats({ silent: true })
-    }
-
-    connection.on("AdminStatsUpdated", handleRealtimeUpdate)
-    connection.on("AdminAuctionStatusUpdated", handleRealtimeUpdate)
+    connection.on("AdminStatsUpdated", () => {
+      fetchStats()
+    })
 
     return () => {
       isMounted = false
-      connection.off("AdminStatsUpdated", handleRealtimeUpdate)
-      connection.off("AdminAuctionStatusUpdated", handleRealtimeUpdate)
+      connection.off("AdminStatsUpdated")
       startPromise
         .catch(() => {})
         .finally(() => {
           if (connection.state === "Connected") {
-            Promise.all([
-              connection.invoke("LeaveAdminSection", "stats").catch(() => {}),
-              connection.invoke("LeaveAdminSection", "auctions").catch(() => {}),
-            ]).finally(() => {
-              connection.stop().catch(() => {})
-            })
-          } else {
-            connection.stop().catch(() => {})
+            connection.invoke("LeaveAdminSection", "stats").catch(() => {})
           }
+          connection.stop().catch(() => {})
         })
     }
   }, [fetchStats])
