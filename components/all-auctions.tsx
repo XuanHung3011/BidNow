@@ -381,6 +381,8 @@ useEffect(() => {
                       : new Date(0),
                     bidCount: auction.bidCount ?? 0,
                     category: auction.categoryName ?? "Chưa phân loại",
+                    status: auction.auctionStatus ?? undefined,
+                    pausedAt: auction.pausedAt ?? undefined,
                   }}
                 />
               )})}

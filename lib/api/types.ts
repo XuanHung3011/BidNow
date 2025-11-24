@@ -65,6 +65,7 @@ export interface ItemResponseDto {
   bidCount?: number | null;
   auctionEndTime?: string | null;
   auctionStatus?: string | null;
+  pausedAt?: string | null;
 }
 
 export interface CreateItemDto {

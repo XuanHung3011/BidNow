@@ -541,7 +541,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                   </div>
                   <div>
                     <h1 className="text-3xl font-bold leading-tight text-foreground lg:text-4xl">{auction.itemTitle}</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">{auction.status}</p>
+                    {/* <p className="mt-1 text-sm text-muted-foreground">{auction.status}</p> */}
                   </div>
                   {auction.status?.toLowerCase() === "cancelled" && (
                     <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
