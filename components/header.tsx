@@ -302,8 +302,22 @@ export function Header() {
     }
   }, [handleMarkAsRead, pathname, router, searchParams, user])
 
+  const parseNotificationDate = (value: string) => {
+    if (!value) return new Date()
+    const hasTimezoneInfo = /([zZ])|([+\-]\d{2}:?\d{2}$)/.test(value)
+    const normalizedValue = hasTimezoneInfo ? value : `${value}Z`
+
+    const parsedUtc = new Date(normalizedValue)
+    if (!Number.isNaN(parsedUtc.getTime())) {
+      return parsedUtc
+    }
+
+    const fallback = new Date(value)
+    return Number.isNaN(fallback.getTime()) ? new Date() : fallback
+  }
+
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString)
+    const date = parseNotificationDate(dateString)
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
     const diffMins = Math.floor(diffMs / 60000)
