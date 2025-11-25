@@ -118,8 +118,9 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       // Chỉ update nếu giá mới cao hơn hoặc bằng giá hiện tại (tránh update ngược về giá cũ)
       setAuction((prev) => {
         if (!prev) return prev
+        const currentValue = prev.currentBid ?? prev.startingBid ?? 0
         // Chỉ update nếu currentBid mới >= currentBid hiện tại
-        if (payload.currentBid >= prev.currentBid) {
+        if (payload.currentBid >= currentValue) {
           return {
             ...prev,
             currentBid: payload.currentBid,
@@ -824,15 +825,14 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
           </Card>
 
           <Card className="border-border bg-card p-6">
-            <div className="mb-4 flex items-center gap-2">
+            <div className="mb-2 flex items-center gap-2">
               <MessageCircle className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Hỗ trợ trực tuyến</h3>
-              <div className="ml-auto flex items-center gap-1">
-                <div className="h-2 w-2 animate-pulse-glow rounded-full bg-accent" />
-                <span className="text-xs text-accent">Online</span>
+              <div>
+                <h3 className="font-semibold text-foreground">Bình luận phiên đấu giá</h3>
+                <p className="text-xs text-muted-foreground">Trao đổi ẩn danh, mọi người đều xem được.</p>
               </div>
             </div>
-            <LiveChat />
+            <LiveChat auctionId={Number(auctionId)} />
           </Card>
         </section>
 
