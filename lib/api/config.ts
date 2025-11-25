@@ -157,6 +157,10 @@ export const API_ENDPOINTS = {
   },
   RECOMMENDATIONS: {
     PERSONALIZED: "/api/Recommendations/personalized",
+  },
+  AUCTION_CHAT: {
+    LIST: (auctionId: number) => `/api/AuctionMessages/${auctionId}`,
+    CREATE: "/api/AuctionMessages",
   }
 } as const;
 
