@@ -25,7 +25,6 @@ import {
   RealTimePriceChart,
   type PricePoint,
 } from "@/components/auction/real-time-price-chart"
-import { BidTicker, type TickerBid } from "@/components/auction/bid-ticker"
 import { LiveChat } from "@/components/live-chat"
 import { AutoBidDialog } from "@/components/auto-bid-dialog"
 import {
@@ -66,7 +65,6 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const [loadingWatchlist, setLoadingWatchlist] = useState(false)
   const [watchlistMessage, setWatchlistMessage] = useState<string | null>(null)
   const [recentBids, setRecentBids] = useState<BidDto[]>([])
-  const [bidsLoading, setBidsLoading] = useState(true)
 
   // Fetch auction detail
   useEffect(() => {
@@ -118,8 +116,12 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       // Chỉ update nếu giá mới cao hơn hoặc bằng giá hiện tại (tránh update ngược về giá cũ)
       setAuction((prev) => {
         if (!prev) return prev
+
+        // Dùng giá hiện tại với fallback về startingBid (tránh undefined)
+        const prevCurrent = prev.currentBid ?? prev.startingBid
+
         // Chỉ update nếu currentBid mới >= currentBid hiện tại
-        if (payload.currentBid >= prev.currentBid) {
+        if (payload.currentBid >= prevCurrent) {
           return {
             ...prev,
             currentBid: payload.currentBid,
@@ -196,16 +198,11 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     let active = true
     const fetchRecentBids = async () => {
       try {
-        setBidsLoading(true)
         const data = await AuctionsAPI.getRecentBids(Number(auctionId), 120)
         if (!active) return
         setRecentBids(data)
       } catch (err) {
         console.error("Không thể tải lịch sử đấu giá gần đây", err)
-      } finally {
-        if (active) {
-          setBidsLoading(false)
-        }
       }
     }
     if (auctionId) {
@@ -426,19 +423,6 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     return points
   }, [auction, recentBids])
 
-  const tickerItems: TickerBid[] = useMemo(() => {
-    return [...recentBids]
-      .slice(-12)
-      .reverse()
-      .map((bid, index) => ({
-        id: `${bid.bidderId}-${bid.bidTime}-${index}`,
-        bidder: formatBidderAlias(bid.bidderId, bid.bidderName),
-        amount: bid.amount,
-        bidTime: bid.bidTime,
-        isWinning: index === 0,
-      }))
-  }, [recentBids])
-
   const latestBid = recentBids[recentBids.length - 1]
   const leadingBidder = latestBid ? formatBidderAlias(latestBid.bidderId, latestBid.bidderName) : null
   const liveFeedEntries = useMemo(() => [...recentBids].reverse(), [recentBids])
@@ -647,20 +631,13 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 ))}
               </div>
             </div>
-            <div className="mt-6 rounded-xl bg-muted/20 p-3">
+            <div className="mt-6 mb-8 rounded-xl bg-muted/20 p-3 pb-8">
               <RealTimePriceChart
                 data={priceSeries}
                 startingBid={auction.startingBid}
                 currentBid={auction.currentBid || auction.startingBid}
                 buyNowPrice={auction.buyNowPrice}
               />
-            </div>
-            <div className="mt-4 space-y-2">
-              <div className="flex items-center justify-between text-xs uppercase tracking-widest text-muted-foreground">
-                <span>Ticker realtime</span>
-                <span>{bidsLoading ? "Đang đồng bộ..." : "Đã cập nhật"}</span>
-              </div>
-              <BidTicker items={tickerItems} />
             </div>
           </Card>
 
