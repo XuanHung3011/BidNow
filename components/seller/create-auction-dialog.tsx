@@ -22,6 +22,16 @@ import { Loader2 } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ImageUploadFile } from "@/components/ui/image-upload-file"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface CreateAuctionDialogProps {
   open: boolean
@@ -46,12 +56,18 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
   const [newItemCondition, setNewItemCondition] = useState("")
   const [newItemLocation, setNewItemLocation] = useState("")
   const [newItemImages, setNewItemImages] = useState<File[]>([])
+  const [itemValidationErrors, setItemValidationErrors] = useState<Record<string, string>>({})
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  const [auctionValidationErrors, setAuctionValidationErrors] = useState<Record<string, string>>({})
+  const [showConfirmAuctionDialog, setShowConfirmAuctionDialog] = useState(false)
+  const [showAuctionSuccessMessage, setShowAuctionSuccessMessage] = useState(false)
   
   // Auction form
   const [startingBid, setStartingBid] = useState("")
   const [buyNowOption, setBuyNowOption] = useState<string>("no") // "yes" hoặc "no"
   const [buyNowPrice, setBuyNowPrice] = useState("")
-  const [duration, setDuration] = useState("7")
+  const [duration, setDuration] = useState("custom")
   const [customStartDate, setCustomStartDate] = useState("")
   const [customStartTime, setCustomStartTime] = useState("")
   const [customEndDate, setCustomEndDate] = useState("")
@@ -67,11 +83,25 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       setStartingBid("")
       setBuyNowOption("no")
       setBuyNowPrice("")
-      setDuration("7")
+      setDuration("custom")
       setCustomStartDate("")
       setCustomStartTime("")
       setCustomEndDate("")
       setCustomEndTime("")
+      // Reset item form
+      setNewItemTitle("")
+      setNewItemCategoryId("")
+      setNewItemDescription("")
+      setNewItemBasePrice("")
+      setNewItemCondition("")
+      setNewItemLocation("")
+      setNewItemImages([])
+      setItemValidationErrors({})
+      setShowConfirmDialog(false)
+      setShowSuccessMessage(false)
+      setAuctionValidationErrors({})
+      setShowConfirmAuctionDialog(false)
+      setShowAuctionSuccessMessage(false)
     }
   }, [open, user])
 
@@ -140,35 +170,84 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
     }
   }
 
-  const handleCreateItem = async () => {
+  const validateItemForm = (): boolean => {
+    const errors: Record<string, string> = {}
+
+    // Validate tên sản phẩm
+    if (!newItemTitle.trim()) {
+      errors.title = "Tên sản phẩm là bắt buộc"
+    } else if (newItemTitle.trim().length < 3) {
+      errors.title = "Tên sản phẩm phải có ít nhất 3 ký tự"
+    } else if (newItemTitle.trim().length > 255) {
+      errors.title = "Tên sản phẩm không được vượt quá 255 ký tự"
+    }
+
+    // Validate danh mục
+    if (!newItemCategoryId) {
+      errors.categoryId = "Vui lòng chọn danh mục"
+    }
+
+    // Validate giá khởi điểm
+    if (!newItemBasePrice || newItemBasePrice.trim() === "") {
+      errors.basePrice = "Giá khởi điểm là bắt buộc"
+    } else {
+      const price = parseFloat(newItemBasePrice)
+      if (isNaN(price) || price <= 0) {
+        errors.basePrice = "Giá khởi điểm phải lớn hơn 0"
+      } else if (price < 1000) {
+        errors.basePrice = "Giá khởi điểm tối thiểu là 1,000 VNĐ"
+      }
+    }
+
+    // Validate mô tả (optional but if provided, check length)
+    if (newItemDescription && newItemDescription.length > 2000) {
+      errors.description = "Mô tả không được vượt quá 2000 ký tự"
+    }
+
+    // Validate địa điểm (optional but if provided, check length)
+    if (newItemLocation && newItemLocation.length > 255) {
+      errors.location = "Địa điểm không được vượt quá 255 ký tự"
+    }
+
+    // Validate hình ảnh (optional but if provided, check count and size)
+    if (newItemImages.length > 10) {
+      errors.images = "Tối đa 10 hình ảnh"
+    }
+    for (let i = 0; i < newItemImages.length; i++) {
+      const file = newItemImages[i]
+      if (file.size > 10 * 1024 * 1024) {
+        errors.images = `Hình ảnh ${i + 1} vượt quá 10MB`
+        break
+      }
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png']
+      if (!validTypes.includes(file.type)) {
+        errors.images = `Hình ảnh ${i + 1} phải là định dạng JPG hoặc PNG`
+        break
+      }
+    }
+
+    setItemValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleCreateItemClick = () => {
+    if (!validateItemForm()) {
+      // Scroll to first error
+      const firstErrorField = Object.keys(itemValidationErrors)[0]
+      if (firstErrorField) {
+        const element = document.getElementById(`newItem${firstErrorField.charAt(0).toUpperCase() + firstErrorField.slice(1)}`)
+        element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        element?.focus()
+      }
+      return
+    }
+    setShowConfirmDialog(true)
+  }
+
+  const handleConfirmCreateItem = async () => {
     if (!user) return
 
-    if (!newItemTitle.trim()) {
-      toast({
-        title: "Lỗi",
-        description: "Vui lòng nhập tên sản phẩm",
-        variant: "destructive"
-      })
-      return
-    }
-
-    if (!newItemCategoryId) {
-      toast({
-        title: "Lỗi",
-        description: "Vui lòng chọn danh mục",
-        variant: "destructive"
-      })
-      return
-    }
-
-    if (!newItemBasePrice || parseFloat(newItemBasePrice) <= 0) {
-      toast({
-        title: "Lỗi",
-        description: "Vui lòng nhập giá cơ bản hợp lệ",
-        variant: "destructive"
-      })
-      return
-    }
+    setShowConfirmDialog(false)
 
     try {
       setLoading(true)
@@ -176,19 +255,17 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       const itemData: CreateItemDto = {
         sellerId,
         categoryId: parseInt(newItemCategoryId),
-        title: newItemTitle,
-        description: newItemDescription || undefined,
+        title: newItemTitle.trim(),
+        description: newItemDescription.trim() || undefined,
         basePrice: parseFloat(newItemBasePrice),
         condition: newItemCondition || undefined,
-        location: newItemLocation || undefined
+        location: newItemLocation.trim() || undefined
       }
 
-      const createdItem = await ItemsAPI.createItem(itemData, newItemImages.length > 0 ? newItemImages : undefined)
+      await ItemsAPI.createItem(itemData, newItemImages.length > 0 ? newItemImages : undefined)
       
-      toast({
-        title: "Thành công",
-        description: "Sản phẩm đã được tạo và đang chờ phê duyệt. Sau khi được admin phê duyệt, bạn có thể tạo phiên đấu giá."
-      })
+      // Show success message
+      setShowSuccessMessage(true)
 
       // Reset form
       setNewItemTitle("")
@@ -198,6 +275,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       setNewItemCondition("")
       setNewItemLocation("")
       setNewItemImages([])
+      setItemValidationErrors({})
       
       // Reload items to include the new one
       await loadApprovedItems()
@@ -225,8 +303,102 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
     return end
   }
 
+  const validateAuctionForm = (): boolean => {
+    const errors: Record<string, string> = {}
+    
+    // Validate giá khởi điểm
+    if (!startingBid || startingBid.trim() === "") {
+      errors.startingBid = "Giá khởi điểm là bắt buộc"
+    } else {
+      const price = parseFloat(startingBid)
+      if (isNaN(price) || price <= 0) {
+        errors.startingBid = "Giá khởi điểm phải lớn hơn 0"
+      } else if (price < 1000) {
+        errors.startingBid = "Giá khởi điểm tối thiểu là 1,000 VNĐ"
+      }
+    }
+    
+    // Validate giá mua ngay nếu có chọn
+    if (buyNowOption === "yes") {
+      if (!buyNowPrice || buyNowPrice.trim() === "") {
+        errors.buyNowPrice = "Giá mua ngay là bắt buộc khi chọn tùy chọn này"
+      } else {
+        const buyNow = parseFloat(buyNowPrice)
+        const startPrice = parseFloat(startingBid || "0")
+        if (isNaN(buyNow) || buyNow <= 0) {
+          errors.buyNowPrice = "Giá mua ngay phải lớn hơn 0"
+        } else if (buyNow <= startPrice) {
+          errors.buyNowPrice = "Giá mua ngay phải lớn hơn giá khởi điểm"
+        }
+      }
+    }
+    
+    // Validate thời gian (bắt buộc phải nhập)
+    if (!customStartDate || !customStartTime) {
+      errors.customTime = "Vui lòng nhập đầy đủ ngày và giờ bắt đầu"
+    } else if (!customEndDate || !customEndTime) {
+      errors.customTime = "Vui lòng nhập đầy đủ ngày và giờ kết thúc"
+    } else {
+      const start = new Date(`${customStartDate}T${customStartTime}`)
+      const end = new Date(`${customEndDate}T${customEndTime}`)
+      if (start >= end) {
+        errors.customTime = "Thời gian kết thúc phải sau thời gian bắt đầu"
+      }
+      const now = new Date()
+      // Check local time (user-friendly)
+      // Backend will handle UTC conversion, so we only validate local time here
+      if (start < now) {
+        errors.customTime = "Thời gian bắt đầu không thể trong quá khứ"
+      }
+    }
+    
+    setAuctionValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleSubmitClick = () => {
+    console.log('handleSubmitClick called')
+    console.log('Form values:', {
+      selectedItemId,
+      startingBid,
+      buyNowOption,
+      buyNowPrice,
+      duration,
+      customStartDate,
+      customStartTime,
+      customEndDate,
+      customEndTime
+    })
+    
+    if (!validateAuctionForm()) {
+      console.error('Validation failed:', auctionValidationErrors)
+      const firstError = Object.values(auctionValidationErrors)[0]
+      if (firstError) {
+        toast({
+          title: "Lỗi validation",
+          description: firstError,
+          variant: "destructive"
+        })
+      }
+      // Scroll to first error
+      const firstErrorField = Object.keys(auctionValidationErrors)[0]
+      if (firstErrorField === "startingBid") {
+        document.getElementById("startPrice")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        document.getElementById("startPrice")?.focus()
+      } else if (firstErrorField === "buyNowPrice") {
+        document.getElementById("buyNowPrice")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        document.getElementById("buyNowPrice")?.focus()
+      } else if (firstErrorField === "customTime") {
+        document.getElementById("startDate")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      return
+    }
+    console.log('Validation passed, showing confirm dialog')
+    setShowConfirmAuctionDialog(true)
+  }
+
   const handleSubmit = async () => {
-    console.log('handleSubmit called', { user, selectedItemId, startingBid, duration })
+    console.log('handleSubmit called', { user: !!user, selectedItemId, step })
     
     if (!user || !selectedItemId) {
       console.error('Validation failed: missing user or selectedItemId', { user: !!user, selectedItemId })
@@ -238,54 +410,44 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       return
     }
 
-    if (!startingBid || parseFloat(startingBid) <= 0) {
-      console.error('Validation failed: invalid startingBid', { startingBid })
-      toast({
-        title: "Lỗi",
-        description: "Vui lòng nhập giá khởi điểm hợp lệ",
-        variant: "destructive"
-      })
-      return
-    }
+    setShowConfirmAuctionDialog(false)
 
     try {
       setLoading(true)
       console.log('Starting auction creation...')
       const sellerId = parseInt(user.id)
       const itemId = parseInt(selectedItemId)
-      
       console.log('Parsed IDs:', { sellerId, itemId })
 
       // Calculate start and end times
       let startTime: Date
       let endTime: Date
+      const now = new Date()
+      const nowUTC = new Date() // Current UTC time
 
       console.log('Calculating times, duration:', duration)
 
-      if (duration === "custom") {
-        console.log('Using custom time:', { customStartDate, customStartTime, customEndDate, customEndTime })
-        if (!customStartDate || !customStartTime || !customEndDate || !customEndTime) {
-          setLoading(false)
-          toast({
-            title: "Lỗi",
-            description: "Vui lòng nhập đầy đủ thời gian",
-            variant: "destructive"
-          })
-          return
-        }
-        startTime = new Date(`${customStartDate}T${customStartTime}`)
-        endTime = new Date(`${customEndDate}T${customEndTime}`)
-      } else {
-        console.log('Using preset duration:', duration, 'days')
-        const now = new Date()
-        startTime = new Date(now)
-        startTime.setMinutes(0)
-        startTime.setSeconds(0)
-        startTime.setMilliseconds(0)
-        // Add 1 hour to start time to ensure it's in the future
-        startTime.setHours(startTime.getHours() + 1)
-        endTime = calculateEndTime(startTime, parseInt(duration))
+      // Always use custom datetime - interpret as local time
+      console.log('Using custom time:', { customStartDate, customStartTime, customEndDate, customEndTime })
+      
+      if (!customStartDate || !customStartTime || !customEndDate || !customEndTime) {
+        setLoading(false)
+        toast({
+          title: "Lỗi",
+          description: "Vui lòng nhập đầy đủ thời gian bắt đầu và kết thúc",
+          variant: "destructive"
+        })
+        return
       }
+      
+      startTime = new Date(`${customStartDate}T${customStartTime}`)
+      endTime = new Date(`${customEndDate}T${customEndTime}`)
+      console.log('Parsed custom times:', {
+        startTime: startTime.toString(),
+        endTime: endTime.toString(),
+        startTimeISO: startTime.toISOString(),
+        endTimeISO: endTime.toISOString()
+      })
 
       console.log('Calculated times:', { 
         startTime: startTime.toISOString(), 
@@ -295,8 +457,8 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
         now: new Date().toISOString()
       })
 
-      // Validate times
-      const now = new Date()
+      // Validate times (local time check for user-friendly validation)
+      console.log('Validating times...')
       if (startTime >= endTime) {
         console.error('Validation failed: startTime >= endTime', {
           startTime: startTime.toISOString(),
@@ -311,26 +473,31 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
         return
       }
 
-      // Allow start time to be in the past by a small margin (5 minutes) to handle timezone issues
-      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000)
-      if (startTime < fiveMinutesAgo) {
-        console.error('Validation failed: startTime too far in past', { 
-          startTime: startTime.toISOString(), 
-          now: now.toISOString(),
-          fiveMinutesAgo: fiveMinutesAgo.toISOString()
+      if (startTime < now) {
+        console.error('Validation failed: startTime < now', {
+          startTime: startTime.toISOString(),
+          now: now.toISOString()
         })
         setLoading(false)
         toast({
           title: "Lỗi",
-          description: "Thời gian bắt đầu không thể quá xa trong quá khứ",
+          description: "Thời gian bắt đầu không thể trong quá khứ",
           variant: "destructive"
         })
         return
       }
 
+      // Note: Backend will handle UTC to local time conversion
+      // Backend converts UTC time from frontend to Vietnam local time (UTC+7)
+      // and compares with DateTime.Now (local time)
+      // So we only need to validate local time here
+      console.log('Time validation passed (local time)')
+
       // Validation: Đảm bảo item được chọn thuộc về seller hiện tại
+      console.log('Validating item ownership...')
       const selectedItem = items.find(i => String(i.id) === selectedItemId)
       if (!selectedItem) {
+        console.error('Validation failed: item not found', { selectedItemId, items: items.map(i => ({ id: i.id, sellerId: i.sellerId })) })
         toast({
           title: "Lỗi",
           description: "Sản phẩm không tồn tại hoặc không thuộc về bạn",
@@ -340,7 +507,12 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
         return
       }
       
+      console.log('Selected item:', { id: selectedItem.id, sellerId: selectedItem.sellerId, currentSellerId: sellerId })
       if (selectedItem.sellerId !== sellerId) {
+        console.error('Validation failed: item does not belong to seller', {
+          itemSellerId: selectedItem.sellerId,
+          currentSellerId: sellerId
+        })
         toast({
           title: "Lỗi",
           description: "Bạn chỉ có thể tạo phiên đấu giá cho sản phẩm của chính mình",
@@ -350,6 +522,9 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
         return
       }
 
+      console.log('Item validation passed')
+
+      // Convert local time to ISO string (UTC) for backend
       const auctionData = {
         itemId,
         sellerId,
@@ -359,40 +534,53 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString()
       }
-
-      console.log('Auction data to send:', auctionData)
       
+      console.log('Auction data to send:', auctionData)
+      console.log('Start time details:', {
+        local: startTime.toString(),
+        utc: startTime.toISOString(),
+        timestamp: startTime.getTime(),
+        now: Date.now(),
+        diff: startTime.getTime() - Date.now(),
+        diffMinutes: (startTime.getTime() - Date.now()) / 1000 / 60
+      })
+      
+      console.log('Calling AuctionsAPI.create...')
       try {
         const result = await AuctionsAPI.create(auctionData)
         console.log('Auction created successfully:', result)
-
-        toast({
-          title: "Thành công",
-          description: "Phiên đấu giá đã được tạo và đang hoạt động"
-        })
-
-        // Reload items to update the list (hide item with active auction)
-        await loadApprovedItems()
-
-        onOpenChange(false)
-        // Reset form
-        setStep(1)
-        setSelectedItemId("")
-        setStartingBid("")
-        setBuyNowOption("no")
-        setBuyNowPrice("")
-        setDuration("7")
-        setCustomStartDate("")
-        setCustomStartTime("")
-        setCustomEndDate("")
-        setCustomEndTime("")
       } catch (apiError: any) {
         console.error('Error calling API:', apiError)
         throw apiError // Re-throw to be caught by outer catch
       }
+
+      // Show success message
+      setShowAuctionSuccessMessage(true)
+
+      // Reload items to update the list (hide item with active auction)
+      await loadApprovedItems()
+
+      // Reset form
+      setStep(1)
+      setSelectedItemId("")
+      setStartingBid("")
+      setBuyNowOption("no")
+      setBuyNowPrice("")
+      setDuration("custom")
+      setCustomStartDate("")
+      setCustomStartTime("")
+      setCustomEndDate("")
+      setCustomEndTime("")
+      setAuctionValidationErrors({})
+      
+      // Close dialog after showing success message
+      setTimeout(() => {
+        onOpenChange(false)
+      }, 2000)
     } catch (error: any) {
       console.error('Error creating auction:', error)
       const errorMessage = error?.message || error?.error || "Không thể tạo phiên đấu giá"
+      console.error('Error message:', errorMessage)
       toast({
         title: "Lỗi",
         description: errorMessage,
@@ -482,14 +670,42 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                       id="newItemTitle" 
                       placeholder="VD: iPhone 15 Pro Max 256GB" 
                       value={newItemTitle}
-                      onChange={(e) => setNewItemTitle(e.target.value)}
+                      onChange={(e) => {
+                        setNewItemTitle(e.target.value)
+                        if (itemValidationErrors.title) {
+                          setItemValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.title
+                            return newErrors
+                          })
+                        }
+                      }}
+                      className={itemValidationErrors.title ? "border-red-500" : ""}
                     />
+                    {itemValidationErrors.title && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.title}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="newItemCategory">Danh mục *</Label>
-                    <Select value={newItemCategoryId} onValueChange={setNewItemCategoryId}>
-                      <SelectTrigger id="newItemCategory">
+                    <Select 
+                      value={newItemCategoryId} 
+                      onValueChange={(value) => {
+                        setNewItemCategoryId(value)
+                        if (itemValidationErrors.categoryId) {
+                          setItemValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.categoryId
+                            return newErrors
+                          })
+                        }
+                      }}
+                    >
+                      <SelectTrigger 
+                        id="newItemCategory"
+                        className={itemValidationErrors.categoryId ? "border-red-500" : ""}
+                      >
                         <SelectValue placeholder="Chọn danh mục" />
                       </SelectTrigger>
                       <SelectContent>
@@ -500,6 +716,9 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                         ))}
                       </SelectContent>
                     </Select>
+                    {itemValidationErrors.categoryId && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.categoryId}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -509,8 +728,21 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                       placeholder="Mô tả chi tiết về sản phẩm, tình trạng, xuất xứ..." 
                       rows={4}
                       value={newItemDescription}
-                      onChange={(e) => setNewItemDescription(e.target.value)}
+                      onChange={(e) => {
+                        setNewItemDescription(e.target.value)
+                        if (itemValidationErrors.description) {
+                          setItemValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.description
+                            return newErrors
+                          })
+                        }
+                      }}
+                      className={itemValidationErrors.description ? "border-red-500" : ""}
                     />
+                    {itemValidationErrors.description && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.description}</p>
+                    )}
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -521,10 +753,23 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                         type="number" 
                         placeholder="VD: 20000000" 
                         value={newItemBasePrice}
-                        onChange={(e) => setNewItemBasePrice(e.target.value)}
+                        onChange={(e) => {
+                          setNewItemBasePrice(e.target.value)
+                          if (itemValidationErrors.basePrice) {
+                            setItemValidationErrors(prev => {
+                              const newErrors = { ...prev }
+                              delete newErrors.basePrice
+                              return newErrors
+                            })
+                          }
+                        }}
                         min="0"
                         step="1000"
+                        className={itemValidationErrors.basePrice ? "border-red-500" : ""}
                       />
+                      {itemValidationErrors.basePrice && (
+                        <p className="text-sm text-red-500">{itemValidationErrors.basePrice}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -550,18 +795,43 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                       id="newItemLocation" 
                       placeholder="VD: Hà Nội, Việt Nam" 
                       value={newItemLocation}
-                      onChange={(e) => setNewItemLocation(e.target.value)}
+                      onChange={(e) => {
+                        setNewItemLocation(e.target.value)
+                        if (itemValidationErrors.location) {
+                          setItemValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.location
+                            return newErrors
+                          })
+                        }
+                      }}
+                      className={itemValidationErrors.location ? "border-red-500" : ""}
                     />
+                    {itemValidationErrors.location && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.location}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
                     <Label>Hình ảnh sản phẩm</Label>
                     <ImageUploadFile
                       files={newItemImages}
-                      onChange={setNewItemImages}
+                      onChange={(files) => {
+                        setNewItemImages(files)
+                        if (itemValidationErrors.images) {
+                          setItemValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.images
+                            return newErrors
+                          })
+                        }
+                      }}
                       maxImages={10}
                       maxSizeMB={10}
                     />
+                    {itemValidationErrors.images && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.images}</p>
+                    )}
                   </div>
 
                   <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
@@ -571,7 +841,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                   </div>
 
                   <Button 
-                    onClick={handleCreateItem} 
+                    onClick={handleCreateItemClick} 
                     disabled={loading}
                     className="w-full"
                   >
@@ -600,15 +870,28 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                   type="number" 
                   placeholder="VD: 1000000" 
                   value={startingBid}
-                  onChange={(e) => setStartingBid(e.target.value)}
+                  onChange={(e) => {
+                    setStartingBid(e.target.value)
+                    if (auctionValidationErrors.startingBid) {
+                      setAuctionValidationErrors(prev => {
+                        const newErrors = { ...prev }
+                        delete newErrors.startingBid
+                        return newErrors
+                      })
+                    }
+                  }}
                   min="0"
                   step="1000"
+                  className={auctionValidationErrors.startingBid ? "border-red-500" : ""}
                 />
+                {auctionValidationErrors.startingBid && (
+                  <p className="text-sm text-red-500">{auctionValidationErrors.startingBid}</p>
+                )}
                 {selectedItemId && (() => {
                   const item = items.find(i => String(i.id) === selectedItemId)
                   return item?.basePrice ? (
                     <p className="text-xs text-muted-foreground">
-                      Giá khởi điểm ban đầu: {item.basePrice.toLocaleString('vi-VN')} VNĐ
+                      {/* Giá khởi điểm ban đầu: {item.basePrice.toLocaleString('vi-VN')} VNĐ */}
                     </p>
                   ) : null
                 })()}
@@ -621,6 +904,11 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                   // Reset giá mua ngay khi chọn "Không"
                   if (value === "no") {
                     setBuyNowPrice("")
+                    setAuctionValidationErrors(prev => {
+                      const newErrors = { ...prev }
+                      delete newErrors.buyNowPrice
+                      return newErrors
+                    })
                   }
                 }}>
                   <SelectTrigger id="buyNowOption">
@@ -639,73 +927,122 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                       type="number" 
                       placeholder="VD: 5000000" 
                       value={buyNowPrice}
-                      onChange={(e) => setBuyNowPrice(e.target.value)}
+                      onChange={(e) => {
+                        setBuyNowPrice(e.target.value)
+                        if (auctionValidationErrors.buyNowPrice) {
+                          setAuctionValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.buyNowPrice
+                            return newErrors
+                          })
+                        }
+                      }}
                       min="0"
                       step="1000"
+                      className={auctionValidationErrors.buyNowPrice ? "border-red-500" : ""}
                     />
+                    {auctionValidationErrors.buyNowPrice && (
+                      <p className="text-sm text-red-500">{auctionValidationErrors.buyNowPrice}</p>
+                    )}
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="duration">Thiết lập thời gian đấu giá</Label>
-              <Select value={duration} onValueChange={setDuration}>
-                <SelectTrigger id="duration">
-                  <SelectValue placeholder="Chọn thời gian" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1 ngày</SelectItem>
-                  <SelectItem value="3">3 ngày</SelectItem>
-                  <SelectItem value="7">7 ngày</SelectItem>
-                  <SelectItem value="14">14 ngày</SelectItem>
-                  <SelectItem value="custom">Tùy chỉnh</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {duration === "custom" && (
-              <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border bg-muted/50 p-4">
-                <div className="space-y-2">
-                  <Label htmlFor="startDate">Ngày bắt đầu</Label>
-                  <Input 
-                    id="startDate" 
-                    type="date" 
-                    value={customStartDate}
-                    onChange={(e) => setCustomStartDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="startTime">Giờ bắt đầu</Label>
-                  <Input 
-                    id="startTime" 
-                    type="time" 
-                    value={customStartTime}
-                    onChange={(e) => setCustomStartTime(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endDate">Ngày kết thúc</Label>
-                  <Input 
-                    id="endDate" 
-                    type="date" 
-                    value={customEndDate}
-                    onChange={(e) => setCustomEndDate(e.target.value)}
-                    min={customStartDate || new Date().toISOString().split('T')[0]}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endTime">Giờ kết thúc</Label>
-                  <Input 
-                    id="endTime" 
-                    type="time" 
-                    value={customEndTime}
-                    onChange={(e) => setCustomEndTime(e.target.value)}
-                  />
-                </div>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Thiết lập thời gian đấu giá *</Label>
+                <p className="text-sm text-muted-foreground">
+                  Vui lòng chọn thời gian bắt đầu và kết thúc cho phiên đấu giá
+                </p>
               </div>
-            )}
+
+              <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border bg-muted/50 p-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="startDate">Ngày bắt đầu *</Label>
+                    <Input 
+                      id="startDate" 
+                      type="date" 
+                      value={customStartDate}
+                      onChange={(e) => {
+                        setCustomStartDate(e.target.value)
+                        if (auctionValidationErrors.customTime) {
+                          setAuctionValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.customTime
+                            return newErrors
+                          })
+                        }
+                      }}
+                      min={new Date().toISOString().split('T')[0]}
+                      className={auctionValidationErrors.customTime ? "border-red-500" : ""}
+                    />
+                  </div>
+                   <div className="space-y-2">
+                     <Label htmlFor="startTime">Thời gian bắt đầu: *</Label>
+                     <Input 
+                       id="startTime" 
+                       type="time" 
+                       value={customStartTime}
+                       onChange={(e) => {
+                         setCustomStartTime(e.target.value)
+                         if (auctionValidationErrors.customTime) {
+                           setAuctionValidationErrors(prev => {
+                             const newErrors = { ...prev }
+                             delete newErrors.customTime
+                             return newErrors
+                           })
+                         }
+                       }}
+                       className={auctionValidationErrors.customTime ? "border-red-500" : ""}
+                     />
+                     {/* <p className="text-xs text-muted-foreground">Định dạng: 00:00 - 23:59 (24 giờ, không dùng AM/PM)</p> */}
+                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="endDate">Ngày kết thúc *</Label>
+                    <Input 
+                      id="endDate" 
+                      type="date" 
+                      value={customEndDate}
+                      onChange={(e) => {
+                        setCustomEndDate(e.target.value)
+                        if (auctionValidationErrors.customTime) {
+                          setAuctionValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.customTime
+                            return newErrors
+                          })
+                        }
+                      }}
+                      min={customStartDate || new Date().toISOString().split('T')[0]}
+                      className={auctionValidationErrors.customTime ? "border-red-500" : ""}
+                    />
+                  </div>
+                   <div className="space-y-2">
+                     <Label htmlFor="endTime">Thời gian kết thúc *</Label>
+                     <Input 
+                       id="endTime" 
+                       type="time" 
+                       value={customEndTime}
+                       onChange={(e) => {
+                         setCustomEndTime(e.target.value)
+                         if (auctionValidationErrors.customTime) {
+                           setAuctionValidationErrors(prev => {
+                             const newErrors = { ...prev }
+                             delete newErrors.customTime
+                             return newErrors
+                           })
+                         }
+                       }}
+                       className={auctionValidationErrors.customTime ? "border-red-500" : ""}
+                     />
+                     {/* <p className="text-xs text-muted-foreground">Định dạng: 00:00 - 23:59 (24 giờ, không dùng AM/PM)</p> */}
+                   </div>
+                </div>
+                {auctionValidationErrors.customTime && (
+                  <p className="text-sm text-red-500">{auctionValidationErrors.customTime}</p>
+                )}
+            </div>
           </div>
         )}
 
@@ -716,12 +1053,12 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
               <div className="space-y-2 text-sm">
                 {(() => {
                   const item = items.find(i => String(i.id) === selectedItemId)
-                  const startTime = duration === "custom" && customStartDate && customStartTime
+                  const startTime = customStartDate && customStartTime
                     ? new Date(`${customStartDate}T${customStartTime}`)
                     : new Date()
-                  const endTime = duration === "custom" && customEndDate && customEndTime
+                  const endTime = customEndDate && customEndTime
                     ? new Date(`${customEndDate}T${customEndTime}`)
-                    : calculateEndTime(startTime, parseInt(duration))
+                    : new Date()
                   
                   return (
                     <>
@@ -796,14 +1133,22 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                     return
                   }
                 }
-                if (step === 2 && (!startingBid || parseFloat(startingBid) <= 0)) {
-                  toast({
-                    title: "Lỗi",
-                    description: "Vui lòng nhập giá khởi điểm hợp lệ",
-                    variant: "destructive"
-                  })
-                  return
-                }
+                 if (step === 2) {
+                   if (!validateAuctionForm()) {
+                     // Scroll to first error
+                     const firstErrorField = Object.keys(auctionValidationErrors)[0]
+                     if (firstErrorField === "startingBid") {
+                       document.getElementById("startPrice")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                       document.getElementById("startPrice")?.focus()
+                     } else if (firstErrorField === "buyNowPrice") {
+                       document.getElementById("buyNowPrice")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                       document.getElementById("buyNowPrice")?.focus()
+                     } else if (firstErrorField === "customTime") {
+                       document.getElementById("startDate")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                     }
+                     return
+                   }
+                 }
                 setStep(step + 1)
               }}
               disabled={loading || (step === 1 && itemMode === "create")}
@@ -811,37 +1156,107 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
               Tiếp tục
             </Button>
           ) : (
-            <Button 
-              type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                console.log('Create auction button clicked', { 
-                  step, 
-                  selectedItemId, 
-                  startingBid, 
-                  loading,
-                  user: !!user 
-                })
-                if (!loading) {
-                  handleSubmit()
-                }
-              }} 
-              disabled={loading}
-              className="min-w-[150px]"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Đang tạo...
-                </>
-              ) : (
-                "Tạo phiên đấu giá"
-              )}
-            </Button>
+             <Button 
+               type="button"
+               onClick={(e) => {
+                 e.preventDefault()
+                 e.stopPropagation()
+                 if (!loading) {
+                   handleSubmitClick()
+                 }
+               }} 
+               disabled={loading}
+               className="min-w-[150px]"
+             >
+               {loading ? (
+                 <>
+                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                   Đang tạo...
+                 </>
+               ) : (
+                 "Tạo phiên đấu giá"
+               )}
+             </Button>
           )}
         </DialogFooter>
       </DialogContent>
-    </Dialog>
-  )
-}
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận tạo sản phẩm</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn tạo sản phẩm này? Sản phẩm sẽ được gửi cho admin phê duyệt trước khi có thể sử dụng để tạo phiên đấu giá.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmCreateItem}>
+              Xác nhận
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+       {/* Success Message Dialog */}
+       <AlertDialog open={showSuccessMessage} onOpenChange={setShowSuccessMessage}>
+         <AlertDialogContent>
+           <AlertDialogHeader>
+             <AlertDialogTitle className="text-green-600 dark:text-green-400">
+               Thành công!
+             </AlertDialogTitle>
+             <AlertDialogDescription>
+               Sản phẩm đã được gửi đi cho admin phê duyệt. Bạn sẽ nhận được thông báo khi sản phẩm được phê duyệt.
+             </AlertDialogDescription>
+           </AlertDialogHeader>
+           <AlertDialogFooter>
+             <AlertDialogAction onClick={() => setShowSuccessMessage(false)}>
+               Đóng
+             </AlertDialogAction>
+           </AlertDialogFooter>
+         </AlertDialogContent>
+       </AlertDialog>
+
+       {/* Confirm Auction Creation Dialog */}
+       <AlertDialog open={showConfirmAuctionDialog} onOpenChange={setShowConfirmAuctionDialog}>
+         <AlertDialogContent>
+           <AlertDialogHeader>
+             <AlertDialogTitle>Xác nhận tạo phiên đấu giá</AlertDialogTitle>
+             <AlertDialogDescription>
+               Bạn có chắc chắn muốn tạo phiên đấu giá này? Phiên đấu giá sẽ được tạo và hiển thị trên trang đấu giá ngay sau khi xác nhận.
+             </AlertDialogDescription>
+           </AlertDialogHeader>
+           <AlertDialogFooter>
+             <AlertDialogCancel>Hủy</AlertDialogCancel>
+             <AlertDialogAction onClick={handleSubmit}>
+               Xác nhận
+             </AlertDialogAction>
+           </AlertDialogFooter>
+         </AlertDialogContent>
+       </AlertDialog>
+
+       {/* Auction Success Message Dialog */}
+       <AlertDialog open={showAuctionSuccessMessage} onOpenChange={setShowAuctionSuccessMessage}>
+         <AlertDialogContent>
+           <AlertDialogHeader>
+             <AlertDialogTitle className="text-green-600 dark:text-green-400">
+               Thành công!
+             </AlertDialogTitle>
+             <AlertDialogDescription>
+               Sản phẩm đã lên trang đấu giá. Phiên đấu giá của bạn đã được tạo và đang hoạt động.
+             </AlertDialogDescription>
+           </AlertDialogHeader>
+           <AlertDialogFooter>
+             <AlertDialogAction onClick={() => {
+               setShowAuctionSuccessMessage(false)
+               onOpenChange(false)
+             }}>
+               Đóng
+             </AlertDialogAction>
+           </AlertDialogFooter>
+         </AlertDialogContent>
+       </AlertDialog>
+     </Dialog>
+   )
+ }
