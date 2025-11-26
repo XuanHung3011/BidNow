@@ -137,6 +137,12 @@ export const API_ENDPOINTS = {
     GET_BUYER_ACTIVE_BIDS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/active`,
     GET_BUYER_WON_AUCTIONS: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/won`,
     GET_BUYER_BIDDING_HISTORY: (bidderId: number) => `/api/Auctions/buyer/${bidderId}/history`,
+    // Seller endpoints
+    GET_BY_SELLER: (sellerId: number) => `/api/Auctions/seller/${sellerId}`,
+  },
+  SELLER_STATS: {
+    GET_STATS: (sellerId: number) => `/api/SellerStats/${sellerId}`,
+    GET_STATS_DETAIL: (sellerId: number, type: string) => `/api/SellerStats/${sellerId}/detail/${type}`,
   },
   NOTIFICATIONS: {
     GET_ALL: (userId: number) => `/api/Notifications/user/${userId}`,
