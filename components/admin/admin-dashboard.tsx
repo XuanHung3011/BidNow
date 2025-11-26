@@ -45,13 +45,37 @@ export function AdminDashboard() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-5 lg:w-auto">
-          <TabsTrigger value="auctions">Sản phẩm</TabsTrigger>
-          <TabsTrigger value="pending">Chờ duyệt</TabsTrigger>
-          <TabsTrigger value="users">Người dùng</TabsTrigger>
+          <TabsTrigger
+            value="auctions"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Sản phẩm
+          </TabsTrigger>
+          <TabsTrigger
+            value="pending"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Chờ duyệt
+          </TabsTrigger>
+          <TabsTrigger
+            value="users"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Người dùng
+          </TabsTrigger>
           {/* <TabsTrigger value="disputes">Tranh chấp</TabsTrigger> */}
-          <TabsTrigger value="categories">Danh mục</TabsTrigger>
-        
-          <TabsTrigger value="analytics">Phân tích</TabsTrigger>
+          <TabsTrigger
+            value="categories"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Danh mục
+          </TabsTrigger>
+          <TabsTrigger
+            value="analytics"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Phân tích
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="auctions" className="mt-6">

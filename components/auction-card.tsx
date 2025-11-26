@@ -21,6 +21,8 @@ interface AuctionCardProps {
     category: string
     sellerRating?: number
     sellerName?: string
+    status?: string | null
+    pausedAt?: string | Date | null
   }
 }
 
@@ -29,6 +31,30 @@ export function AuctionCard({ auction }: AuctionCardProps) {
   const [status, setStatus] = useState<"scheduled" | "active" | "ended">("active")
 
   useEffect(() => {
+    const isPaused = auction.status?.toLowerCase() === "cancelled"
+
+    if (isPaused) {
+      if (auction.pausedAt) {
+        const pausedDate =
+          auction.pausedAt instanceof Date ? auction.pausedAt : new Date(auction.pausedAt)
+        if (!Number.isNaN(pausedDate.getTime())) {
+          const pausedTime = pausedDate.toLocaleString("vi-VN", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+          setTimeLeft(`Tạm dừng từ ${pausedTime}`)
+        } else {
+          setTimeLeft("Đã tạm dừng")
+        }
+      } else {
+        setTimeLeft("Đã tạm dừng")
+      }
+      return
+    }
+
     if (!auction.endTime) {
       setTimeLeft("Đã kết thúc")
       setStatus("ended")
@@ -80,7 +106,7 @@ export function AuctionCard({ auction }: AuctionCardProps) {
     const interval = setInterval(updateTimer, 1000)
 
     return () => clearInterval(interval)
-  }, [auction.endTime, auction.startTime])
+  }, [auction.endTime, auction.startTime, auction.status, auction.pausedAt])
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("vi-VN", {

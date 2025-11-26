@@ -25,7 +25,6 @@ import {
   RealTimePriceChart,
   type PricePoint,
 } from "@/components/auction/real-time-price-chart"
-import { BidTicker, type TickerBid } from "@/components/auction/bid-ticker"
 import { LiveChat } from "@/components/live-chat"
 import { AutoBidDialog } from "@/components/auto-bid-dialog"
 import {
@@ -67,7 +66,6 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const [loadingWatchlist, setLoadingWatchlist] = useState(false)
   const [watchlistMessage, setWatchlistMessage] = useState<string | null>(null)
   const [recentBids, setRecentBids] = useState<BidDto[]>([])
-  const [bidsLoading, setBidsLoading] = useState(true)
 
   // Fetch auction detail
   useEffect(() => {
@@ -119,9 +117,12 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       // Chỉ update nếu giá mới cao hơn hoặc bằng giá hiện tại (tránh update ngược về giá cũ)
       setAuction((prev) => {
         if (!prev) return prev
+
+        // Dùng giá hiện tại với fallback về startingBid (tránh undefined)
+        const prevCurrent = prev.currentBid ?? prev.startingBid
+
         // Chỉ update nếu currentBid mới >= currentBid hiện tại
-        const prevBid = prev.currentBid ?? 0
-        if (payload.currentBid >= prevBid) {
+        if (payload.currentBid >= prevCurrent) {
           return {
             ...prev,
             currentBid: payload.currentBid,
@@ -198,16 +199,11 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     let active = true
     const fetchRecentBids = async () => {
       try {
-        setBidsLoading(true)
         const data = await AuctionsAPI.getRecentBids(Number(auctionId), 120)
         if (!active) return
         setRecentBids(data)
       } catch (err) {
         console.error("Không thể tải lịch sử đấu giá gần đây", err)
-      } finally {
-        if (active) {
-          setBidsLoading(false)
-        }
       }
     }
     if (auctionId) {
@@ -335,17 +331,6 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     }).format(price)
   }
 
-  const formatPriceCompact = (price: number) => {
-    if (price >= 1000000000) {
-      const billions = price / 1000000000
-      return `${billions.toFixed(billions % 1 === 0 ? 0 : 1)} tỷ ₫`
-    } else if (price >= 1000000) {
-      const millions = price / 1000000
-      return `${millions.toFixed(millions % 1 === 0 ? 0 : 1)} triệu ₫`
-    }
-    return formatPrice(price)
-  }
-
   // Tính bước nhảy giá dựa trên giá hiện tại (tham khảo từ bảng bid increment)
   const calculateBidIncrement = (currentPrice: number): number => {
     if (currentPrice < 25000) {
@@ -446,23 +431,6 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     return points
   }, [auction, recentBids])
 
-  const tickerItems: TickerBid[] = useMemo(() => {
-    return [...recentBids]
-      .slice(-12)
-      .reverse()
-      .map((bid, index) => ({
-        id: `${bid.bidderId}-${bid.bidTime}-${index}`,
-        bidder: formatBidderAlias(bid.bidderId, bid.bidderName),
-        amount: bid.amount,
-        bidTime: bid.bidTime,
-        isWinning: index === 0,
-      }))
-  }, [recentBids])
-
-  const latestBid = recentBids[recentBids.length - 1]
-  const leadingBidder = latestBid ? formatBidderAlias(latestBid.bidderId, latestBid.bidderName) : null
-  const liveFeedEntries = useMemo(() => [...recentBids].reverse(), [recentBids])
-
   // Loading state
   if (loading) {
     return (
@@ -544,8 +512,8 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   }
 
   return (
-    <div className="space-y-10 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl space-y-10">
+    <div className="space-y-10 py-6">
+      <div className="space-y-10 px-4 sm:px-6 lg:px-8">
         <section>
           <Card className="overflow-hidden border-border bg-card">
             <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_1fr]">
@@ -561,7 +529,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                   </div>
                   <div>
                     <h1 className="text-3xl font-bold leading-tight text-foreground lg:text-4xl">{auction.itemTitle}</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">{auction.status}</p>
+                    {/* <p className="mt-1 text-sm text-muted-foreground">{auction.status}</p> */}
                   </div>
                   {auction.status?.toLowerCase() === "cancelled" && (
                     <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
@@ -673,7 +641,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
           </Card>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_360px]">
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_360px_360px]">
           <Card className="min-w-0 border border-border bg-card p-6 shadow-lg">
             <div className="flex flex-wrap items-center gap-4">
               <div>
@@ -691,20 +659,13 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 ))}
               </div>
             </div>
-            <div className="mt-6 rounded-xl bg-muted/20 p-3">
+            <div className="mt-6 mb-8 rounded-xl bg-muted/20 p-3 pb-8">
               <RealTimePriceChart
                 data={priceSeries}
                 startingBid={auction.startingBid}
                 currentBid={auction.currentBid || auction.startingBid}
                 buyNowPrice={auction.buyNowPrice}
               />
-            </div>
-            <div className="mt-4 space-y-2">
-              <div className="flex items-center justify-between text-xs uppercase tracking-widest text-muted-foreground">
-                <span>Ticker realtime</span>
-                <span>{bidsLoading ? "Đang đồng bộ..." : "Đã cập nhật"}</span>
-              </div>
-              <BidTicker items={tickerItems} />
             </div>
           </Card>
 
@@ -804,7 +765,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                         onClick={() => setBidAmount((suggestedBid + minIncrement * idx).toString())}
                         disabled={auction.status?.toLowerCase() === "cancelled"}
               >
-                        <span className="truncate">{formatPriceCompact(suggestedBid + minIncrement * idx)}</span>
+                        <span className="truncate">{formatPrice(suggestedBid + minIncrement * idx)}</span>
               </Button>
                     ))}
             </div>
@@ -820,10 +781,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
             </div>
           </div>
           </Card>
-        </section>
-
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_360px]">
-          <Card className="border-border bg-card p-6">
+          <Card className="border-border bg-card p-6 shadow-lg">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Dòng lệnh realtime</p>
@@ -833,50 +791,22 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 {recentBids.length} giao dịch
               </div>
             </div>
-            <div className="mt-4 max-h-80 space-y-3 overflow-y-auto pr-2">
-              {liveFeedEntries.length === 0 && (
-                <div className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-sm text-muted-foreground">
-                  Chưa có lượt đặt giá nào. Hãy trở thành người mở màn!
-                </div>
-              )}
-              {liveFeedEntries.slice(0, 10).map((bid, index) => (
-                <div
-                  key={`${bid.bidderId}-${bid.bidTime}-${index}`}
-                  className="rounded-xl border border-border bg-muted/40 px-4 py-3 shadow-sm"
-                >
-                  <div className="flex items-baseline justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{formatBidderAlias(bid.bidderId, bid.bidderName)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(bid.bidTime).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-base font-bold text-primary">{formatPrice(bid.amount)}</p>
-                      {index === 0 && <span className="text-xs font-medium text-emerald-500">Đang dẫn đầu</span>}
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="mt-4 max-h-[420px] overflow-y-auto pr-2">
+              <BidHistory auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} />
             </div>
-            <details className="mt-4 rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-              <summary className="cursor-pointer select-none font-medium text-foreground">Xem bảng lịch sử đầy đủ</summary>
-              <div className="mt-3">
-                <BidHistory auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} />
-              </div>
-            </details>
           </Card>
+        </section>
 
+        <section>
           <Card className="border-border bg-card p-6">
-            <div className="mb-4 flex items-center gap-2">
+            <div className="mb-2 flex items-center gap-2">
               <MessageCircle className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Hỗ trợ trực tuyến</h3>
-              <div className="ml-auto flex items-center gap-1">
-                <div className="h-2 w-2 animate-pulse-glow rounded-full bg-accent" />
-                <span className="text-xs text-accent">Online</span>
+              <div>
+                <h3 className="font-semibold text-foreground">Bình luận phiên đấu giá</h3>
+                <p className="text-xs text-muted-foreground">Trao đổi ẩn danh, mọi người đều xem được.</p>
               </div>
             </div>
-            <LiveChat />
+            <LiveChat auctionId={Number(auctionId)} />
           </Card>
         </section>
 
