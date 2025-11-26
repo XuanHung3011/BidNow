@@ -16,6 +16,16 @@ interface LiveChatProps {
   auctionId: number
 }
 
+// Helper: build alias giống backend (AuctionChatService.BuildAlias)
+const buildAliasFromUserId = (userId?: string | number | null) => {
+  if (userId == null) return null
+  const parsed = typeof userId === "string" ? Number(userId) : userId
+  if (!Number.isFinite(parsed)) return null
+  const sanitized = Math.abs(parsed).toString()
+  const suffix = sanitized.length <= 4 ? sanitized.padStart(4, "0") : sanitized.slice(-4)
+  return `Người dùng #${suffix}`
+}
+
 const formatRelativeTime = (value?: string) => {
   if (!value) return "Vừa xong"
   const date = new Date(value)
@@ -345,7 +355,8 @@ export function LiveChat({ auctionId }: LiveChatProps) {
         if (prev.some((m) => m.id === newMessage.id)) {
           return prev
         }
-        return [...prev, newMessage]
+        // Đảm bảo tin nhắn vừa gửi luôn được đánh dấu là của mình trên client
+        return [...prev, { ...newMessage, isMine: true }]
       })
       
       setInput("")
@@ -405,21 +416,25 @@ export function LiveChat({ auctionId }: LiveChatProps) {
             <p className="text-sm text-muted-foreground">Chưa có bình luận nào. Hãy là người đầu tiên đặt câu hỏi!</p>
           ) : (
             <>
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`rounded-md border border-border/40 bg-background/80 p-3 ${msg.isMine ? "border-primary/60 bg-primary/5" : ""}`}
-                >
-                  <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                    <span className={msg.isMine ? "font-semibold text-primary" : ""}>{msg.alias}</span>
-                    <div className="flex flex-col items-end gap-0.5">
-                      <span>{formatRelativeTime(msg.sentAt)}</span>
-                      <span className="text-[10px] opacity-70">{formatFullTime(msg.sentAt)}</span>
+              {messages.map((msg) => {
+                const myAlias = buildAliasFromUserId(user?.id ?? null)
+                const isMine = msg.isMine || (myAlias != null && msg.alias === myAlias)
+                return (
+                  <div
+                    key={msg.id}
+                    className={`rounded-md border border-border/40 bg-background/80 p-3 ${isMine ? "border-primary/60 bg-primary/5" : ""}`}
+                  >
+                    <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                      <span className={isMine ? "font-semibold text-primary" : ""}>{msg.alias}</span>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span>{formatRelativeTime(msg.sentAt)}</span>
+                        <span className="text-[10px] opacity-70">{formatFullTime(msg.sentAt)}</span>
+                      </div>
                     </div>
+                    <p className={`text-sm text-foreground ${isMine ? "font-semibold" : ""}`}>{msg.content}</p>
                   </div>
-                  <p className={`text-sm text-foreground ${msg.isMine ? "font-semibold" : ""}`}>{msg.content}</p>
-                </div>
-              ))}
+                )
+              })}
               <div ref={messagesEndRef} />
             </>
           )}
