@@ -74,20 +74,22 @@ export const API_ENDPOINTS = {
     VALIDATE_CREDENTIALS: "/api/Users/validate-credentials",
   },
     ITEMS: {
-    GET_ALL: "/api/home/items",
-    GET_PAGED: "/api/home/items/paged",
-    SEARCH: "/api/home/search",
-    SEARCH_PAGED: "/api/home/search/paged",
-    FILTER: "/api/home/filter",            // <-- endpoint filter (POST)
-    CATEGORIES: "/api/home/categories",
-    HOT: "/api/home/hot",
-    // Admin/Seller endpoints
-    GET_ALL_WITH_FILTER: "/api/Items",
-    GET_BY_ID: (id: number) => `/api/Items/${id}`,
-    CREATE: "/api/Items",
-    APPROVE: (id: number) => `/api/Items/${id}/approve`,
-    REJECT: (id: number) => `/api/Items/${id}/reject`,
-  },
+      GET_ALL: "/api/home/items",
+      GET_PAGED: "/api/home/items/paged",
+      SEARCH: "/api/home/search",
+      CREATE_DRAFT: "/api/Items/draft",
+      SEARCH_PAGED: "/api/home/search/paged",
+      FILTER: "/api/home/filter",            // <-- endpoint filter (POST)
+      CATEGORIES: "/api/home/categories",
+      HOT: "/api/home/hot",
+      // Admin/Seller endpoints
+      GET_ALL_WITH_FILTER: "/api/Items",
+      GET_BY_ID: (id: number) => `/api/Items/${id}`,
+      CREATE: "/api/Items",
+      APPROVE: (id: number) => `/api/Items/${id}/approve`,
+      REJECT: (id: number) => `/api/Items/${id}/reject`,
+      DELETE: (id: number) => `/api/Items/${id}`,
+    },
   CATEGORIES: {
     GET_ALL: "/api/Categories",
     GET_PAGED: "/api/Categories/paged",
