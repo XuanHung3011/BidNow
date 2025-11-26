@@ -16,6 +16,7 @@ type CardAuction = {
   image: string
   currentBid: number
   startingBid: number
+  startTime?: Date | string
   endTime: Date
   bidCount: number
   category: string
@@ -44,6 +45,7 @@ export function PersonalizedAuctionsSection() {
             image: getImageUrls(i.images as any)[0] || "/placeholder.jpg",
             currentBid: Number(i.currentBid || i.startingBid || i.basePrice || 0),
             startingBid: Number(i.startingBid || i.basePrice || 0),
+            startTime: i.auctionStartTime ? (new Date(i.auctionStartTime) as any) : undefined,
             endTime: i.auctionEndTime ? (new Date(i.auctionEndTime) as any) : new Date(),
             bidCount: Number(i.bidCount || 0),
             category: i.categoryName || "Khác",
