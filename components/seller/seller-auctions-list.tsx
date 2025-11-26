@@ -6,21 +6,148 @@ import { Badge } from "@/components/ui/badge"
 import { MoreVertical, Edit, Trash2, Eye, Star } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { RatingDialog } from "@/components/rating-dialog"
+import { ItemsAPI } from "@/lib/api/items"
+import { ItemResponseDto } from "@/lib/api/types"
+import { useAuth } from "@/lib/auth-context"
+import { useToast } from "@/hooks/use-toast"
+import { getImageUrls } from "@/lib/api/config"
 
 interface SellerAuctionsListProps {
   status: "active" | "scheduled" | "completed" | "draft"
+  onSelectDraftItem?: (item: ItemResponseDto) => void
 }
 
-export function SellerAuctionsList({ status }: SellerAuctionsListProps) {
+export function SellerAuctionsList({ status, onSelectDraftItem }: SellerAuctionsListProps) {
+  const { user } = useAuth()
+  const { toast } = useToast()
   const [ratingDialog, setRatingDialog] = useState<{
     open: boolean
     auctionId: string
     auctionTitle: string
     buyerName: string
   } | null>(null)
+  const [draftItems, setDraftItems] = useState<ItemResponseDto[]>([])
+  const [loading, setLoading] = useState(false)
 
+  // Load draft items when status is "draft"
+  useEffect(() => {
+    if (status === "draft" && user) {
+      loadDraftItems()
+    }
+  }, [status, user])
+
+  const loadDraftItems = async () => {
+    if (!user) return
+    try {
+      setLoading(true)
+      const sellerId = parseInt(user.id)
+      const result = await ItemsAPI.getAllWithFilter({
+        statuses: ["draft"],
+        sellerId: sellerId,
+        page: 1,
+        pageSize: 100,
+        sortBy: "CreatedAt",
+        sortOrder: "desc"
+      })
+      setDraftItems(result.data || [])
+    } catch (error) {
+      console.error("Error loading draft items:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải danh sách bản nháp",
+        variant: "destructive"
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSelectDraft = (item: ItemResponseDto) => {
+    if (onSelectDraftItem) {
+      onSelectDraftItem(item)
+    }
+  }
+
+  // For draft status, show draft items
+  if (status === "draft") {
+    if (loading) {
+      return (
+        <Card className="p-12 text-center">
+          <p className="text-muted-foreground">Đang tải...</p>
+        </Card>
+      )
+    }
+
+    if (draftItems.length === 0) {
+      return (
+        <Card className="p-12 text-center">
+          <p className="text-muted-foreground">Không có bản nháp nào</p>
+        </Card>
+      )
+    }
+
+    return (
+      <div className="space-y-4">
+        {draftItems.map((item) => {
+          const imageUrls = getImageUrls(item.images)
+          const firstImage = imageUrls[0] || "/placeholder.svg"
+          
+          return (
+            <Card key={item.id} className="p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex gap-4">
+                  <img
+                    src={firstImage}
+                    alt={item.title}
+                    className="h-20 w-20 rounded-lg object-cover"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-start gap-2">
+                      <h3 className="font-semibold text-foreground">{item.title}</h3>
+                      <Badge variant="secondary">Bản nháp</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">{item.categoryName || "Chưa có danh mục"}</p>
+                    <div className="mt-2 flex flex-wrap gap-4 text-sm">
+                      <span className="text-muted-foreground">
+                        Giá khởi điểm:{" "}
+                        <span className="font-semibold text-foreground">
+                          {item.basePrice ? item.basePrice.toLocaleString('vi-VN') + ' VNĐ' : 'Chưa đặt'}
+                        </span>
+                      </span>
+                      {item.createdAt && (
+                        <span className="text-muted-foreground">
+                          Tạo lúc: <span className="font-semibold text-foreground">
+                            {new Date(item.createdAt).toLocaleDateString('vi-VN')}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {onSelectDraftItem && (
+                    <Button 
+                      variant="default" 
+                      size="sm"
+                      onClick={() => handleSelectDraft(item)}
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      Tiếp tục chỉnh sửa
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // For other statuses, use mock data (existing logic)
   const auctions = getAuctionsByStatus(status)
 
   const handleRateClick = (auction: any) => {
