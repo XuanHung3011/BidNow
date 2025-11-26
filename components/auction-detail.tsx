@@ -312,17 +312,6 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     }).format(price)
   }
 
-  const formatPriceCompact = (price: number) => {
-    if (price >= 1000000000) {
-      const billions = price / 1000000000
-      return `${billions.toFixed(billions % 1 === 0 ? 0 : 1)} tỷ ₫`
-    } else if (price >= 1000000) {
-      const millions = price / 1000000
-      return `${millions.toFixed(millions % 1 === 0 ? 0 : 1)} triệu ₫`
-    }
-    return formatPrice(price)
-  }
-
   // Tính bước nhảy giá dựa trên giá hiện tại (tham khảo từ bảng bid increment)
   const calculateBidIncrement = (currentPrice: number): number => {
     if (currentPrice < 25000) {
@@ -423,10 +412,6 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     return points
   }, [auction, recentBids])
 
-  const latestBid = recentBids[recentBids.length - 1]
-  const leadingBidder = latestBid ? formatBidderAlias(latestBid.bidderId, latestBid.bidderName) : null
-  const liveFeedEntries = useMemo(() => [...recentBids].reverse(), [recentBids])
-
   // Loading state
   if (loading) {
     return (
@@ -508,8 +493,8 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   }
 
   return (
-    <div className="space-y-10 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl space-y-10">
+    <div className="space-y-10 py-6">
+      <div className="space-y-10 px-4 sm:px-6 lg:px-8">
         <section>
           <Card className="overflow-hidden border-border bg-card">
             <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_1fr]">
@@ -613,7 +598,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
           </Card>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_360px]">
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_360px_360px]">
           <Card className="min-w-0 border border-border bg-card p-6 shadow-lg">
             <div className="flex flex-wrap items-center gap-4">
               <div>
@@ -737,7 +722,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                         onClick={() => setBidAmount((suggestedBid + minIncrement * idx).toString())}
                         disabled={auction.status?.toLowerCase() === "cancelled"}
               >
-                        <span className="truncate">{formatPriceCompact(suggestedBid + minIncrement * idx)}</span>
+                        <span className="truncate">{formatPrice(suggestedBid + minIncrement * idx)}</span>
               </Button>
                     ))}
             </div>
@@ -753,10 +738,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
             </div>
           </div>
           </Card>
-        </section>
-
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_360px]">
-          <Card className="border-border bg-card p-6">
+          <Card className="border-border bg-card p-6 shadow-lg">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Dòng lệnh realtime</p>
@@ -766,40 +748,13 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 {recentBids.length} giao dịch
               </div>
             </div>
-            <div className="mt-4 max-h-80 space-y-3 overflow-y-auto pr-2">
-              {liveFeedEntries.length === 0 && (
-                <div className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-sm text-muted-foreground">
-                  Chưa có lượt đặt giá nào. Hãy trở thành người mở màn!
-                </div>
-              )}
-              {liveFeedEntries.slice(0, 10).map((bid, index) => (
-                <div
-                  key={`${bid.bidderId}-${bid.bidTime}-${index}`}
-                  className="rounded-xl border border-border bg-muted/40 px-4 py-3 shadow-sm"
-                >
-                  <div className="flex items-baseline justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{formatBidderAlias(bid.bidderId, bid.bidderName)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(bid.bidTime).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-base font-bold text-primary">{formatPrice(bid.amount)}</p>
-                      {index === 0 && <span className="text-xs font-medium text-emerald-500">Đang dẫn đầu</span>}
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="mt-4 max-h-[420px] overflow-y-auto pr-2">
+              <BidHistory auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} />
             </div>
-            <details className="mt-4 rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-              <summary className="cursor-pointer select-none font-medium text-foreground">Xem bảng lịch sử đầy đủ</summary>
-              <div className="mt-3">
-                <BidHistory auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} />
-              </div>
-            </details>
           </Card>
+        </section>
 
+        <section>
           <Card className="border-border bg-card p-6">
             <div className="mb-4 flex items-center gap-2">
               <MessageCircle className="h-5 w-5 text-primary" />
