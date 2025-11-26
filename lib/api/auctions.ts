@@ -255,5 +255,31 @@ export const AuctionsAPI = {
     const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BUYER_BIDDING_HISTORY(bidderId)}?page=${page}&pageSize=${pageSize}`
     const res = await fetch(url, { cache: 'no-store' })
     return handleResponse<PaginatedResultA<BiddingHistoryDto>>(res)
+  },
+
+  // Get auctions by seller
+  async getBySeller(sellerId: number): Promise<SellerAuctionDto[]> {
+    const url = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BY_SELLER(sellerId)}`
+    const res = await fetch(url, { cache: 'no-store' })
+    return handleResponse<SellerAuctionDto[]>(res)
   }
+}
+
+export interface SellerAuctionDto {
+  id: number
+  itemId: number
+  itemTitle: string
+  itemImages?: string
+  categoryName?: string
+  startingBid: number
+  currentBid?: number
+  buyNowPrice?: number
+  bidCount: number
+  startTime: string
+  endTime: string
+  status: string
+  displayStatus: string // active, scheduled, completed, draft
+  winnerId?: number
+  winnerName?: string
+  hasRated: boolean
 }

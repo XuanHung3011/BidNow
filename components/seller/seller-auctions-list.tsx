@@ -6,38 +6,196 @@ import { Badge } from "@/components/ui/badge"
 import { MoreVertical, Edit, Trash2, Eye, Star } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useEffect, useMemo } from "react"
+import * as React from "react"
 import { RatingDialog } from "@/components/rating-dialog"
+import { AuctionsAPI, SellerAuctionDto } from "@/lib/api/auctions"
+import { useAuth } from "@/lib/auth-context"
+import { getImageUrl } from "@/lib/api/config"
 
 interface SellerAuctionsListProps {
   status: "active" | "scheduled" | "completed" | "draft"
 }
 
 export function SellerAuctionsList({ status }: SellerAuctionsListProps) {
+  const { user } = useAuth()
+  const [auctions, setAuctions] = useState<SellerAuctionDto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0) // Force re-render for real-time updates
   const [ratingDialog, setRatingDialog] = useState<{
     open: boolean
-    auctionId: string
+    auctionId: number
     auctionTitle: string
     buyerName: string
   } | null>(null)
 
-  const auctions = getAuctionsByStatus(status)
+  useEffect(() => {
+    if (!user?.id) return
 
-  const handleRateClick = (auction: any) => {
+    async function fetchAuctions() {
+      if (!user?.id) return
+      try {
+        setLoading(true)
+        setError(null)
+        const sellerId = typeof user.id === 'string' ? parseInt(user.id, 10) : user.id
+        if (isNaN(sellerId)) return
+        const data = await AuctionsAPI.getBySeller(sellerId)
+        setAuctions(data) // Store all auctions, filter will be done in useMemo
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Không thể tải danh sách phiên đấu giá")
+        console.error("Error fetching seller auctions:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAuctions()
+  }, [user])
+
+  // Client-side filtering based on real-time clock
+  const filteredAuctions = useMemo(() => {
+    if (!auctions.length) return []
+    
+    const now = new Date()
+    
+    return auctions
+      .map(a => {
+        // Calculate actual status based on current time
+        const startTime = new Date(a.startTime)
+        const endTime = new Date(a.endTime)
+        
+        let actualStatus: string
+        
+        // 1. Draft: status = "draft"
+        if (a.status?.toLowerCase() === "draft") {
+          actualStatus = "draft"
+        }
+        // 2. Cancelled: status = "cancelled"
+        else if (a.status?.toLowerCase() === "cancelled") {
+          actualStatus = "cancelled"
+        }
+        // 3. Scheduled: Chưa đến giờ bắt đầu (StartTime > now)
+        else if (startTime > now) {
+          actualStatus = "scheduled"
+        }
+        // 4. Active: Đã bắt đầu và chưa kết thúc (StartTime <= now && EndTime > now)
+        else if (startTime <= now && endTime > now) {
+          actualStatus = "active"
+        }
+        // 5. Completed: Đã kết thúc (EndTime <= now)
+        else if (endTime <= now) {
+          actualStatus = "completed"
+        }
+        // Fallback
+        else {
+          actualStatus = a.displayStatus || a.status?.toLowerCase() || "unknown"
+        }
+        
+        // Return auction with updated displayStatus
+        return {
+          ...a,
+          displayStatus: actualStatus
+        }
+      })
+      .filter(a => a.displayStatus === status)
+  }, [auctions, status, refreshKey]) // Include refreshKey to trigger re-calculation
+
+  // Auto-refresh every 10 seconds to update status in real-time
+  useEffect(() => {
+    if (!user?.id) return
+    
+    const interval = setInterval(() => {
+      // Update refreshKey to trigger useMemo recalculation
+      setRefreshKey(prev => prev + 1)
+    }, 10000) // Refresh every 10 seconds
+
+    return () => clearInterval(interval)
+  }, [user?.id])
+
+  const handleRateClick = (auction: SellerAuctionDto) => {
     setRatingDialog({
       open: true,
       auctionId: auction.id,
-      auctionTitle: auction.title,
-      buyerName: auction.buyerName || "Người mua",
+      auctionTitle: auction.itemTitle,
+      buyerName: auction.winnerName || "Người mua",
     })
   }
 
   const handleRatingSubmit = (rating: number, comment: string) => {
-    console.log("[v0] Seller rating submitted:", { rating, comment, auctionId: ratingDialog?.auctionId })
-    // Here you would save the rating to your backend
+    console.log("Seller rating submitted:", { rating, comment, auctionId: ratingDialog?.auctionId })
+    // TODO: Implement API call to save rating
+    setRatingDialog(null)
   }
 
-  if (auctions.length === 0) {
+  const getStatusLabel = (displayStatus: string) => {
+    const labels: Record<string, string> = {
+      active: "Đang diễn ra",
+      scheduled: "Sắp diễn ra",
+      completed: "Đã kết thúc",
+      draft: "Bản nháp",
+      cancelled: "Đã hủy",
+    }
+    return labels[displayStatus] || displayStatus
+  }
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+    }).format(amount)
+  }
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = date.getTime() - now.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (status === "active") {
+      if (diffMins < 60) {
+        return `${diffMins} phút`
+      } else if (diffHours < 24) {
+        return `${diffHours} giờ`
+      } else {
+        return `${diffDays} ngày`
+      }
+    } else if (status === "scheduled") {
+      return date.toLocaleString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    } else {
+      return date.toLocaleString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card className="p-12 text-center">
+        <p className="text-muted-foreground">Đang tải...</p>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card className="p-12 text-center">
+        <p className="text-destructive">{error}</p>
+      </Card>
+    )
+  }
+
+  if (filteredAuctions.length === 0) {
     return (
       <Card className="p-12 text-center">
         <p className="text-muted-foreground">Không có phiên đấu giá nào trong danh mục này</p>
@@ -48,44 +206,62 @@ export function SellerAuctionsList({ status }: SellerAuctionsListProps) {
   return (
     <>
       <div className="space-y-4">
-        {auctions.map((auction) => (
+        {filteredAuctions.map((auction) => (
           <Card key={auction.id} className="p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex gap-4">
                 <img
-                  src={auction.image || "/placeholder.svg"}
-                  alt={auction.title}
+                  src={getImageUrl(auction.itemImages)}
+                  alt={auction.itemTitle}
                   className="h-20 w-20 rounded-lg object-cover"
                 />
                 <div className="flex-1">
                   <div className="flex items-start gap-2">
-                    <h3 className="font-semibold text-foreground">{auction.title}</h3>
-                    <Badge variant={auction.status === "active" ? "default" : "secondary"}>{auction.statusLabel}</Badge>
+                    <h3 className="font-semibold text-foreground">{auction.itemTitle}</h3>
+                    <Badge
+                      variant={
+                        auction.displayStatus === "active"
+                          ? "default"
+                          : auction.displayStatus === "completed"
+                          ? "secondary"
+                          : "outline"
+                      }
+                    >
+                      {getStatusLabel(auction.displayStatus)}
+                    </Badge>
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{auction.category}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{auction.categoryName}</p>
                   <div className="mt-2 flex flex-wrap gap-4 text-sm">
                     <span className="text-muted-foreground">
                       {status === "completed" ? "Giá bán:" : "Giá hiện tại:"}{" "}
-                      <span className="font-semibold text-foreground">{auction.currentBid}</span>
+                      <span className="font-semibold text-foreground">
+                        {auction.currentBid ? formatCurrency(auction.currentBid) : formatCurrency(auction.startingBid)}
+                      </span>
                     </span>
                     <span className="text-muted-foreground">
-                      Số lượt đấu: <span className="font-semibold text-foreground">{auction.bids}</span>
+                      Số lượt đấu: <span className="font-semibold text-foreground">{auction.bidCount}</span>
                     </span>
-                    {status === "completed" && auction.buyerName && (
+                    {status === "completed" && auction.winnerName && (
                       <span className="text-muted-foreground">
-                        Người mua: <span className="font-semibold text-foreground">{auction.buyerName}</span>
+                        Người mua: <span className="font-semibold text-foreground">{auction.winnerName}</span>
                       </span>
                     )}
                     <span className="text-muted-foreground">
-                      {status === "active" ? "Kết thúc:" : status === "scheduled" ? "Bắt đầu:" : "Ngày bán:"}{" "}
-                      <span className="font-semibold text-foreground">{auction.time}</span>
+                      {status === "active"
+                        ? "Kết thúc:"
+                        : status === "scheduled"
+                        ? "Bắt đầu:"
+                        : "Ngày bán:"}{" "}
+                      <span className="font-semibold text-foreground">
+                        {status === "active" || status === "scheduled" ? formatDate(auction.endTime) : formatDate(auction.endTime)}
+                      </span>
                     </span>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                {status === "completed" && !auction.buyerRated && (
+                {status === "completed" && !auction.hasRated && auction.winnerId && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -96,7 +272,7 @@ export function SellerAuctionsList({ status }: SellerAuctionsListProps) {
                     Đánh giá người mua
                   </Button>
                 )}
-                {status === "completed" && auction.buyerRated && (
+                {status === "completed" && auction.hasRated && (
                   <Badge variant="secondary" className="gap-1">
                     <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
                     Đã đánh giá
@@ -143,81 +319,4 @@ export function SellerAuctionsList({ status }: SellerAuctionsListProps) {
       )}
     </>
   )
-}
-
-function getAuctionsByStatus(status: string) {
-  const allAuctions = [
-    {
-      id: "1",
-      title: "iPhone 15 Pro Max 256GB",
-      category: "Điện tử",
-      image: "/modern-smartphone.png",
-      currentBid: "₫25,000,000",
-      bids: 45,
-      time: "2 giờ 30 phút",
-      status: "active",
-      statusLabel: "Đang diễn ra",
-    },
-    {
-      id: "2",
-      title: "MacBook Pro M3 14 inch",
-      category: "Điện tử",
-      image: "/silver-macbook-on-desk.png",
-      currentBid: "₫38,500,000",
-      bids: 32,
-      time: "5 giờ 15 phút",
-      status: "active",
-      statusLabel: "Đang diễn ra",
-    },
-    {
-      id: "3",
-      title: "Đồng hồ Rolex Submariner",
-      category: "Sưu tầm",
-      image: "/rolex-watch.jpg",
-      currentBid: "₫0",
-      bids: 0,
-      time: "15/04/2025 10:00",
-      status: "scheduled",
-      statusLabel: "Sắp diễn ra",
-    },
-    {
-      id: "4",
-      title: "Tranh sơn dầu phong cảnh",
-      category: "Nghệ thuật",
-      image: "/abstract-oil-painting.png",
-      currentBid: "₫12,800,000",
-      bids: 28,
-      time: "10/04/2025",
-      status: "completed",
-      statusLabel: "Đã bán",
-      buyerName: "Nguyễn Văn D",
-      buyerRated: false,
-    },
-    {
-      id: "6",
-      title: "Samsung Galaxy S24 Ultra",
-      category: "Điện tử",
-      image: "/modern-smartphone.png",
-      currentBid: "₫22,500,000",
-      bids: 38,
-      time: "05/04/2025",
-      status: "completed",
-      statusLabel: "Đã bán",
-      buyerName: "Trần Thị E",
-      buyerRated: true,
-    },
-    {
-      id: "5",
-      title: "Sony PlayStation 5 Pro",
-      category: "Điện tử",
-      image: "/gaming-console-setup.png",
-      currentBid: "₫0",
-      bids: 0,
-      time: "Chưa xuất bản",
-      status: "draft",
-      statusLabel: "Bản nháp",
-    },
-  ]
-
-  return allAuctions.filter((auction) => auction.status === status)
 }
