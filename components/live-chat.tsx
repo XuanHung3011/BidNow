@@ -406,15 +406,18 @@ export function LiveChat({ auctionId }: LiveChatProps) {
           ) : (
             <>
               {messages.map((msg) => (
-                <div key={msg.id} className="rounded-md border border-border/40 bg-background/80 p-3">
+                <div
+                  key={msg.id}
+                  className={`rounded-md border border-border/40 bg-background/80 p-3 ${msg.isMine ? "border-primary/60 bg-primary/5" : ""}`}
+                >
                   <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{msg.alias}</span>
+                    <span className={msg.isMine ? "font-semibold text-primary" : ""}>{msg.alias}</span>
                     <div className="flex flex-col items-end gap-0.5">
                       <span>{formatRelativeTime(msg.sentAt)}</span>
                       <span className="text-[10px] opacity-70">{formatFullTime(msg.sentAt)}</span>
                     </div>
                   </div>
-                  <p className="text-sm text-foreground">{msg.content}</p>
+                  <p className={`text-sm text-foreground ${msg.isMine ? "font-semibold" : ""}`}>{msg.content}</p>
                 </div>
               ))}
               <div ref={messagesEndRef} />
