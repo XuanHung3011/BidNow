@@ -16,9 +16,10 @@ import { useAuth } from "@/lib/auth-context"
 import { ItemsAPI } from "@/lib/api/items"
 import { AuctionsAPI } from "@/lib/api/auctions"
 import { ItemResponseDto, CategoryDto, CreateItemDto } from "@/lib/api/types"
+import { getImageUrls } from "@/lib/api/config"
 import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2 } from "lucide-react"
+import { Loader2, X } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ImageUploadFile } from "@/components/ui/image-upload-file"
@@ -36,9 +37,10 @@ import {
 interface CreateAuctionDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  draftItem?: ItemResponseDto | null
 }
 
-export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogProps) {
+export function CreateAuctionDialog({ open, onOpenChange, draftItem }: CreateAuctionDialogProps) {
   const [step, setStep] = useState(1)
   const [itemMode, setItemMode] = useState<"select" | "create">("select")
   const { user } = useAuth()
@@ -56,6 +58,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
   const [newItemCondition, setNewItemCondition] = useState("")
   const [newItemLocation, setNewItemLocation] = useState("")
   const [newItemImages, setNewItemImages] = useState<File[]>([])
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]) // URLs từ draft item
   const [itemValidationErrors, setItemValidationErrors] = useState<Record<string, string>>({})
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
@@ -105,6 +108,33 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
     }
   }, [open, user])
 
+  // Handle draft item - auto-fill form when draft item is provided
+  useEffect(() => {
+    if (open && draftItem) {
+      // Switch to create mode
+      setItemMode("create")
+      
+      // Fill form with draft item data
+      setNewItemTitle(draftItem.title || "")
+      setNewItemCategoryId(draftItem.categoryId?.toString() || "")
+      setNewItemDescription(draftItem.description || "")
+      setNewItemBasePrice(draftItem.basePrice?.toString() || "")
+      setNewItemCondition(draftItem.condition || "")
+      setNewItemLocation(draftItem.location || "")
+      
+      // Load existing images from draft item
+      if (draftItem.images) {
+        const imageUrls = getImageUrls(draftItem.images)
+        setExistingImageUrls(imageUrls.filter(url => url !== "/placeholder.svg"))
+      } else {
+        setExistingImageUrls([])
+      }
+    } else if (open && !draftItem) {
+      // Reset existing images when opening without draft item
+      setExistingImageUrls([])
+    }
+  }, [open, draftItem])
+
   // Tự động điền giá khởi điểm từ basePrice của item khi chọn sản phẩm
   useEffect(() => {
     if (selectedItemId) {
@@ -123,27 +153,37 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       const sellerId = parseInt(user.id)
       console.log('Loading items for sellerId:', sellerId, 'user.id:', user.id)
       
-      // Only load approved items - can only create auction for approved items
-      const result = await ItemsAPI.getAllWithFilter({
-        statuses: ["approved"],
-        sellerId: sellerId,
-        page: 1,
-        pageSize: 100,
-        sortBy: "CreatedAt",
-        sortOrder: "desc"
-      })
+      // Load both approved and draft items
+      const [approvedResult, draftResult] = await Promise.all([
+        ItemsAPI.getAllWithFilter({
+          statuses: ["approved"],
+          sellerId: sellerId,
+          page: 1,
+          pageSize: 100,
+          sortBy: "CreatedAt",
+          sortOrder: "desc"
+        }),
+        ItemsAPI.getAllWithFilter({
+          statuses: ["draft"],
+          sellerId: sellerId,
+          page: 1,
+          pageSize: 100,
+          sortBy: "CreatedAt",
+          sortOrder: "desc"
+        })
+      ])
       
-      console.log('Received items:', result.data.length, 'items')
-      console.log('Items sellerIds:', result.data.map(i => ({ id: i.id, title: i.title, sellerId: i.sellerId })))
-      
-      // Filter out items that already have active auctions
-      const availableItems = result.data.filter(item => 
+      // Filter out approved items that already have active auctions
+      const availableApprovedItems = approvedResult.data.filter(item => 
         !item.auctionId || item.auctionStatus !== "active"
       )
       
-      // Double-check: chỉ giữ lại items của seller hiện tại (bảo vệ bổ sung)
-      const ownItems = availableItems.filter(item => item.sellerId === sellerId)
-      console.log('Filtered to own items:', ownItems.length)
+      // Combine approved and draft items (draft items are for reference, not for creating auction)
+      const allItems = [...availableApprovedItems, ...(draftResult.data || [])]
+      
+      // Double-check: chỉ giữ lại items của seller hiện tại
+      const ownItems = allItems.filter(item => item.sellerId === sellerId)
+      console.log('Filtered to own items:', ownItems.length, 'approved:', availableApprovedItems.length, 'draft:', draftResult.data.length)
       
       setItems(ownItems)
     } catch (error) {
@@ -199,30 +239,48 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       }
     }
 
-    // Validate mô tả (optional but if provided, check length)
-    if (newItemDescription && newItemDescription.length > 2000) {
+    // Validate mô tả (bắt buộc)
+    if (!newItemDescription || !newItemDescription.trim()) {
+      errors.description = "Mô tả chi tiết là bắt buộc"
+    } else if (newItemDescription.trim().length < 5) {
+      errors.description = "Mô tả chi tiết phải có ít nhất 5 ký tự"
+    } else if (newItemDescription.trim().length > 2000) {
       errors.description = "Mô tả không được vượt quá 2000 ký tự"
     }
 
-    // Validate địa điểm (optional but if provided, check length)
-    if (newItemLocation && newItemLocation.length > 255) {
+    // Validate tình trạng (bắt buộc)
+    if (!newItemCondition || newItemCondition.trim() === "") {
+      errors.condition = "Vui lòng chọn tình trạng sản phẩm"
+    }
+
+    // Validate địa điểm (bắt buộc)
+    if (!newItemLocation || !newItemLocation.trim()) {
+      errors.location = "Địa điểm là bắt buộc"
+    } else if (newItemLocation.trim().length < 3) {
+      errors.location = "Địa điểm phải có ít nhất 3 ký tự"
+    } else if (newItemLocation.trim().length > 255) {
       errors.location = "Địa điểm không được vượt quá 255 ký tự"
     }
 
-    // Validate hình ảnh (optional but if provided, check count and size)
-    if (newItemImages.length > 10) {
+    // Validate hình ảnh (bắt buộc - tối thiểu 1 hình từ existing hoặc new)
+    const totalImages = existingImageUrls.length + newItemImages.length
+    if (totalImages === 0) {
+      errors.images = "Vui lòng tải lên ít nhất 1 hình ảnh sản phẩm"
+    } else if (totalImages > 10) {
       errors.images = "Tối đa 10 hình ảnh"
-    }
-    for (let i = 0; i < newItemImages.length; i++) {
-      const file = newItemImages[i]
-      if (file.size > 10 * 1024 * 1024) {
-        errors.images = `Hình ảnh ${i + 1} vượt quá 10MB`
-        break
-      }
-      const validTypes = ['image/jpeg', 'image/jpg', 'image/png']
-      if (!validTypes.includes(file.type)) {
-        errors.images = `Hình ảnh ${i + 1} phải là định dạng JPG hoặc PNG`
-        break
+    } else {
+      // Validate từng hình ảnh mới
+      for (let i = 0; i < newItemImages.length; i++) {
+        const file = newItemImages[i]
+        if (file.size > 10 * 1024 * 1024) {
+          errors.images = `Hình ảnh ${i + 1} vượt quá 10MB`
+          break
+        }
+        const validTypes = ['image/jpeg', 'image/jpg', 'image/png']
+        if (!validTypes.includes(file.type)) {
+          errors.images = `Hình ảnh ${i + 1} phải là định dạng JPG hoặc PNG`
+          break
+        }
       }
     }
 
@@ -256,13 +314,52 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
         sellerId,
         categoryId: parseInt(newItemCategoryId),
         title: newItemTitle.trim(),
-        description: newItemDescription.trim() || undefined,
+        description: newItemDescription.trim(), // Bắt buộc
         basePrice: parseFloat(newItemBasePrice),
-        condition: newItemCondition || undefined,
-        location: newItemLocation.trim() || undefined
+        condition: newItemCondition, // Bắt buộc
+        location: newItemLocation.trim() // Bắt buộc
       }
 
-      await ItemsAPI.createItem(itemData, newItemImages.length > 0 ? newItemImages : undefined)
+      // Xử lý hình ảnh: combine cả existing images và new images
+      let imagesToUpload: File[] = [...newItemImages] // Copy new images
+      
+      // Nếu có existing images, fetch và thêm vào
+      if (existingImageUrls.length > 0) {
+        const existingImageFiles: File[] = []
+        for (const url of existingImageUrls) {
+          try {
+            const response = await fetch(url)
+            if (!response.ok) {
+              console.error('Failed to fetch image:', url, response.status)
+              continue
+            }
+            const blob = await response.blob()
+            const fileName = url.split('/').pop() || 'image.jpg'
+            // Extract extension from URL or use default
+            const fileExtension = fileName.includes('.') ? fileName.split('.').pop() : 'jpg'
+            const file = new File([blob], fileName, { type: blob.type || `image/${fileExtension}` })
+            existingImageFiles.push(file)
+          } catch (error) {
+            console.error('Error fetching image:', url, error)
+          }
+        }
+        // Combine existing images với new images
+        imagesToUpload = [...existingImageFiles, ...imagesToUpload]
+      }
+
+      // Hình ảnh là bắt buộc, đã được validate trước đó
+      await ItemsAPI.createItem(itemData, imagesToUpload)
+      
+      // Nếu đang tạo từ draft item, xóa draft item cũ
+      if (draftItem?.id) {
+        try {
+          await ItemsAPI.deleteItem(draftItem.id)
+          console.log('Draft item deleted successfully:', draftItem.id)
+        } catch (error) {
+          console.error('Error deleting draft item:', error)
+          // Không throw error vì item đã được tạo thành công
+        }
+      }
       
       // Show success message
       setShowSuccessMessage(true)
@@ -275,9 +372,10 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       setNewItemCondition("")
       setNewItemLocation("")
       setNewItemImages([])
+      setExistingImageUrls([])
       setItemValidationErrors({})
       
-      // Reload items to include the new one
+      // Reload items to include the new one and remove the deleted draft
       await loadApprovedItems()
       
       // Switch to select mode but don't auto-select or proceed
@@ -290,6 +388,106 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       toast({
         title: "Lỗi",
         description: error.message || "Không thể tạo sản phẩm",
+        variant: "destructive"
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSaveDraft = async () => {
+    if (!user) return
+
+    // Validate only title and category for draft (less strict)
+    if (!newItemTitle.trim() || newItemTitle.trim().length < 3) {
+      toast({
+        title: "Lỗi",
+        description: "Tên sản phẩm phải có ít nhất 3 ký tự",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (!newItemCategoryId) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng chọn danh mục",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setLoading(true)
+      const sellerId = parseInt(user.id)
+      const itemData: CreateItemDto = {
+        sellerId,
+        categoryId: parseInt(newItemCategoryId),
+        title: newItemTitle.trim(),
+        description: newItemDescription.trim() || "",
+        basePrice: newItemBasePrice ? parseFloat(newItemBasePrice) : 0,
+        condition: newItemCondition || "",
+        location: newItemLocation.trim() || ""
+      }
+
+      // Xử lý hình ảnh: combine cả existing images và new images
+      let imagesToUpload: File[] | undefined = undefined
+      
+      // Nếu có existing images, fetch và thêm vào
+      const existingImageFiles: File[] = []
+      if (existingImageUrls.length > 0) {
+        for (const url of existingImageUrls) {
+          try {
+            const response = await fetch(url)
+            if (!response.ok) {
+              console.error('Failed to fetch image:', url, response.status)
+              continue
+            }
+            const blob = await response.blob()
+            const fileName = url.split('/').pop() || 'image.jpg'
+            // Extract extension from URL or use default
+            const fileExtension = fileName.includes('.') ? fileName.split('.').pop() : 'jpg'
+            const file = new File([blob], fileName, { type: blob.type || `image/${fileExtension}` })
+            existingImageFiles.push(file)
+          } catch (error) {
+            console.error('Error fetching image:', url, error)
+          }
+        }
+      }
+      
+      // Combine existing images với new images
+      const allImages = [...existingImageFiles, ...newItemImages]
+      if (allImages.length > 0) {
+        imagesToUpload = allImages
+      }
+
+      await ItemsAPI.createDraftItem(itemData, imagesToUpload)
+      
+      toast({
+        title: "Thành công",
+        description: "Đã lưu bản nháp sản phẩm",
+      })
+
+      // Reset form
+      setNewItemTitle("")
+      setNewItemCategoryId("")
+      setNewItemDescription("")
+      setNewItemBasePrice("")
+      setNewItemCondition("")
+      setNewItemLocation("")
+      setNewItemImages([])
+      setExistingImageUrls([])
+      setItemValidationErrors({})
+      
+      // Reload items to include the new draft
+      await loadApprovedItems()
+      
+      // Close dialog
+      onOpenChange(false)
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể lưu bản nháp",
         variant: "destructive"
       })
     } finally {
@@ -616,35 +814,40 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                 <div className="flex items-center justify-center p-8">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
-              ) : items.length === 0 ? (
-                <div className="rounded-lg border border-border bg-muted/50 p-4 text-center text-sm text-muted-foreground">
-                  <p className="mb-2">Bạn chưa có sản phẩm nào đã được phê duyệt.</p>
-                  <p className="text-xs">Vui lòng tạo sản phẩm mới và chờ admin phê duyệt trước khi tạo phiên đấu giá.</p>
-                </div>
-              ) : (
-                <Select value={selectedItemId} onValueChange={setSelectedItemId}>
-                  <SelectTrigger id="item">
-                    <SelectValue placeholder="Chọn sản phẩm" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {items.map((item) => (
-                      <SelectItem key={item.id} value={String(item.id)}>
-                        {item.title} - {item.basePrice?.toLocaleString('vi-VN')} VNĐ
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              ) : (() => {
+                // Filter only approved items for dropdown
+                const approvedItems = items.filter(item => item.status === "approved")
+                return approvedItems.length === 0 ? (
+                  <div className="rounded-lg border border-border bg-muted/50 p-4 text-center text-sm text-muted-foreground">
+                    <p className="mb-2">Bạn chưa có sản phẩm nào đã được phê duyệt.</p>
+                    <p className="text-xs">Vui lòng tạo sản phẩm mới và chờ admin phê duyệt trước khi tạo phiên đấu giá.</p>
+                  </div>
+                ) : (
+                  <Select value={selectedItemId} onValueChange={setSelectedItemId}>
+                    <SelectTrigger id="item">
+                      <SelectValue placeholder="Chọn sản phẩm" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {approvedItems.map((item) => (
+                        <SelectItem key={item.id} value={String(item.id)}>
+                          {item.title} - {item.basePrice?.toLocaleString('vi-VN')} VNĐ
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )
+              })()}
               {selectedItemId && (
                 <div className="rounded-lg border border-border bg-muted/50 p-4">
                   {(() => {
                     const item = items.find(i => String(i.id) === selectedItemId)
                     return item ? (
                       <div className="space-y-2 text-sm">
-                        <p className="font-semibold">{item.title}</p>
+                        <p>Sản phẩm: <span className="font-semibold">{item.title}</span></p>
                         {item.description && (
-                          <p className="text-muted-foreground">{item.description}</p>
+                          <p>Mô tả: <span className="font-semibold">{item.description}</span></p>
                         )}
+                      
                         <div className="grid grid-cols-2 gap-2">
                           <p>Giá khởi điểm: <span className="font-medium">{item.basePrice?.toLocaleString('vi-VN')} VNĐ</span></p>
                           <p>Danh mục: <span className="font-medium">{item.categoryName}</span></p>
@@ -685,6 +888,9 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                     {itemValidationErrors.title && (
                       <p className="text-sm text-red-500">{itemValidationErrors.title}</p>
                     )}
+                    <p className="text-xs text-muted-foreground">
+                      Tên sản phẩm phải có ít nhất 3 ký tự trở lên
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -722,7 +928,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="newItemDescription">Mô tả chi tiết</Label>
+                    <Label htmlFor="newItemDescription">Mô tả chi tiết *</Label>
                     <Textarea 
                       id="newItemDescription" 
                       placeholder="Mô tả chi tiết về sản phẩm, tình trạng, xuất xứ..." 
@@ -743,6 +949,9 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                     {itemValidationErrors.description && (
                       <p className="text-sm text-red-500">{itemValidationErrors.description}</p>
                     )}
+                    <p className="text-xs text-muted-foreground">
+                      Tối thiểu 5 ký tự, tối đa 2000 ký tự
+                    </p>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -770,12 +979,30 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                       {itemValidationErrors.basePrice && (
                         <p className="text-sm text-red-500">{itemValidationErrors.basePrice}</p>
                       )}
+                      <p className="text-xs text-muted-foreground">
+                      Giá khởi điểm tối thiểu là 1,000 VNĐ
+                    </p>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="newItemCondition">Tình trạng</Label>
-                      <Select value={newItemCondition} onValueChange={setNewItemCondition}>
-                        <SelectTrigger id="newItemCondition">
+                      <Label htmlFor="newItemCondition">Tình trạng *</Label>
+                      <Select 
+                        value={newItemCondition} 
+                        onValueChange={(value) => {
+                          setNewItemCondition(value)
+                          if (itemValidationErrors.condition) {
+                            setItemValidationErrors(prev => {
+                              const newErrors = { ...prev }
+                              delete newErrors.condition
+                              return newErrors
+                            })
+                          }
+                        }}
+                      >
+                        <SelectTrigger 
+                          id="newItemCondition"
+                          className={itemValidationErrors.condition ? "border-red-500" : ""}
+                        >
                           <SelectValue placeholder="Chọn tình trạng" />
                         </SelectTrigger>
                         <SelectContent>
@@ -786,11 +1013,14 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                           <SelectItem value="used">Đã sử dụng</SelectItem>
                         </SelectContent>
                       </Select>
+                      {itemValidationErrors.condition && (
+                        <p className="text-sm text-red-500">{itemValidationErrors.condition}</p>
+                      )}
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="newItemLocation">Địa điểm</Label>
+                    <Label htmlFor="newItemLocation">Địa điểm *</Label>
                     <Input 
                       id="newItemLocation" 
                       placeholder="VD: Hà Nội, Việt Nam" 
@@ -810,10 +1040,45 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                     {itemValidationErrors.location && (
                       <p className="text-sm text-red-500">{itemValidationErrors.location}</p>
                     )}
+                    <p className="text-xs text-muted-foreground">
+                      Tối thiểu 3 ký tự, tối đa 255 ký tự
+                    </p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Hình ảnh sản phẩm</Label>
+                    <Label>Hình ảnh sản phẩm *</Label>
+                    
+                    {/* Hiển thị existing images từ draft item */}
+                    {existingImageUrls.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">Hình ảnh đã lưu:</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                          {existingImageUrls.map((url, index) => (
+                            <div key={index} className="relative group">
+                              <div className="aspect-square rounded-lg border border-border overflow-hidden bg-muted">
+                                <img
+                                  src={url}
+                                  alt={`Existing ${index + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  setExistingImageUrls(prev => prev.filter((_, i) => i !== index))
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
                     <ImageUploadFile
                       files={newItemImages}
                       onChange={(files) => {
@@ -826,12 +1091,18 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                           })
                         }
                       }}
-                      maxImages={10}
+                      maxImages={10 - existingImageUrls.length}
                       maxSizeMB={10}
                     />
                     {itemValidationErrors.images && (
                       <p className="text-sm text-red-500">{itemValidationErrors.images}</p>
                     )}
+                    <p className="text-xs text-muted-foreground">
+                      Tối thiểu 1 hình, tối đa 10 hình. Định dạng: JPG, PNG. Kích thước tối đa: 10MB/hình
+                      {existingImageUrls.length > 0 && (
+                        <span className="block mt-1">Đã có {existingImageUrls.length} hình ảnh từ bản nháp</span>
+                      )}
+                    </p>
                   </div>
 
                   <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
@@ -840,20 +1111,37 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                     </p>
                   </div>
 
-                  <Button 
-                    onClick={handleCreateItemClick} 
-                    disabled={loading}
-                    className="w-full"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Đang tạo...
-                      </>
-                    ) : (
-                      "Tạo sản phẩm"
-                    )}
-                  </Button>
+                  <div className="space-y-2">
+                    <Button 
+                      onClick={handleCreateItemClick} 
+                      disabled={loading}
+                      className="w-full"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang tạo...
+                        </>
+                      ) : (
+                        "Tạo sản phẩm"
+                      )}
+                    </Button>
+                    <Button 
+                      onClick={handleSaveDraft} 
+                      disabled={loading}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang lưu...
+                        </>
+                      ) : (
+                        "Lưu bản nháp"
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
@@ -864,7 +1152,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
           <div className="space-y-4 py-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="startPrice">Bạn muốn thay đổi giá khởi điểm? (VNĐ) *</Label>
+                <Label htmlFor="startPrice">Thiết lập giá khởi điểm? (VNĐ) *</Label>
                 <Input 
                   id="startPrice" 
                   type="number" 
@@ -895,6 +1183,9 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                     </p>
                   ) : null
                 })()}
+                <p className="text-xs text-muted-foreground">
+                      Giá khởi điểm tối thiểu là 1,000 VNĐ
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -1116,7 +1407,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
               Quay lại
             </Button>
           )}
-          {step < 3 ? (
+          {step < 3 && !(step === 1 && itemMode === "create") ? (
             <Button 
               onClick={() => {
                 if (step === 1) {
@@ -1126,10 +1417,6 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                       description: "Vui lòng chọn sản phẩm",
                       variant: "destructive"
                     })
-                    return
-                  }
-                  // If creating item, don't proceed - user needs to create item first
-                  if (itemMode === "create") {
                     return
                   }
                 }
@@ -1151,11 +1438,11 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                  }
                 setStep(step + 1)
               }}
-              disabled={loading || (step === 1 && itemMode === "create")}
+              disabled={loading}
             >
               Tiếp tục
             </Button>
-          ) : (
+          ) : step === 3 ? (
              <Button 
                type="button"
                onClick={(e) => {
@@ -1177,7 +1464,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                  "Tạo phiên đấu giá"
                )}
              </Button>
-          )}
+          ) : null}
         </DialogFooter>
       </DialogContent>
 
