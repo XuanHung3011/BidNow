@@ -376,6 +376,9 @@ useEffect(() => {
                       0,
                     startingBid:
                       auction.startingBid ?? auction.basePrice ?? 0,
+                    startTime: auction.auctionStartTime
+                      ? new Date(auction.auctionStartTime)
+                      : undefined,
                     endTime: auction.auctionEndTime
                       ? new Date(auction.auctionEndTime)
                       : new Date(0),
