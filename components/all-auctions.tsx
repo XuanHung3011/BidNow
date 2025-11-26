@@ -13,6 +13,7 @@ import { ItemsAPI } from "@/lib/api/items"
 import type { ItemResponseDto, ItemFilterDto, CategoryDto } from "@/lib/api/types"
 import { useSearchParams } from "next/navigation"
 import { getImageUrls } from "@/lib/api/config"
+import { useAuth } from "@/lib/auth-context"
 
 // helper nhỏ
 const formatCurrency = (v?: number) =>
@@ -21,6 +22,7 @@ const formatCurrency = (v?: number) =>
 export function AllAuctions() {
   const searchParams = useSearchParams()
   const qParam = searchParams?.get("q") ?? ""
+  const { user } = useAuth()
 
   // search
   const [searchQuery, setSearchQuery] = useState<string>(qParam)
@@ -157,7 +159,9 @@ useEffect(() => {
           setItems(res.items)
           setTotalCount(res.pagination?.totalCount ?? res.items.length)
         } else if (debouncedQuery) {
-          const res = await ItemsAPI.searchPaged(debouncedQuery, page, pageSize)
+          // Nếu user đã đăng nhập, truyền userId để backend log từ khóa tìm kiếm
+          const userId = user ? Number(user.id) : undefined
+          const res = await ItemsAPI.searchPaged(debouncedQuery, page, pageSize, userId)
           if (!isMounted) return
           setItems(res.items)
           setTotalCount(res.pagination?.totalCount ?? res.items.length)
