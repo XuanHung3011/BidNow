@@ -7,20 +7,24 @@ import { MoreVertical, Edit, Trash2, Eye, Star } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 import { useState, useEffect, useMemo } from "react"
-import * as React from "react"
 import { RatingDialog } from "@/components/rating-dialog"
+import { ItemsAPI } from "@/lib/api/items"
 import { AuctionsAPI, SellerAuctionDto } from "@/lib/api/auctions"
+import { ItemResponseDto } from "@/lib/api/types"
 import { useAuth } from "@/lib/auth-context"
-import { getImageUrl } from "@/lib/api/config"
+import { useToast } from "@/hooks/use-toast"
+import { getImageUrls, getImageUrl } from "@/lib/api/config"
 
 interface SellerAuctionsListProps {
   status: "active" | "scheduled" | "completed" | "draft"
+  onSelectDraftItem?: (item: ItemResponseDto) => void
 }
 
-export function SellerAuctionsList({ status }: SellerAuctionsListProps) {
+export function SellerAuctionsList({ status, onSelectDraftItem }: SellerAuctionsListProps) {
   const { user } = useAuth()
+  const { toast } = useToast()
   const [auctions, setAuctions] = useState<SellerAuctionDto[]>([])
-  const [loading, setLoading] = useState(true)
+  const [auctionsLoading, setAuctionsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0) // Force re-render for real-time updates
   const [ratingDialog, setRatingDialog] = useState<{
@@ -29,14 +33,56 @@ export function SellerAuctionsList({ status }: SellerAuctionsListProps) {
     auctionTitle: string
     buyerName: string
   } | null>(null)
+  const [draftItems, setDraftItems] = useState<ItemResponseDto[]>([])
+  const [draftLoading, setDraftLoading] = useState(false)
 
+  // Load draft items when status is "draft"
   useEffect(() => {
-    if (!user?.id) return
+    if (status === "draft" && user) {
+      loadDraftItems()
+    }
+  }, [status, user])
+
+  const loadDraftItems = async () => {
+    if (!user) return
+    try {
+      setDraftLoading(true)
+      const sellerId = parseInt(user.id)
+      const result = await ItemsAPI.getAllWithFilter({
+        statuses: ["draft"],
+        sellerId: sellerId,
+        page: 1,
+        pageSize: 100,
+        sortBy: "CreatedAt",
+        sortOrder: "desc"
+      })
+      setDraftItems(result.data || [])
+    } catch (error) {
+      console.error("Error loading draft items:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải danh sách bản nháp",
+        variant: "destructive"
+      })
+    } finally {
+      setDraftLoading(false)
+    }
+  }
+
+  const handleSelectDraft = (item: ItemResponseDto) => {
+    if (onSelectDraftItem) {
+      onSelectDraftItem(item)
+    }
+  }
+
+  // Load auctions for non-draft statuses
+  useEffect(() => {
+    if (status === "draft" || !user?.id) return
 
     async function fetchAuctions() {
       if (!user?.id) return
       try {
-        setLoading(true)
+        setAuctionsLoading(true)
         setError(null)
         const sellerId = typeof user.id === 'string' ? parseInt(user.id, 10) : user.id
         if (isNaN(sellerId)) return
@@ -46,12 +92,12 @@ export function SellerAuctionsList({ status }: SellerAuctionsListProps) {
         setError(err instanceof Error ? err.message : "Không thể tải danh sách phiên đấu giá")
         console.error("Error fetching seller auctions:", err)
       } finally {
-        setLoading(false)
+        setAuctionsLoading(false)
       }
     }
 
     fetchAuctions()
-  }, [user])
+  }, [user, status])
 
   // Client-side filtering based on real-time clock
   const filteredAuctions = useMemo(() => {
@@ -179,7 +225,84 @@ export function SellerAuctionsList({ status }: SellerAuctionsListProps) {
     }
   }
 
-  if (loading) {
+  // For draft status, show draft items
+  if (status === "draft") {
+    if (draftLoading) {
+      return (
+        <Card className="p-12 text-center">
+          <p className="text-muted-foreground">Đang tải...</p>
+        </Card>
+      )
+    }
+
+    if (draftItems.length === 0) {
+      return (
+        <Card className="p-12 text-center">
+          <p className="text-muted-foreground">Không có bản nháp nào</p>
+        </Card>
+      )
+    }
+
+    return (
+      <div className="space-y-4">
+        {draftItems.map((item) => {
+          const imageUrls = getImageUrls(item.images)
+          const firstImage = imageUrls[0] || "/placeholder.svg"
+          
+          return (
+            <Card key={item.id} className="p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex gap-4">
+                  <img
+                    src={firstImage}
+                    alt={item.title}
+                    className="h-20 w-20 rounded-lg object-cover"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-start gap-2">
+                      <h3 className="font-semibold text-foreground">{item.title}</h3>
+                      <Badge variant="secondary">Bản nháp</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">{item.categoryName || "Chưa có danh mục"}</p>
+                    <div className="mt-2 flex flex-wrap gap-4 text-sm">
+                      <span className="text-muted-foreground">
+                        Giá khởi điểm:{" "}
+                        <span className="font-semibold text-foreground">
+                          {item.basePrice ? item.basePrice.toLocaleString('vi-VN') + ' VNĐ' : 'Chưa đặt'}
+                        </span>
+                      </span>
+                      {item.createdAt && (
+                        <span className="text-muted-foreground">
+                          Tạo lúc: <span className="font-semibold text-foreground">
+                            {new Date(item.createdAt).toLocaleDateString('vi-VN')}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {onSelectDraftItem && (
+                    <Button 
+                      variant="default" 
+                      size="sm"
+                      onClick={() => handleSelectDraft(item)}
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      Tiếp tục chỉnh sửa
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )
+        })}
+      </div>
+    )
+  }
+
+  if (auctionsLoading) {
     return (
       <Card className="p-12 text-center">
         <p className="text-muted-foreground">Đang tải...</p>

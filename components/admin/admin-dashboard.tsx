@@ -9,8 +9,31 @@ import { PlatformAnalytics } from "./platform-analytics"
 import { AllAuctionsManagement } from "./all-auctions-management"
 import { CategoryManagement } from "./category-management"
 import { AdminMessaging } from "./admin-messaging"
+import { useState, useEffect } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 
 export function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState("auctions")
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  // Check if tab query param is present
+  useEffect(() => {
+    const tabParam = searchParams.get("tab")
+    if (tabParam) {
+      // Validate tab value
+      const validTabs = ["auctions", "pending", "users", "categories", "analytics", "disputes"]
+      if (validTabs.includes(tabParam)) {
+        setActiveTab(tabParam)
+        // Remove query param from URL
+        const params = new URLSearchParams(searchParams.toString())
+        params.delete("tab")
+        const newQuery = params.toString()
+        router.replace(`/admin${newQuery ? `?${newQuery}` : ""}`, { scroll: false })
+      }
+    }
+  }, [searchParams, router])
+
   return (
     <div className="space-y-8">
       <div>
@@ -20,7 +43,7 @@ export function AdminDashboard() {
 
       <AdminStats />
 
-      <Tabs defaultValue="auctions" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-5 lg:w-auto">
           <TabsTrigger
             value="auctions"

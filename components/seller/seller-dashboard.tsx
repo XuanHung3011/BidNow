@@ -6,10 +6,32 @@ import { Plus } from "lucide-react"
 import { SellerStats } from "./seller-stats"
 import { SellerAuctionsList } from "./seller-auctions-list"
 import { CreateAuctionDialog } from "./create-auction-dialog"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 
 export function SellerDashboard() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [selectedDraftItem, setSelectedDraftItem] = useState<any>(null)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  // Check if openAuctionDialog query param is present
+  useEffect(() => {
+    const openAuctionDialog = searchParams.get("openAuctionDialog")
+    if (openAuctionDialog === "true") {
+      setShowCreateDialog(true)
+      // Remove query param from URL
+      const params = new URLSearchParams(searchParams.toString())
+      params.delete("openAuctionDialog")
+      const newQuery = params.toString()
+      router.replace(`/seller${newQuery ? `?${newQuery}` : ""}`, { scroll: false })
+    }
+  }, [searchParams, router])
+
+  const handleSelectDraftItem = (item: any) => {
+    setSelectedDraftItem(item)
+    setShowCreateDialog(true)
+  }
 
   return (
     <div className="space-y-8">
@@ -47,11 +69,20 @@ export function SellerDashboard() {
         </TabsContent>
 
         <TabsContent value="draft" className="mt-6">
-          <SellerAuctionsList status="draft" />
+          <SellerAuctionsList status="draft" onSelectDraftItem={handleSelectDraftItem} />
         </TabsContent>
       </Tabs>
 
-      <CreateAuctionDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} />
+      <CreateAuctionDialog 
+        open={showCreateDialog} 
+        onOpenChange={(open) => {
+          setShowCreateDialog(open)
+          if (!open) {
+            setSelectedDraftItem(null)
+          }
+        }}
+        draftItem={selectedDraftItem}
+      />
     </div>
   )
 }

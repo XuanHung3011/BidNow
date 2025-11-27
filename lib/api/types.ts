@@ -63,6 +63,7 @@ export interface ItemResponseDto {
   startingBid?: number | null;
   currentBid?: number | null;
   bidCount?: number | null;
+  auctionStartTime?: string | null;
   auctionEndTime?: string | null;
   auctionStatus?: string | null;
   pausedAt?: string | null;
