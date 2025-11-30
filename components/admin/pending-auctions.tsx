@@ -19,6 +19,8 @@ import { ItemResponseDto, CategoryDto } from "@/lib/api/types"
 import { useToast } from "@/hooks/use-toast"
 import { getImageUrls } from "@/lib/api/config"
 import { createAuctionHubConnection } from "@/lib/realtime/auctionHub"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 
 export function PendingAuctions() {
   const { toast } = useToast()
@@ -44,6 +46,11 @@ export function PendingAuctions() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<ItemResponseDto | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
+  
+  // Reject dialog state
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
+  const [rejectReason, setRejectReason] = useState("")
+  const [itemToReject, setItemToReject] = useState<number | null>(null)
 
   const fetchPendingItems = useCallback(async () => {
     try {
@@ -166,14 +173,34 @@ export function PendingAuctions() {
     }
   }
 
-  const handleReject = async (itemId: number) => {
+  const handleRejectClick = (itemId: number) => {
+    setItemToReject(itemId)
+    setRejectReason("")
+    setRejectDialogOpen(true)
+  }
+
+  const handleReject = async () => {
+    if (!itemToReject) return
+    
+    if (!rejectReason.trim()) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập lý do từ chối",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
-      setProcessingIds((prev) => new Set(prev).add(itemId))
-      await ItemsAPI.rejectItem(itemId)
+      setProcessingIds((prev) => new Set(prev).add(itemToReject))
+      await ItemsAPI.rejectItem(itemToReject, rejectReason)
       toast({
         title: "Thành công",
         description: "Đã từ chối sản phẩm",
       })
+      setRejectDialogOpen(false)
+      setRejectReason("")
+      setItemToReject(null)
       // Refresh list after approve/reject
       await fetchPendingItems()
     } catch (error) {
@@ -186,7 +213,7 @@ export function PendingAuctions() {
     } finally {
       setProcessingIds((prev) => {
         const newSet = new Set(prev)
-        newSet.delete(itemId)
+        newSet.delete(itemToReject)
         return newSet
       })
     }
@@ -425,7 +452,7 @@ export function PendingAuctions() {
                   variant="destructive" 
                   size="sm" 
                   className="w-full sm:w-auto"
-                  onClick={() => handleReject(itemId)}
+                  onClick={() => handleRejectClick(itemId)}
                   disabled={isProcessing}
                 >
                   {isProcessing ? (
@@ -635,6 +662,60 @@ export function PendingAuctions() {
               </div>
             </>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Item Dialog */}
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Từ chối sản phẩm</DialogTitle>
+            <DialogDescription>
+              Vui lòng nhập lý do từ chối sản phẩm này. Lý do này sẽ được gửi đến người bán.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rejectReason">Lý do từ chối *</Label>
+              <Textarea
+                id="rejectReason"
+                placeholder="Nhập lý do từ chối sản phẩm..."
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={4}
+                className="resize-none"
+              />
+              <p className="text-xs text-muted-foreground">
+                Lý do từ chối là bắt buộc và sẽ được gửi đến người bán
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRejectDialogOpen(false)
+                  setRejectReason("")
+                  setItemToReject(null)
+                }}
+              >
+                Hủy
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleReject}
+                disabled={!rejectReason.trim() || (itemToReject !== null && processingIds.has(itemToReject))}
+              >
+                {itemToReject !== null && processingIds.has(itemToReject) ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Đang xử lý...
+                  </>
+                ) : (
+                  "Xác nhận từ chối"
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -36,6 +36,7 @@ export function LiveAuctionsSection() {
             image: getImageUrls(i.images)[0] || "/placeholder.jpg",
             currentBid: Number(i.currentBid || i.startingBid || 0),
             startingBid: Number(i.startingBid || 0),
+            startTime: i.auctionStartTime ? new Date(i.auctionStartTime) as any : undefined,
             endTime: i.auctionEndTime ? new Date(i.auctionEndTime) as any : new Date(),
             bidCount: Number(i.bidCount || 0),
             category: i.categoryName || "Khác",

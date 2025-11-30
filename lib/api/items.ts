@@ -144,11 +144,12 @@ export const ItemsAPI = {
   },
 
   // Admin: Reject item
-  rejectItem: async (id: number): Promise<{ message: string }> => {
+  rejectItem: async (id: number, reason: string): Promise<{ message: string }> => {
     const url = `${API_BASE}${API_ENDPOINTS.ITEMS.REJECT(id)}`
     const res = await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
       cache: 'no-store'
     })
     return handleResponse<{ message: string }>(res)
@@ -237,5 +238,94 @@ export const ItemsAPI = {
       console.error('Error creating item:', error)
       throw error
     }
+  },
+
+  // Seller: Create draft item with file upload
+  createDraftItem: async (item: CreateItemDto, imageFiles?: File[]): Promise<ItemResponseDto> => {
+    const url = `${API_BASE}${API_ENDPOINTS.ITEMS.CREATE_DRAFT}`
+    console.log('Creating draft item at URL:', url)
+    
+    try {
+      const formData = new FormData()
+      
+      // Add item data fields
+      formData.append('SellerId', item.sellerId.toString())
+      formData.append('CategoryId', item.categoryId.toString())
+      formData.append('Title', item.title)
+      if (item.description) {
+        formData.append('Description', item.description)
+      }
+      if (item.condition) {
+        formData.append('Condition', item.condition)
+      }
+      if (item.location) {
+        formData.append('Location', item.location)
+      }
+      formData.append('BasePrice', (item.basePrice || 0).toString())
+      
+      // Add image files
+      if (imageFiles && imageFiles.length > 0) {
+        imageFiles.forEach((file) => {
+          formData.append('images', file)
+        })
+      }
+      
+      const res = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        cache: 'no-store'
+      })
+      
+      if (!res.ok) {
+        let errorText = ''
+        try {
+          errorText = await res.text()
+          console.error('Error response body:', errorText)
+        } catch (e) {
+          console.error('Error reading response:', e)
+          errorText = `HTTP error ${res.status} ${res.statusText}`
+        }
+        
+        let errorMessage = `Failed to create draft item: ${res.status} ${res.statusText}`
+        if (errorText) {
+          try {
+            const errorJson = JSON.parse(errorText)
+            if (errorJson.message) {
+              errorMessage = errorJson.message
+            } else if (errorJson.error) {
+              errorMessage = errorJson.error
+            }
+          } catch {
+            errorMessage = errorText || errorMessage
+          }
+        }
+        
+        throw new Error(errorMessage)
+      }
+      
+      const contentType = res.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text()
+        console.warn('Unexpected response type:', contentType, 'Body:', text)
+        throw new Error('Unexpected response format from server')
+      }
+      
+      const result = await res.json()
+      console.log('Draft item created successfully:', result)
+      return result
+    } catch (error) {
+      console.error('Error creating draft item:', error)
+      throw error
+    }
+  },
+
+  // Seller: Delete draft item
+  deleteItem: async (id: number): Promise<{ message: string }> => {
+    const url = `${API_BASE}${API_ENDPOINTS.ITEMS.DELETE(id)}`
+    const res = await fetch(url, {
+      method: 'DELETE',
+      cache: 'no-store'
+    })
+    return handleResponse<{ message: string }>(res)
   }
 }

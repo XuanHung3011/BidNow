@@ -63,8 +63,10 @@ export interface ItemResponseDto {
   startingBid?: number | null;
   currentBid?: number | null;
   bidCount?: number | null;
+  auctionStartTime?: string | null;
   auctionEndTime?: string | null;
   auctionStatus?: string | null;
+  pausedAt?: string | null;
 }
 
 export interface CreateItemDto {
@@ -248,4 +250,18 @@ export interface CreateNotificationDto {
 
 export interface UnreadNotificationCountDto {
   count: number;
+}
+
+export interface AuctionChatMessageDto {
+  id: number;
+  alias: string;
+  content: string;
+  sentAt?: string;
+  isMine: boolean;
+}
+
+export interface CreateAuctionChatMessageRequest {
+  auctionId: number;
+  senderId: number;
+  content: string;
 }

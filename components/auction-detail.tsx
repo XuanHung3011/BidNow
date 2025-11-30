@@ -46,6 +46,7 @@ interface AuctionDetailProps {
 export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const { user } = useAuth()
   const [timeLeft, setTimeLeft] = useState("")
+  const [auctionStatus, setAuctionStatus] = useState<"scheduled" | "active" | "ended" | "cancelled">("active")
   const [bidAmount, setBidAmount] = useState("")
   const [placing, setPlacing] = useState(false)
   const [placeError, setPlaceError] = useState<string | null>(null)
@@ -267,6 +268,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
 
     // Nếu auction bị tạm dừng, dừng timer và hiển thị thời gian tạm dừng
     if (auction.status?.toLowerCase() === "cancelled") {
+      setAuctionStatus("cancelled")
       if (auction.pausedAt) {
         const pausedDate = new Date(auction.pausedAt)
         const pausedTime = pausedDate.toLocaleString("vi-VN", {
@@ -285,13 +287,30 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
 
     const updateTimer = () => {
       const now = new Date().getTime()
-      const distance = new Date(auction.endTime).getTime() - now
+      const startTime = new Date(auction.startTime).getTime()
+      const endTime = new Date(auction.endTime).getTime()
 
-      if (distance < 0) {
-        setTimeLeft("Đã kết thúc")
+      // Nếu auction chưa bắt đầu (scheduled), đếm ngược đến StartTime
+      if (startTime > now) {
+        setAuctionStatus("scheduled")
+        const distance = startTime - now
+        const hours = Math.floor(distance / (1000 * 60 * 60))
+        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60))
+        const seconds = Math.floor((distance % (1000 * 60)) / 1000)
+        setTimeLeft(`${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`)
         return
       }
 
+      // Nếu auction đã bắt đầu, đếm ngược đến EndTime
+      const distance = endTime - now
+
+      if (distance < 0) {
+        setTimeLeft("Đã kết thúc")
+        setAuctionStatus("ended")
+        return
+      }
+
+      setAuctionStatus("active")
       const hours = Math.floor(distance / (1000 * 60 * 60))
       const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60))
       const seconds = Math.floor((distance % (1000 * 60)) / 1000)
@@ -510,7 +529,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                   </div>
                   <div>
                     <h1 className="text-3xl font-bold leading-tight text-foreground lg:text-4xl">{auction.itemTitle}</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">{auction.status}</p>
+                    {/* <p className="mt-1 text-sm text-muted-foreground">{auction.status}</p> */}
                   </div>
                   {auction.status?.toLowerCase() === "cancelled" && (
                     <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
@@ -532,7 +551,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 rounded-xl border border-border bg-muted/30 p-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 rounded-xl border border-border bg-muted/30 p-4">
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-muted-foreground">Giá hiện tại</p>
                     <p className="text-lg font-bold text-primary lg:text-xl">{formatPrice(auction.currentBid || auction.startingBid)}</p>
@@ -541,7 +560,31 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">Thời gian còn lại</p>
+                    <p className="text-xs font-medium text-muted-foreground">Trạng thái</p>
+                    <Badge 
+                      variant={
+                        auctionStatus === "scheduled" ? "secondary" :
+                        auctionStatus === "active" ? "default" :
+                        auctionStatus === "cancelled" ? "destructive" :
+                        "outline"
+                      }
+                      className={
+                        auctionStatus === "scheduled" ? "bg-blue-500 text-white" :
+                        auctionStatus === "active" ? "bg-green-500 text-white" :
+                        auctionStatus === "cancelled" ? "bg-orange-500 text-white" :
+                        "bg-gray-500 text-white"
+                      }
+                    >
+                      {auctionStatus === "scheduled" ? "Sắp diễn ra" :
+                       auctionStatus === "active" ? "Đang diễn ra" :
+                       auctionStatus === "cancelled" ? "Đã tạm dừng" :
+                       "Đã kết thúc"}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {auctionStatus === "scheduled" ? "Phiên đấu giá sẽ bắt đầu sau" : "Thời gian còn lại"}
+                    </p>
                     <p className="text-lg font-semibold text-foreground lg:text-xl">{timeLeft}</p>
                   </div>
                   <div className="space-y-1">
@@ -756,15 +799,14 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
 
         <section>
           <Card className="border-border bg-card p-6">
-            <div className="mb-4 flex items-center gap-2">
+            <div className="mb-2 flex items-center gap-2">
               <MessageCircle className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Hỗ trợ trực tuyến</h3>
-              <div className="ml-auto flex items-center gap-1">
-                <div className="h-2 w-2 animate-pulse-glow rounded-full bg-accent" />
-                <span className="text-xs text-accent">Online</span>
+              <div>
+                <h3 className="font-semibold text-foreground">Bình luận phiên đấu giá</h3>
+                <p className="text-xs text-muted-foreground">Trao đổi ẩn danh, mọi người đều xem được.</p>
               </div>
             </div>
-            <LiveChat />
+            <LiveChat auctionId={Number(auctionId)} />
           </Card>
         </section>
 

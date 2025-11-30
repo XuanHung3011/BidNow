@@ -380,11 +380,16 @@ useEffect(() => {
                       0,
                     startingBid:
                       auction.startingBid ?? auction.basePrice ?? 0,
+                    startTime: auction.auctionStartTime
+                      ? new Date(auction.auctionStartTime)
+                      : undefined,
                     endTime: auction.auctionEndTime
                       ? new Date(auction.auctionEndTime)
                       : new Date(0),
                     bidCount: auction.bidCount ?? 0,
                     category: auction.categoryName ?? "Chưa phân loại",
+                    status: auction.auctionStatus ?? undefined,
+                    pausedAt: auction.pausedAt ?? undefined,
                   }}
                 />
               )})}

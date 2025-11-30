@@ -16,33 +16,85 @@ interface AuctionCardProps {
     currentBid: number
     startingBid: number
     endTime: Date
+    startTime?: Date | string
     bidCount: number
     category: string
     sellerRating?: number
     sellerName?: string
+    status?: string | null
+    pausedAt?: string | Date | null
   }
 }
 
 export function AuctionCard({ auction }: AuctionCardProps) {
   const [timeLeft, setTimeLeft] = useState("")
+  const [status, setStatus] = useState<"scheduled" | "active" | "ended">("active")
 
   useEffect(() => {
+    const isPaused = auction.status?.toLowerCase() === "cancelled"
+
+    if (isPaused) {
+      if (auction.pausedAt) {
+        const pausedDate =
+          auction.pausedAt instanceof Date ? auction.pausedAt : new Date(auction.pausedAt)
+        if (!Number.isNaN(pausedDate.getTime())) {
+          const pausedTime = pausedDate.toLocaleString("vi-VN", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+          setTimeLeft(`Tạm dừng từ ${pausedTime}`)
+        } else {
+          setTimeLeft("Đã tạm dừng")
+        }
+      } else {
+        setTimeLeft("Đã tạm dừng")
+      }
+      return
+    }
+
     if (!auction.endTime) {
       setTimeLeft("Đã kết thúc")
+      setStatus("ended")
       return
     }
 
     const updateTimer = () => {
       const now = new Date().getTime()
-      const endTimeValue =
-        auction.endTime instanceof Date ? auction.endTime.getTime() : new Date(auction.endTime).getTime()
-      const distance = endTimeValue - now
+      
+      // Parse startTime và endTime - giống logic trong auction-detail.tsx
+      const startTime = auction.startTime 
+        ? (auction.startTime instanceof Date ? auction.startTime.getTime() : new Date(auction.startTime).getTime())
+        : null
+      const endTime = auction.endTime instanceof Date 
+        ? auction.endTime.getTime() 
+        : new Date(auction.endTime).getTime()
 
-      if (distance < 0) {
-        setTimeLeft("Đã kết thúc")
+      // Nếu có startTime và chưa đến giờ bắt đầu (scheduled), đếm ngược đến StartTime
+      // Ưu tiên kiểm tra startTime trước để đảm bảo hiển thị đúng trạng thái
+      if (startTime && startTime > now) {
+        setStatus("scheduled")
+        const distance = startTime - now
+        const hours = Math.floor(distance / (1000 * 60 * 60))
+        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60))
+        const seconds = Math.floor((distance % (1000 * 60)) / 1000)
+        setTimeLeft(`${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`)
         return
       }
 
+      // Nếu auction đã bắt đầu, đếm ngược đến EndTime
+      const distance = endTime - now
+
+      if (distance < 0) {
+        setTimeLeft("Đã kết thúc")
+        setStatus("ended")
+        return
+      }
+
+      // Nếu đã qua startTime và chưa đến endTime -> active
+      setStatus("active")
       const hours = Math.floor(distance / (1000 * 60 * 60))
       const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60))
       const seconds = Math.floor((distance % (1000 * 60)) / 1000)
@@ -54,7 +106,7 @@ export function AuctionCard({ auction }: AuctionCardProps) {
     const interval = setInterval(updateTimer, 1000)
 
     return () => clearInterval(interval)
-  }, [auction.endTime])
+  }, [auction.endTime, auction.startTime, auction.status, auction.pausedAt])
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -77,9 +129,29 @@ export function AuctionCard({ auction }: AuctionCardProps) {
             className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
           <Badge className="absolute left-3 top-3 bg-primary text-primary-foreground">{auction.category}</Badge>
-          <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-background/90 px-3 py-1 backdrop-blur">
-            <Clock className="h-3 w-3 text-accent" />
-            <span className="text-xs font-mono font-semibold text-foreground">{timeLeft}</span>
+          <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
+            {/* Status Badge */}
+            <Badge 
+              variant={
+                status === "scheduled" ? "secondary" :
+                status === "active" ? "default" :
+                "destructive"
+              }
+              className={
+                status === "scheduled" ? "bg-blue-500/90 text-white" :
+                status === "active" ? "bg-green-500/90 text-white" :
+                "bg-gray-500/90 text-white"
+              }
+            >
+              {status === "scheduled" ? "Sắp diễn ra" :
+               status === "active" ? "Đang diễn ra" :
+               "Đã kết thúc"}
+            </Badge>
+            {/* Countdown Timer */}
+            <div className="flex items-center gap-1 rounded-full bg-background/90 px-3 py-1 backdrop-blur">
+              <Clock className="h-3 w-3 text-accent" />
+              <span className="text-xs font-mono font-semibold text-foreground">{timeLeft}</span>
+            </div>
           </div>
           {auction.sellerRating && (
             <div className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-background/90 px-3 py-1 backdrop-blur">

@@ -9,8 +9,31 @@ import { PlatformAnalytics } from "./platform-analytics"
 import { AllAuctionsManagement } from "./all-auctions-management"
 import { CategoryManagement } from "./category-management"
 import { AdminMessaging } from "./admin-messaging"
+import { useState, useEffect } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 
 export function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState("auctions")
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  // Check if tab query param is present
+  useEffect(() => {
+    const tabParam = searchParams.get("tab")
+    if (tabParam) {
+      // Validate tab value
+      const validTabs = ["auctions", "pending", "users", "categories", "analytics", "disputes"]
+      if (validTabs.includes(tabParam)) {
+        setActiveTab(tabParam)
+        // Remove query param from URL
+        const params = new URLSearchParams(searchParams.toString())
+        params.delete("tab")
+        const newQuery = params.toString()
+        router.replace(`/admin${newQuery ? `?${newQuery}` : ""}`, { scroll: false })
+      }
+    }
+  }, [searchParams, router])
+
   return (
     <div className="space-y-8">
       <div>
@@ -20,15 +43,39 @@ export function AdminDashboard() {
 
       <AdminStats />
 
-      <Tabs defaultValue="auctions" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-5 lg:w-auto">
-          <TabsTrigger value="auctions">Sản phẩm</TabsTrigger>
-          <TabsTrigger value="pending">Chờ duyệt</TabsTrigger>
-          <TabsTrigger value="users">Người dùng</TabsTrigger>
+          <TabsTrigger
+            value="auctions"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Sản phẩm
+          </TabsTrigger>
+          <TabsTrigger
+            value="pending"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Chờ duyệt
+          </TabsTrigger>
+          <TabsTrigger
+            value="users"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Người dùng
+          </TabsTrigger>
           {/* <TabsTrigger value="disputes">Tranh chấp</TabsTrigger> */}
-          <TabsTrigger value="categories">Danh mục</TabsTrigger>
-        
-          <TabsTrigger value="analytics">Phân tích</TabsTrigger>
+          <TabsTrigger
+            value="categories"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Danh mục
+          </TabsTrigger>
+          <TabsTrigger
+            value="analytics"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Phân tích
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="auctions" className="mt-6">
