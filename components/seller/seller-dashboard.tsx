@@ -12,6 +12,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 export function SellerDashboard() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [selectedDraftItem, setSelectedDraftItem] = useState<any>(null)
+  const [draftRefreshTrigger, setDraftRefreshTrigger] = useState(0)
   const searchParams = useSearchParams()
   const router = useRouter()
 
@@ -31,6 +32,11 @@ export function SellerDashboard() {
   const handleSelectDraftItem = (item: any) => {
     setSelectedDraftItem(item)
     setShowCreateDialog(true)
+  }
+
+  const handleDraftDeleted = () => {
+    // Trigger refresh of draft list
+    setDraftRefreshTrigger(prev => prev + 1)
   }
 
   return (
@@ -69,7 +75,7 @@ export function SellerDashboard() {
         </TabsContent>
 
         <TabsContent value="draft" className="mt-6">
-          <SellerAuctionsList status="draft" onSelectDraftItem={handleSelectDraftItem} />
+          <SellerAuctionsList status="draft" onSelectDraftItem={handleSelectDraftItem} refreshTrigger={draftRefreshTrigger} />
         </TabsContent>
       </Tabs>
 
@@ -82,6 +88,7 @@ export function SellerDashboard() {
           }
         }}
         draftItem={selectedDraftItem}
+        onDraftDeleted={handleDraftDeleted}
       />
     </div>
   )
