@@ -18,9 +18,10 @@ import { getImageUrls, getImageUrl } from "@/lib/api/config"
 interface SellerAuctionsListProps {
   status: "active" | "scheduled" | "completed" | "draft"
   onSelectDraftItem?: (item: ItemResponseDto) => void
+  refreshTrigger?: number
 }
 
-export function SellerAuctionsList({ status, onSelectDraftItem }: SellerAuctionsListProps) {
+export function SellerAuctionsList({ status, onSelectDraftItem, refreshTrigger }: SellerAuctionsListProps) {
   const { user } = useAuth()
   const { toast } = useToast()
   const [auctions, setAuctions] = useState<SellerAuctionDto[]>([])
@@ -41,7 +42,7 @@ export function SellerAuctionsList({ status, onSelectDraftItem }: SellerAuctions
     if (status === "draft" && user) {
       loadDraftItems()
     }
-  }, [status, user])
+  }, [status, user, refreshTrigger])
 
   const loadDraftItems = async () => {
     if (!user) return
