@@ -295,30 +295,62 @@ export function LiveChat({ auctionId }: LiveChatProps) {
       if (connection) {
         // Cleanup connection safely
         const cleanup = async () => {
-          // If connection is still starting, wait a bit for it to complete or fail
+          // If connection is still starting, wait for it to complete or fail
           if (isStarting) {
-            await new Promise((resolve) => setTimeout(resolve, 500))
+            // Wait for connection to finish starting (max 2 seconds)
+            const maxWait = 2000
+            const startTime = Date.now()
+            while (isStarting && (Date.now() - startTime) < maxWait) {
+              await new Promise((resolve) => setTimeout(resolve, 100))
+            }
           }
           
           try {
             // Only leave group if connection was successfully started and connected
-            if (connectionStarted && connection && connection.state === "Connected") {
-              await connection.invoke("LeaveAuctionChatGroup", auctionId).catch(() => {})
+            if (connectionStarted && connection) {
+              const state = connection.state
+              // Only try to leave if we're in a connected state
+              if (state === "Connected" || state === "Reconnecting") {
+                await connection.invoke("LeaveAuctionChatGroup", auctionId).catch(() => {})
+              }
             }
           } catch {
-            // Ignore errors
+            // Ignore errors when leaving group
           }
           
           try {
-            // Stop connection if it's not already disconnected
-            if (connection && connection.state !== "Disconnected") {
-              await connection.stop().catch(() => {})
+            // Stop connection only if it's in a state that can be stopped
+            if (connection) {
+              const state = connection.state
+              // Only stop if connection is Connected, Reconnecting, or Connecting
+              // Don't stop if already Disconnected or Disconnecting
+              if (state === "Connected" || state === "Reconnecting") {
+                // Wait a bit if connection is reconnecting to let it stabilize
+                if (state === "Reconnecting") {
+                  await new Promise((resolve) => setTimeout(resolve, 200))
+                }
+                await connection.stop().catch((err) => {
+                  // Ignore errors - connection might already be stopped or in transition
+                  // Only log if it's not the expected "handshake" error
+                  if (err?.message && !err.message.includes("handshake")) {
+                    console.warn("Error stopping SignalR connection:", err)
+                  }
+                })
+              } else if (state === "Connecting") {
+                // If still connecting, wait a bit then try to stop
+                await new Promise((resolve) => setTimeout(resolve, 300))
+                if (connection.state !== "Disconnected" && connection.state !== "Disconnecting") {
+                  await connection.stop().catch(() => {
+                    // Ignore errors during connection startup
+                  })
+                }
+              }
             }
           } catch {
-            // Ignore stop errors - connection might already be stopped
+            // Ignore all stop errors - connection cleanup is best-effort
           }
         }
-        cleanup()
+        void cleanup()
       }
     }
   }, [auctionId])
