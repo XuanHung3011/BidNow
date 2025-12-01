@@ -130,6 +130,7 @@ export const API_ENDPOINTS = {
     GET_ANALYTICS: "/api/PlatformAnalytics",
   },
   AUCTIONS: {
+    GET_ALL: "/api/Auctions",
     GET_BY_ID: (id: number) => `/api/Auctions/${id}`,
     CREATE: "/api/Auctions",
     GET_PENDING: "/api/Auctions/pending",
