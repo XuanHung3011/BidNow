@@ -165,19 +165,17 @@ export function Header() {
       const cleanup = async () => {
         try {
           await startPromise.catch(() => {})
-          if (started) {
-            try {
-              await connection.invoke("LeaveUserGroup", String(userIdNumber))
-            } catch (err) {
-              console.error("SignalR leave group error (header):", err)
-            }
+          if (started && connection) {
+            await connection.invoke("LeaveUserGroup", String(userIdNumber)).catch(() => {})
           }
-          await connection.stop()
-        } catch (err) {
-          console.error("SignalR cleanup error (header):", err)
+          if (connection) {
+            await connection.stop().catch(() => {})
+          }
+        } catch {
+          // Silently ignore all cleanup errors
         }
       }
-      cleanup()
+      void cleanup()
     }
   }, [userIdNumber])
 
