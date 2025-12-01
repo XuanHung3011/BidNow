@@ -97,9 +97,12 @@ export const FavoriteSellersAPI = {
       })
       const result = await handleResponse<{ isFavorite: boolean }>(res)
       return result.isFavorite
-    } catch (err) {
+    } catch (err: any) {
       // Nếu chưa đăng nhập, trả về false thay vì throw error
-      console.error('Check favorite error:', err)
+      // Chỉ log lỗi nếu không phải lỗi đăng nhập
+      if (err?.message && !err.message.includes('đăng nhập')) {
+        console.error('Check favorite error:', err)
+      }
       return false
     }
   },

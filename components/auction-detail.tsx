@@ -99,13 +99,17 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     let isMounted = true
     const connection = createAuctionHubConnection()
     let started = false
+    let isStarting = false
 
     const start = async () => {
       try {
+        isStarting = true
         await connection.start()
         started = true
+        isStarting = false
         await connection.invoke("JoinAuctionGroup", String(auctionId))
       } catch (e) {
+        isStarting = false
         // ignore transient connection errors
       }
     }
@@ -181,12 +185,48 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       connection.off("AuctionStatusUpdated")
       const leaveAndStop = async () => {
         try {
-          if (started) {
-            await connection.invoke("LeaveAuctionGroup", String(auctionId))
-            await connection.stop()
+          // If connection is still starting, wait for it to complete or fail
+          if (isStarting) {
+            const maxWait = 2000
+            const startTime = Date.now()
+            while (isStarting && (Date.now() - startTime) < maxWait) {
+              await new Promise((resolve) => setTimeout(resolve, 100))
+            }
+          }
+          
+          if (started && connection) {
+            const state = connection.state
+            // Only try to leave if we're in a connected state
+            if (state === "Connected" || state === "Reconnecting") {
+              await connection.invoke("LeaveAuctionGroup", String(auctionId)).catch(() => {})
+            }
+          }
+          
+          // Stop connection only if it's in a state that can be stopped
+          if (connection) {
+            const state = connection.state
+            if (state === "Connected" || state === "Reconnecting") {
+              if (state === "Reconnecting") {
+                await new Promise((resolve) => setTimeout(resolve, 200))
+              }
+              await connection.stop().catch((err) => {
+                // Ignore errors - connection might already be stopped or in transition
+                if (err?.message && !err.message.includes("handshake")) {
+                  console.warn("Error stopping SignalR connection:", err)
+                }
+              })
+            } else if (state === "Connecting") {
+              // If still connecting, wait a bit then try to stop
+              await new Promise((resolve) => setTimeout(resolve, 300))
+              if (connection.state !== "Disconnected" && connection.state !== "Disconnecting") {
+                await connection.stop().catch(() => {
+                  // Ignore errors during connection startup
+                })
+              }
+            }
           }
         } catch {
-          // ignore
+          // ignore all cleanup errors
         }
       }
       void leaveAndStop()
@@ -217,6 +257,11 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   // Check if seller is favorite
   useEffect(() => {
     if (!auction?.sellerId) return
+    // Chỉ check favorite nếu user đã đăng nhập
+    if (!user?.id) {
+      setIsFavoriteSeller(false)
+      return
+    }
     
     let mounted = true
     const checkFavorite = async () => {
@@ -225,14 +270,15 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
         if (!mounted) return
         setIsFavoriteSeller(isFav)
       } catch (err) {
-        console.error('Failed to check favorite:', err)
-        // Không hiển thị lỗi cho user, chỉ log
+        // Không log lỗi nếu user chưa đăng nhập (đã được xử lý ở trên)
+        if (!mounted) return
+        setIsFavoriteSeller(false)
       }
     }
     
     checkFavorite()
     return () => { mounted = false }
-  }, [auction?.sellerId])
+  }, [auction?.sellerId, user?.id])
 
   // 3. USEEFFECT - Thêm useEffect mới để check watchlist
   useEffect(() => {
