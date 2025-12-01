@@ -479,7 +479,7 @@ export function Header() {
                       </div>
                     )}
                   </ScrollArea>
-                  {notifications.length > 0 && (
+                  {/* {notifications.length > 0 && (
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
@@ -489,7 +489,7 @@ export function Header() {
                         Xem tất cả thông báo
                       </DropdownMenuItem>
                     </>
-                  )}
+                  )} */}
                 </DropdownMenuContent>
               </DropdownMenu>
 
