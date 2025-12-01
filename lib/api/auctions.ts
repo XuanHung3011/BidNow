@@ -121,7 +121,71 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json()
 }
 
+export interface AuctionListItemDto {
+  id: number
+  itemTitle: string
+  itemImages?: string // Images from the item (JSON string or comma-separated)
+  sellerName?: string
+  categoryName?: string
+  startingBid: number
+  currentBid?: number
+  startTime: string
+  endTime: string
+  status: string
+  displayStatus: string // active, scheduled, completed, cancelled
+  bidCount: number
+  pausedAt?: string
+}
+
+export interface AuctionFilterParams {
+  searchTerm?: string
+  statuses?: string // comma-separated: active,scheduled,completed,cancelled
+  sortBy?: string // ItemTitle, EndTime, CurrentBid, BidCount
+  sortOrder?: string // asc, desc
+  page?: number
+  pageSize?: number
+}
+
+export interface PaginatedResult<T> {
+  data: T[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+  hasPreviousPage: boolean
+  hasNextPage: boolean
+}
+
 export const AuctionsAPI = {
+  // Get all auctions with pagination, search, and filtering (Public endpoint)
+  async getAll(params?: AuctionFilterParams): Promise<PaginatedResult<AuctionListItemDto>> {
+    const url = new URL(`${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_ALL}`)
+    
+    if (params?.searchTerm) {
+      url.searchParams.set('searchTerm', params.searchTerm)
+    }
+    if (params?.statuses) {
+      url.searchParams.set('statuses', params.statuses)
+    }
+    if (params?.sortBy) {
+      url.searchParams.set('sortBy', params.sortBy)
+    }
+    if (params?.sortOrder) {
+      url.searchParams.set('sortOrder', params.sortOrder)
+    }
+    if (params?.page) {
+      url.searchParams.set('page', String(params.page))
+    }
+    if (params?.pageSize) {
+      url.searchParams.set('pageSize', String(params.pageSize))
+    }
+
+    const res = await fetch(url.toString(), {
+      cache: 'no-store',
+    })
+    return handleResponse<PaginatedResult<AuctionListItemDto>>(res)
+  },
+
   async getDetail(id: number): Promise<AuctionDetailDto> {
     const response = await fetch(`${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BY_ID(id)}`)
     
