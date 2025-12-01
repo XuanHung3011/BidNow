@@ -194,39 +194,19 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
             }
           }
           
+          // Try to leave group if connection was started
           if (started && connection) {
-            const state = connection.state
-            // Only try to leave if we're in a connected state
-            if (state === "Connected" || state === "Reconnecting") {
-              await connection.invoke("LeaveAuctionGroup", String(auctionId)).catch(() => {})
-            }
+            await connection.invoke("LeaveAuctionGroup", String(auctionId)).catch(() => {})
           }
           
-          // Stop connection only if it's in a state that can be stopped
+          // Stop connection - ignore all errors silently
           if (connection) {
-            const state = connection.state
-            if (state === "Connected" || state === "Reconnecting") {
-              if (state === "Reconnecting") {
-                await new Promise((resolve) => setTimeout(resolve, 200))
-              }
-              await connection.stop().catch((err) => {
-                // Ignore errors - connection might already be stopped or in transition
-                if (err?.message && !err.message.includes("handshake")) {
-                  console.warn("Error stopping SignalR connection:", err)
-                }
-              })
-            } else if (state === "Connecting") {
-              // If still connecting, wait a bit then try to stop
-              await new Promise((resolve) => setTimeout(resolve, 300))
-              if (connection.state !== "Disconnected" && connection.state !== "Disconnecting") {
-                await connection.stop().catch(() => {
-                  // Ignore errors during connection startup
-                })
-              }
-            }
+            await connection.stop().catch(() => {
+              // Silently ignore all errors
+            })
           }
         } catch {
-          // ignore all cleanup errors
+          // Ignore all errors silently
         }
       }
       void leaveAndStop()
