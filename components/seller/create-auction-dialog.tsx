@@ -16,9 +16,10 @@ import { useAuth } from "@/lib/auth-context"
 import { ItemsAPI } from "@/lib/api/items"
 import { AuctionsAPI } from "@/lib/api/auctions"
 import { ItemResponseDto, CategoryDto, CreateItemDto } from "@/lib/api/types"
+import { getImageUrls } from "@/lib/api/config"
 import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2 } from "lucide-react"
+import { Loader2, X } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ImageUploadFile } from "@/components/ui/image-upload-file"
@@ -36,9 +37,11 @@ import {
 interface CreateAuctionDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  draftItem?: ItemResponseDto | null
+  onDraftDeleted?: () => void
 }
 
-export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogProps) {
+export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDeleted }: CreateAuctionDialogProps) {
   const [step, setStep] = useState(1)
   const [itemMode, setItemMode] = useState<"select" | "create">("select")
   const { user } = useAuth()
@@ -56,6 +59,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
   const [newItemCondition, setNewItemCondition] = useState("")
   const [newItemLocation, setNewItemLocation] = useState("")
   const [newItemImages, setNewItemImages] = useState<File[]>([])
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([])
   const [itemValidationErrors, setItemValidationErrors] = useState<Record<string, string>>({})
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
@@ -77,33 +81,57 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
     if (open && user) {
       loadApprovedItems()
       loadCategories()
-      // Reset form khi mở dialog
-      setStep(1)
-      setSelectedItemId("")
-      setStartingBid("")
-      setBuyNowOption("no")
-      setBuyNowPrice("")
-      setDuration("custom")
-      setCustomStartDate("")
-      setCustomStartTime("")
-      setCustomEndDate("")
-      setCustomEndTime("")
-      // Reset item form
-      setNewItemTitle("")
-      setNewItemCategoryId("")
-      setNewItemDescription("")
-      setNewItemBasePrice("")
-      setNewItemCondition("")
-      setNewItemLocation("")
+      
+      // Nếu có draftItem, pre-fill form
+      if (draftItem) {
+        setItemMode("create")
+        setNewItemTitle(draftItem.title || "")
+        setNewItemCategoryId(draftItem.categoryId?.toString() || "")
+        setNewItemDescription(draftItem.description || "")
+        setNewItemBasePrice(draftItem.basePrice?.toString() || "")
+        setNewItemCondition(draftItem.condition || "")
+        setNewItemLocation(draftItem.location || "")
+        // Load existing images from draftItem
+        if (draftItem.images) {
+          setExistingImageUrls(getImageUrls(draftItem.images))
+        } else {
+          setExistingImageUrls([])
+        }
+        setNewItemImages([]) // Clear new images when loading draft
+      } else {
+        // Reset form khi mở dialog (không có draftItem)
+        setStep(1)
+        setSelectedItemId("")
+        setStartingBid("")
+        setBuyNowOption("no")
+        setBuyNowPrice("")
+        setDuration("custom")
+        setCustomStartDate("")
+        setCustomStartTime("")
+        setCustomEndDate("")
+        setCustomEndTime("")
+        // Reset item form
+        setNewItemTitle("")
+        setNewItemCategoryId("")
+        setNewItemDescription("")
+        setNewItemBasePrice("")
+        setNewItemCondition("")
+        setNewItemLocation("")
+        setNewItemImages([])
+        setExistingImageUrls([])
+        setItemValidationErrors({})
+        setShowConfirmDialog(false)
+        setShowSuccessMessage(false)
+        setAuctionValidationErrors({})
+        setShowConfirmAuctionDialog(false)
+        setShowAuctionSuccessMessage(false)
+      }
+    } else if (!open) {
+      // Reset images when dialog closes
       setNewItemImages([])
-      setItemValidationErrors({})
-      setShowConfirmDialog(false)
-      setShowSuccessMessage(false)
-      setAuctionValidationErrors({})
-      setShowConfirmAuctionDialog(false)
-      setShowAuctionSuccessMessage(false)
+      setExistingImageUrls([])
     }
-  }, [open, user])
+  }, [open, user, draftItem])
 
   // Tự động điền giá khởi điểm từ basePrice của item khi chọn sản phẩm
   useEffect(() => {
@@ -199,30 +227,49 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       }
     }
 
-    // Validate mô tả (optional but if provided, check length)
-    if (newItemDescription && newItemDescription.length > 2000) {
+    // Validate mô tả chi tiết (bắt buộc)
+    if (!newItemDescription || !newItemDescription.trim()) {
+      errors.description = "Mô tả chi tiết là bắt buộc"
+    } else if (newItemDescription.trim().length < 10) {
+      errors.description = "Mô tả chi tiết phải có ít nhất 10 ký tự"
+    } else if (newItemDescription.length > 2000) {
       errors.description = "Mô tả không được vượt quá 2000 ký tự"
     }
 
-    // Validate địa điểm (optional but if provided, check length)
-    if (newItemLocation && newItemLocation.length > 255) {
+    // Validate tình trạng (bắt buộc)
+    if (!newItemCondition || !newItemCondition.trim()) {
+      errors.condition = "Vui lòng chọn tình trạng sản phẩm"
+    }
+
+    // Validate địa điểm (bắt buộc)
+    if (!newItemLocation || !newItemLocation.trim()) {
+      errors.location = "Địa điểm là bắt buộc"
+    } else if (newItemLocation.trim().length < 3) {
+      errors.location = "Địa điểm phải có ít nhất 3 ký tự"
+    } else if (newItemLocation.length > 255) {
       errors.location = "Địa điểm không được vượt quá 255 ký tự"
     }
 
-    // Validate hình ảnh (optional but if provided, check count and size)
-    if (newItemImages.length > 10) {
+    // Validate hình ảnh (bắt buộc - tối thiểu 1 hình)
+    // Tính tổng số hình ảnh (existing + new)
+    const totalImages = newItemImages.length + existingImageUrls.length
+    if (totalImages === 0) {
+      errors.images = "Vui lòng tải lên ít nhất 1 hình ảnh sản phẩm"
+    } else if (totalImages > 10) {
       errors.images = "Tối đa 10 hình ảnh"
-    }
-    for (let i = 0; i < newItemImages.length; i++) {
-      const file = newItemImages[i]
-      if (file.size > 10 * 1024 * 1024) {
-        errors.images = `Hình ảnh ${i + 1} vượt quá 10MB`
-        break
-      }
-      const validTypes = ['image/jpeg', 'image/jpg', 'image/png']
-      if (!validTypes.includes(file.type)) {
-        errors.images = `Hình ảnh ${i + 1} phải là định dạng JPG hoặc PNG`
-        break
+    } else {
+      // Validate newly uploaded images
+      for (let i = 0; i < newItemImages.length; i++) {
+        const file = newItemImages[i]
+        if (file.size > 10 * 1024 * 1024) {
+          errors.images = `Hình ảnh mới ${i + 1} vượt quá 10MB`
+          break
+        }
+        const validTypes = ['image/jpeg', 'image/jpg', 'image/png']
+        if (!validTypes.includes(file.type)) {
+          errors.images = `Hình ảnh mới ${i + 1} phải là định dạng JPG hoặc PNG`
+          break
+        }
       }
     }
 
@@ -262,8 +309,54 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
         location: newItemLocation.trim() || undefined
       }
 
-      await ItemsAPI.createItem(itemData, newItemImages.length > 0 ? newItemImages : undefined)
+      // Combine existing images (fetched as files) and newly uploaded images
+      let imagesToUpload: File[] = []
+
+      // Fetch existing images from URLs
+      for (const url of existingImageUrls) {
+        try {
+          const response = await fetch(url)
+          if (!response.ok) {
+            console.error(`Failed to fetch image from URL: ${url}, status: ${response.status}`)
+            continue
+          }
+          const blob = await response.blob()
+          const fileName = url.split('/').pop() || `image-${Date.now()}.jpg`
+          const fileExtension = fileName.split('.').pop() || 'jpg'
+          const mimeType = `image/${fileExtension}`
+          const file = new File([blob], fileName, { type: mimeType })
+          imagesToUpload.push(file)
+        } catch (error) {
+          console.error('Error fetching image:', url, error)
+        }
+      }
+      // Add newly uploaded images
+      imagesToUpload = [...imagesToUpload, ...newItemImages]
+
+      await ItemsAPI.createItem(itemData, imagesToUpload.length > 0 ? imagesToUpload : undefined)
       
+      // If creating from a draft item, delete the old draft item
+      if (draftItem?.id) {
+        try {
+          await ItemsAPI.deleteItem(draftItem.id)
+          toast({
+            title: "Thành công",
+            description: "Bản nháp cũ đã được xóa.",
+          })
+          // Notify parent to refresh draft list
+          if (onDraftDeleted) {
+            onDraftDeleted()
+          }
+        } catch (deleteError: any) {
+          console.error("Error deleting old draft item:", deleteError)
+          toast({
+            title: "Cảnh báo",
+            description: `Không thể xóa bản nháp cũ: ${deleteError.message || "Lỗi không xác định"}`,
+            variant: "destructive"
+          })
+        }
+      }
+
       // Show success message
       setShowSuccessMessage(true)
 
@@ -275,6 +368,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       setNewItemCondition("")
       setNewItemLocation("")
       setNewItemImages([])
+      setExistingImageUrls([])
       setItemValidationErrors({})
       
       // Reload items to include the new one
@@ -284,12 +378,99 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       // User needs to wait for admin approval first
       setItemMode("select")
       
-      // Don't proceed to next step - item needs approval first
-      // User will need to come back later after admin approves
+      // Close the main dialog when showing success message
+      // The success dialog will be shown on top
+      onOpenChange(false)
     } catch (error: any) {
       toast({
         title: "Lỗi",
         description: error.message || "Không thể tạo sản phẩm",
+        variant: "destructive"
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSaveDraft = async () => {
+    if (!user) return
+    if (!newItemTitle.trim()) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập tên sản phẩm",
+        variant: "destructive"
+      })
+      return
+    }
+    if (!newItemCategoryId) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng chọn danh mục",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setLoading(true)
+      const sellerId = parseInt(user.id)
+      const itemData: CreateItemDto = {
+        sellerId,
+        categoryId: parseInt(newItemCategoryId),
+        title: newItemTitle.trim(),
+        description: newItemDescription.trim() || undefined,
+        basePrice: parseFloat(newItemBasePrice) || 0,
+        condition: newItemCondition || undefined,
+        location: newItemLocation.trim() || undefined
+      }
+
+      // Combine existing images (fetched as files) and newly uploaded images
+      let imagesToUpload: File[] = []
+
+      // Fetch existing images from URLs
+      for (const url of existingImageUrls) {
+        try {
+          const response = await fetch(url)
+          if (!response.ok) {
+            console.error(`Failed to fetch image from URL: ${url}, status: ${response.status}`)
+            continue
+          }
+          const blob = await response.blob()
+          const fileName = url.split('/').pop() || `image-${Date.now()}.jpg`
+          const fileExtension = fileName.split('.').pop() || 'jpg'
+          const mimeType = `image/${fileExtension}`
+          const file = new File([blob], fileName, { type: mimeType })
+          imagesToUpload.push(file)
+        } catch (error) {
+          console.error('Error fetching image:', url, error)
+        }
+      }
+      // Add newly uploaded images
+      imagesToUpload = [...imagesToUpload, ...newItemImages]
+
+      await ItemsAPI.createDraftItem(itemData, imagesToUpload.length > 0 ? imagesToUpload : undefined)
+
+      toast({
+        title: "Thành công",
+        description: "Đã lưu bản nháp sản phẩm",
+      })
+
+      // Reset form
+      setNewItemTitle("")
+      setNewItemCategoryId("")
+      setNewItemDescription("")
+      setNewItemBasePrice("")
+      setNewItemCondition("")
+      setNewItemLocation("")
+      setNewItemImages([])
+      setExistingImageUrls([])
+      setItemValidationErrors({})
+
+      onOpenChange(false) // Close dialog after saving draft
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể lưu bản nháp",
         variant: "destructive"
       })
     } finally {
@@ -722,7 +903,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="newItemDescription">Mô tả chi tiết</Label>
+                    <Label htmlFor="newItemDescription">Mô tả chi tiết *</Label>
                     <Textarea 
                       id="newItemDescription" 
                       placeholder="Mô tả chi tiết về sản phẩm, tình trạng, xuất xứ..." 
@@ -773,9 +954,24 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="newItemCondition">Tình trạng</Label>
-                      <Select value={newItemCondition} onValueChange={setNewItemCondition}>
-                        <SelectTrigger id="newItemCondition">
+                      <Label htmlFor="newItemCondition">Tình trạng *</Label>
+                      <Select 
+                        value={newItemCondition} 
+                        onValueChange={(value) => {
+                          setNewItemCondition(value)
+                          if (itemValidationErrors.condition) {
+                            setItemValidationErrors(prev => {
+                              const newErrors = { ...prev }
+                              delete newErrors.condition
+                              return newErrors
+                            })
+                          }
+                        }}
+                      >
+                        <SelectTrigger 
+                          id="newItemCondition"
+                          className={itemValidationErrors.condition ? "border-red-500" : ""}
+                        >
                           <SelectValue placeholder="Chọn tình trạng" />
                         </SelectTrigger>
                         <SelectContent>
@@ -786,11 +982,14 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                           <SelectItem value="used">Đã sử dụng</SelectItem>
                         </SelectContent>
                       </Select>
+                      {itemValidationErrors.condition && (
+                        <p className="text-sm text-red-500">{itemValidationErrors.condition}</p>
+                      )}
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="newItemLocation">Địa điểm</Label>
+                    <Label htmlFor="newItemLocation">Địa điểm *</Label>
                     <Input 
                       id="newItemLocation" 
                       placeholder="VD: Hà Nội, Việt Nam" 
@@ -813,11 +1012,50 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Hình ảnh sản phẩm</Label>
+                    <Label>Hình ảnh sản phẩm *</Label>
+                    
+                    {/* Display existing images from draft */}
+                    {existingImageUrls.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Hình ảnh hiện có</Label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                          {existingImageUrls.map((url: string, index: number) => (
+                            <div key={`existing-${index}`} className="relative group">
+                              <div className="aspect-square rounded-lg border border-border overflow-hidden bg-muted">
+                                <img
+                                  src={url}
+                                  alt={`Existing ${index + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setExistingImageUrls((prev: string[]) => prev.filter((_: string, i: number) => i !== index))
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Đã có {existingImageUrls.length} hình ảnh. Bạn có thể thêm tối đa {10 - existingImageUrls.length} hình ảnh mới.
+                        </p>
+                      </div>
+                    )}
+
                     <ImageUploadFile
                       files={newItemImages}
                       onChange={(files) => {
-                        setNewItemImages(files)
+                        // Limit total images (existing + new) to 10
+                        const maxNewImages = Math.max(0, 10 - existingImageUrls.length)
+                        const limitedFiles = files.slice(0, maxNewImages)
+                        setNewItemImages(limitedFiles)
                         if (itemValidationErrors.images) {
                           setItemValidationErrors(prev => {
                             const newErrors = { ...prev }
@@ -826,7 +1064,7 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                           })
                         }
                       }}
-                      maxImages={10}
+                      maxImages={10 - existingImageUrls.length}
                       maxSizeMB={10}
                     />
                     {itemValidationErrors.images && (
@@ -840,20 +1078,39 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
                     </p>
                   </div>
 
-                  <Button 
-                    onClick={handleCreateItemClick} 
-                    disabled={loading}
-                    className="w-full"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Đang tạo...
-                      </>
-                    ) : (
-                      "Tạo sản phẩm"
-                    )}
-                  </Button>
+                  <div className="space-y-2">
+                    <Button 
+                      onClick={handleCreateItemClick} 
+                      disabled={loading}
+                      className="w-full"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang tạo...
+                        </>
+                      ) : (
+                        "Tạo sản phẩm"
+                      )}
+                    </Button>
+                    
+                    <Button 
+                      type="button"
+                      onClick={handleSaveDraft} 
+                      disabled={loading}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang lưu...
+                        </>
+                      ) : (
+                        "Lưu bản nháp"
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
@@ -1200,7 +1457,13 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
       </AlertDialog>
 
        {/* Success Message Dialog */}
-       <AlertDialog open={showSuccessMessage} onOpenChange={setShowSuccessMessage}>
+       <AlertDialog open={showSuccessMessage} onOpenChange={(open) => {
+         setShowSuccessMessage(open)
+         if (!open) {
+           // Ensure main dialog is closed when success message is closed
+           onOpenChange(false)
+         }
+       }}>
          <AlertDialogContent>
            <AlertDialogHeader>
              <AlertDialogTitle className="text-green-600 dark:text-green-400">
@@ -1211,7 +1474,10 @@ export function CreateAuctionDialog({ open, onOpenChange }: CreateAuctionDialogP
              </AlertDialogDescription>
            </AlertDialogHeader>
            <AlertDialogFooter>
-             <AlertDialogAction onClick={() => setShowSuccessMessage(false)}>
+             <AlertDialogAction onClick={() => {
+               setShowSuccessMessage(false)
+               onOpenChange(false)
+             }}>
                Đóng
              </AlertDialogAction>
            </AlertDialogFooter>
