@@ -11,7 +11,7 @@ export interface AuctionListItemDto {
   startTime: string
   endTime: string
   status: string
-  displayStatus: string // active, scheduled, completed, suspended
+  displayStatus: string // active, scheduled, completed, paused, cancelled
   bidCount: number
   pausedAt?: string
 }
@@ -49,7 +49,7 @@ export interface PaginatedResult<T> {
 
 export interface AuctionFilterParams {
   searchTerm?: string
-  statuses?: string // comma-separated: active,scheduled,completed,suspended
+  statuses?: string // comma-separated: active,scheduled,completed,paused,cancelled
   sortBy?: string // ItemTitle, EndTime, CurrentBid, BidCount
   sortOrder?: string // asc, desc
   page?: number
@@ -119,10 +119,10 @@ export const AdminAuctionsAPI = {
     return handleResponse<AuctionDetailDto>(res)
   },
 
-  // PUT /api/AdminAuctions/{id}/status - Update auction status (e.g., cancel/suspend)
+  // PUT /api/AdminAuctions/{id}/status - Update auction status (e.g., pause/cancel/complete)
   updateStatus: async (
     id: number,
-    status: "draft" | "active" | "completed" | "cancelled",
+    status: "draft" | "active" | "completed" | "paused" | "cancelled",
     payload?: UpdateAuctionStatusPayload
   ): Promise<void> => {
     const url = `${API_BASE}${API_ENDPOINTS.ADMIN_AUCTIONS.UPDATE_STATUS(id)}`
