@@ -66,16 +66,23 @@ export function PlatformAnalytics() {
   useEffect(() => {
     const connection = createAuctionHubConnection()
     let mounted = true
+    let started = false
+    let isStarting = false
+    
     const startPromise = (async () => {
       try {
+        isStarting = true
         await connection.start()
+        isStarting = false
+        started = true
         if (!mounted) {
-          await connection.stop()
+          await connection.stop().catch(() => {})
           return
         }
-        await connection.invoke("JoinAdminSection", "analytics")
+        await connection.invoke("JoinAdminSection", "analytics").catch(() => {})
       } catch (error) {
-        console.error("Platform analytics SignalR connection error:", error)
+        isStarting = false
+        // Silently ignore connection errors
       }
     })()
 
@@ -86,14 +93,29 @@ export function PlatformAnalytics() {
     return () => {
       mounted = false
       connection.off("AdminAnalyticsUpdated")
-      startPromise
-        .catch(() => {})
-        .finally(() => {
-          if (connection.state === "Connected") {
-            connection.invoke("LeaveAdminSection", "analytics").catch(() => {})
+      const cleanup = async () => {
+        // Wait for connection to finish starting
+        if (isStarting) {
+          const maxWait = 2000
+          const startTime = Date.now()
+          while (isStarting && (Date.now() - startTime) < maxWait) {
+            await new Promise((resolve) => setTimeout(resolve, 100))
           }
-          connection.stop().catch(() => {})
-        })
+        }
+        
+        try {
+          await startPromise.catch(() => {})
+          if (started && connection) {
+            await connection.invoke("LeaveAdminSection", "analytics").catch(() => {})
+          }
+          if (connection) {
+            await connection.stop().catch(() => {})
+          }
+        } catch {
+          // Silently ignore all cleanup errors
+        }
+      }
+      void cleanup()
     }
   }, [fetchAnalytics])
 

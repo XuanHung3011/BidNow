@@ -118,9 +118,9 @@ export function SellerAuctionsList({ status, onSelectDraftItem, refreshTrigger }
         if (a.status?.toLowerCase() === "draft") {
           actualStatus = "draft"
         }
-        // 2. Cancelled: status = "cancelled"
-        else if (a.status?.toLowerCase() === "cancelled") {
-          actualStatus = "cancelled"
+        // 2. Paused: status = "paused"
+        else if (a.status?.toLowerCase() === "paused") {
+          actualStatus = "paused"
         }
         // 3. Scheduled: Chưa đến giờ bắt đầu (StartTime > now)
         else if (startTime > now) {
@@ -181,7 +181,7 @@ export function SellerAuctionsList({ status, onSelectDraftItem, refreshTrigger }
       scheduled: "Sắp diễn ra",
       completed: "Đã kết thúc",
       draft: "Bản nháp",
-      cancelled: "Đã hủy",
+      paused: "Đã tạm dừng",
     }
     return labels[displayStatus] || displayStatus
   }

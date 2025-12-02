@@ -215,11 +215,10 @@ export function LiveChat({ auctionId }: LiveChatProps) {
                     console.log("✅ Reconnected successfully")
                     setConnectionStatus("connected")
                     if (connection && connection.state === "Connected") {
-                      connection.invoke("JoinAuctionChatGroup", auctionId).catch(console.error)
+                      connection.invoke("JoinAuctionChatGroup", auctionId).catch(() => {})
                     }
                   })
-                  .catch((err) => {
-                    console.error("❌ Reconnection failed:", err)
+                  .catch(() => {
                     setConnectionStatus("disconnected")
                   })
               }
@@ -236,7 +235,7 @@ export function LiveChat({ auctionId }: LiveChatProps) {
           console.log("✅ SignalR reconnected:", connectionId)
           setConnectionStatus("connected")
           if (mounted && connection) {
-            connection.invoke("JoinAuctionChatGroup", auctionId).catch(console.error)
+            connection.invoke("JoinAuctionChatGroup", auctionId).catch(() => {})
           }
         })
 
@@ -278,13 +277,12 @@ export function LiveChat({ auctionId }: LiveChatProps) {
           // Test connection by sending a test message (optional, for debugging)
           console.log("🧪 SignalR setup complete. Waiting for messages...")
         } catch (joinError) {
-          console.error("❌ Failed to join auction chat group:", joinError)
+          // Silently ignore join errors
         }
       } catch (err) {
         isStarting = false
         setConnectionStatus("disconnected")
-        console.error("❌ SignalR connection error:", err)
-        // If start failed, connection is already stopped, no need to stop again
+        // Silently ignore connection errors
       }
     }
 
@@ -295,30 +293,36 @@ export function LiveChat({ auctionId }: LiveChatProps) {
       if (connection) {
         // Cleanup connection safely
         const cleanup = async () => {
-          // If connection is still starting, wait a bit for it to complete or fail
+          // If connection is still starting, wait for it to complete or fail
           if (isStarting) {
-            await new Promise((resolve) => setTimeout(resolve, 500))
+            const maxWait = 2000
+            const startTime = Date.now()
+            while (isStarting && (Date.now() - startTime) < maxWait) {
+              await new Promise((resolve) => setTimeout(resolve, 100))
+            }
           }
           
           try {
-            // Only leave group if connection was successfully started and connected
-            if (connectionStarted && connection && connection.state === "Connected") {
+            // Try to leave group if connection was started
+            if (connectionStarted && connection) {
               await connection.invoke("LeaveAuctionChatGroup", auctionId).catch(() => {})
             }
           } catch {
-            // Ignore errors
+            // Ignore all errors silently
           }
           
           try {
-            // Stop connection if it's not already disconnected
-            if (connection && connection.state !== "Disconnected") {
-              await connection.stop().catch(() => {})
+            // Stop connection - ignore all errors silently
+            if (connection) {
+              await connection.stop().catch(() => {
+                // Silently ignore all errors
+              })
             }
           } catch {
-            // Ignore stop errors - connection might already be stopped
+            // Ignore all errors silently
           }
         }
-        cleanup()
+        void cleanup()
       }
     }
   }, [auctionId])

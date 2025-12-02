@@ -210,21 +210,19 @@ export function MessagesView() {
       const cleanup = async () => {
         try {
           await startPromise.catch(() => {})
-          if (started) {
-            try {
-              await connection.invoke("LeaveUserGroup", String(user.id))
-            } catch (err) {
-              console.error("SignalR message hub leave error:", err)
-            }
+          if (started && connection) {
+            await connection.invoke("LeaveUserGroup", String(user.id)).catch(() => {})
           }
-          await connection.stop()
-        } catch (err) {
-          console.error("SignalR message hub cleanup error:", err)
+          if (connection) {
+            await connection.stop().catch(() => {})
+          }
+        } catch {
+          // Silently ignore all cleanup errors
         } finally {
           connectionRef.current = null
         }
       }
-      cleanup()
+      void cleanup()
     }
   }, [user?.id])
 

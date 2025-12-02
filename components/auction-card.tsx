@@ -28,12 +28,15 @@ interface AuctionCardProps {
 
 export function AuctionCard({ auction }: AuctionCardProps) {
   const [timeLeft, setTimeLeft] = useState("")
-  const [status, setStatus] = useState<"scheduled" | "active" | "ended">("active")
+  const [status, setStatus] = useState<"scheduled" | "active" | "ended" | "paused" | "cancelled">("active")
 
   useEffect(() => {
-    const isPaused = auction.status?.toLowerCase() === "cancelled"
+    const normalizedStatus = auction.status?.toLowerCase() ?? ""
+    const isPaused = normalizedStatus === "paused"
+    const isCancelled = normalizedStatus === "cancelled"
 
     if (isPaused) {
+      setStatus("paused")
       if (auction.pausedAt) {
         const pausedDate =
           auction.pausedAt instanceof Date ? auction.pausedAt : new Date(auction.pausedAt)
@@ -52,6 +55,12 @@ export function AuctionCard({ auction }: AuctionCardProps) {
       } else {
         setTimeLeft("Đã tạm dừng")
       }
+      return
+    }
+
+    if (isCancelled) {
+      setStatus("cancelled")
+      setTimeLeft("Đã hủy")
       return
     }
 
@@ -135,17 +144,22 @@ export function AuctionCard({ auction }: AuctionCardProps) {
               variant={
                 status === "scheduled" ? "secondary" :
                 status === "active" ? "default" :
+              status === "paused" ? "destructive" :
                 "destructive"
               }
               className={
                 status === "scheduled" ? "bg-blue-500/90 text-white" :
                 status === "active" ? "bg-green-500/90 text-white" :
-                "bg-gray-500/90 text-white"
+              status === "paused" ? "bg-orange-500/90 text-white" :
+              status === "cancelled" ? "bg-gray-500/90 text-white" :
+              "bg-gray-500/90 text-white"
               }
             >
               {status === "scheduled" ? "Sắp diễn ra" :
                status === "active" ? "Đang diễn ra" :
-               "Đã kết thúc"}
+               status === "paused" ? "Đã tạm dừng" :
+             status === "cancelled" ? "Đã hủy" :
+             "Đã kết thúc"}
             </Badge>
             {/* Countdown Timer */}
             <div className="flex items-center gap-1 rounded-full bg-background/90 px-3 py-1 backdrop-blur">
