@@ -10,6 +10,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -47,10 +48,21 @@ export function PendingAuctions() {
   const [selectedItem, setSelectedItem] = useState<ItemResponseDto | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
   
+  // Approve confirmation state
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false)
+  const [itemToApprove, setItemToApprove] = useState<ItemResponseDto | null>(null)
+  const [approveSignature, setApproveSignature] = useState("")
+  
   // Reject dialog state
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState("")
+  const [rejectSignature, setRejectSignature] = useState("")
   const [itemToReject, setItemToReject] = useState<number | null>(null)
+  
+  // Result dialog state
+  const [resultDialogOpen, setResultDialogOpen] = useState(false)
+  const [resultDialogTitle, setResultDialogTitle] = useState("")
+  const [resultDialogMessage, setResultDialogMessage] = useState("")
 
   const fetchPendingItems = useCallback(async () => {
     try {
@@ -67,11 +79,10 @@ export function PendingAuctions() {
       setItems(result.data || [])
       setTotalCount(result.totalCount || 0)
       setTotalPages(result.totalPages || 0)
-    } catch (error) {
-      console.error("Error fetching pending items:", error)
+    } catch (error: any) {
       toast({
         title: "Lỗi",
-        description: "Không thể tải danh sách sản phẩm chờ duyệt",
+        description: error?.message || "Không thể tải danh sách sản phẩm chờ duyệt",
         variant: "destructive",
       })
     } finally {
@@ -92,7 +103,7 @@ export function PendingAuctions() {
       const cats = await ItemsAPI.getCategories()
       setCategories(cats)
     } catch (error) {
-      console.error("Error fetching categories:", error)
+      // Silently fail - categories are not critical
     }
   }
 
@@ -179,13 +190,13 @@ export function PendingAuctions() {
       })
       // Refresh list after approve/reject
       await fetchPendingItems()
-    } catch (error) {
-      console.error("Error approving item:", error)
+    } catch (error: any) {
       toast({
         title: "Lỗi",
-        description: "Không thể phê duyệt sản phẩm",
+        description: error?.message || "Không thể phê duyệt sản phẩm",
         variant: "destructive",
       })
+      throw error
     } finally {
       setProcessingIds((prev) => {
         const newSet = new Set(prev)
@@ -195,10 +206,60 @@ export function PendingAuctions() {
     }
   }
 
+  const handleApproveClick = (item: ItemResponseDto) => {
+    setItemToApprove(item)
+    setApproveSignature("")
+    setApproveDialogOpen(true)
+  }
+
+  const closeApproveDialog = () => {
+    setApproveDialogOpen(false)
+    setItemToApprove(null)
+    setApproveSignature("")
+  }
+
+  const handleConfirmApprove = async () => {
+    if (!itemToApprove) return
+
+    if (approveSignature.trim() !== "Admin") {
+      toast({
+        title: "Thiếu chữ ký",
+        description: 'Vui lòng nhập "Admin" vào ô chữ ký để xác nhận phê duyệt.',
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      await handleApprove(itemToApprove.id)
+      closeApproveDialog()
+      setResultDialogTitle("Phê duyệt sản phẩm thành công")
+      setResultDialogMessage(
+        `Sản phẩm "${itemToApprove.title}" đã được phê duyệt và đưa lên sàn đấu giá.`
+      )
+      setResultDialogOpen(true)
+    } catch (error: any) {
+      // Giữ dialog mở để admin thử lại
+      setResultDialogTitle("Phê duyệt sản phẩm thất bại")
+      setResultDialogMessage(
+        error?.message || "Không thể phê duyệt sản phẩm. Vui lòng thử lại sau."
+      )
+      setResultDialogOpen(true)
+    }
+  }
+
   const handleRejectClick = (itemId: number) => {
     setItemToReject(itemId)
     setRejectReason("")
+    setRejectSignature("")
     setRejectDialogOpen(true)
+  }
+
+  const closeRejectDialog = () => {
+    setRejectDialogOpen(false)
+    setRejectReason("")
+    setRejectSignature("")
+    setItemToReject(null)
   }
 
   const handleReject = async () => {
@@ -213,25 +274,33 @@ export function PendingAuctions() {
       return
     }
 
-    try {
-      setProcessingIds((prev) => new Set(prev).add(itemToReject))
-      await ItemsAPI.rejectItem(itemToReject, rejectReason)
+    if (rejectSignature.trim() !== "Admin") {
       toast({
-        title: "Thành công",
-        description: "Đã từ chối sản phẩm",
-      })
-      setRejectDialogOpen(false)
-      setRejectReason("")
-      setItemToReject(null)
-      // Refresh list after approve/reject
-      await fetchPendingItems()
-    } catch (error) {
-      console.error("Error rejecting item:", error)
-      toast({
-        title: "Lỗi",
-        description: "Không thể từ chối sản phẩm",
+        title: "Thiếu chữ ký",
+        description: 'Vui lòng nhập "Admin" vào ô chữ ký để xác nhận từ chối.',
         variant: "destructive",
       })
+      return
+    }
+
+    try {
+      setProcessingIds((prev) => new Set(prev).add(itemToReject))
+      const item = items.find((i) => i.id === itemToReject)
+      await ItemsAPI.rejectItem(itemToReject, rejectReason)
+      closeRejectDialog()
+      // Refresh list after approve/reject
+      await fetchPendingItems()
+      setResultDialogTitle("Từ chối sản phẩm thành công")
+      setResultDialogMessage(
+        `Sản phẩm "${item?.title || "N/A"}" đã bị từ chối.\nLý do: ${rejectReason.trim()}`
+      )
+      setResultDialogOpen(true)
+    } catch (error: any) {
+      setResultDialogTitle("Từ chối sản phẩm thất bại")
+      setResultDialogMessage(
+        error?.message || "Không thể từ chối sản phẩm. Vui lòng thử lại sau."
+      )
+      setResultDialogOpen(true)
     } finally {
       setProcessingIds((prev) => {
         const newSet = new Set(prev)
@@ -280,11 +349,10 @@ export function PendingAuctions() {
       setDialogOpen(true)
       const item = await ItemsAPI.getById(itemId)
       setSelectedItem(item)
-    } catch (error) {
-      console.error("Error fetching item details:", error)
+    } catch (error: any) {
       toast({
         title: "Lỗi",
-        description: "Không thể tải thông tin chi tiết sản phẩm",
+        description: error?.message || "Không thể tải thông tin chi tiết sản phẩm",
         variant: "destructive",
       })
       setDialogOpen(false)
@@ -460,7 +528,7 @@ export function PendingAuctions() {
                 <Button 
                   size="sm" 
                   className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
-                  onClick={() => handleApprove(itemId)}
+                  onClick={() => handleApproveClick(item)}
                   disabled={isProcessing}
                 >
                   {isProcessing ? (
@@ -711,21 +779,33 @@ export function PendingAuctions() {
                 Lý do từ chối là bắt buộc và sẽ được gửi đến người bán
               </p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="rejectSignature">Chữ ký Admin *</Label>
+              <Input
+                id="rejectSignature"
+                placeholder='Nhập "Admin" để xác nhận'
+                value={rejectSignature}
+                onChange={(e) => setRejectSignature(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Bạn phải nhập chính xác chữ "Admin" trước khi từ chối sản phẩm.
+              </p>
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setRejectDialogOpen(false)
-                  setRejectReason("")
-                  setItemToReject(null)
-                }}
+                onClick={closeRejectDialog}
               >
                 Hủy
               </Button>
               <Button
                 variant="destructive"
                 onClick={handleReject}
-                disabled={!rejectReason.trim() || (itemToReject !== null && processingIds.has(itemToReject))}
+                disabled={
+                  !rejectReason.trim() ||
+                  rejectSignature.trim() !== "Admin" ||
+                  (itemToReject !== null && processingIds.has(itemToReject))
+                }
               >
                 {itemToReject !== null && processingIds.has(itemToReject) ? (
                   <>
@@ -738,6 +818,74 @@ export function PendingAuctions() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Approve Confirmation Dialog */}
+      <Dialog open={approveDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          closeApproveDialog()
+        } else {
+          setApproveDialogOpen(true)
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xác nhận phê duyệt sản phẩm</DialogTitle>
+            <DialogDescription>
+              Bạn có chắc chắn muốn phê duyệt sản phẩm "{itemToApprove?.title}"? Hành động này sẽ đưa sản phẩm lên sàn đấu giá.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="approveSignature">Chữ ký Admin *</Label>
+              <Input
+                id="approveSignature"
+                placeholder='Nhập "Admin" để xác nhận'
+                value={approveSignature}
+                onChange={(e) => setApproveSignature(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Bạn phải nhập chính xác chữ "Admin" để hoàn tất phê duyệt.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={closeApproveDialog}>
+                Hủy
+              </Button>
+              <Button
+                onClick={handleConfirmApprove}
+                disabled={
+                  approveSignature.trim() !== "Admin" ||
+                  (itemToApprove !== null && processingIds.has(itemToApprove.id))
+                }
+              >
+                {itemToApprove !== null && processingIds.has(itemToApprove.id) ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Đang phê duyệt...
+                  </>
+                ) : (
+                  "Xác nhận phê duyệt"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Result Dialog */}
+      <Dialog open={resultDialogOpen} onOpenChange={setResultDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{resultDialogTitle || "Thông báo"}</DialogTitle>
+            <DialogDescription className="whitespace-pre-line">
+              {resultDialogMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setResultDialogOpen(false)}>Đóng</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
