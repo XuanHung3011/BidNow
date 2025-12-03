@@ -16,12 +16,13 @@ import { useToast } from "@/hooks/use-toast"
 import { getImageUrls, getImageUrl } from "@/lib/api/config"
 
 interface SellerAuctionsListProps {
-  status: "active" | "scheduled" | "completed" | "draft"
+  status: "active" | "scheduled" | "completed" | "draft" | "pending"
   onSelectDraftItem?: (item: ItemResponseDto) => void
+  onItemDeleted?: () => void
   refreshTrigger?: number
 }
 
-export function SellerAuctionsList({ status, onSelectDraftItem, refreshTrigger }: SellerAuctionsListProps) {
+export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, refreshTrigger }: SellerAuctionsListProps) {
   const { user } = useAuth()
   const { toast } = useToast()
   const [auctions, setAuctions] = useState<SellerAuctionDto[]>([])
@@ -36,11 +37,20 @@ export function SellerAuctionsList({ status, onSelectDraftItem, refreshTrigger }
   } | null>(null)
   const [draftItems, setDraftItems] = useState<ItemResponseDto[]>([])
   const [draftLoading, setDraftLoading] = useState(false)
+  const [pendingItems, setPendingItems] = useState<ItemResponseDto[]>([])
+  const [pendingLoading, setPendingLoading] = useState(false)
 
   // Load draft items when status is "draft"
   useEffect(() => {
     if (status === "draft" && user) {
       loadDraftItems()
+    }
+  }, [status, user, refreshTrigger])
+
+  // Load pending items when status is "pending"
+  useEffect(() => {
+    if (status === "pending" && user) {
+      loadPendingItems()
     }
   }, [status, user, refreshTrigger])
 
@@ -70,15 +80,71 @@ export function SellerAuctionsList({ status, onSelectDraftItem, refreshTrigger }
     }
   }
 
+  const loadPendingItems = async () => {
+    if (!user) return
+    try {
+      setPendingLoading(true)
+      const sellerId = parseInt(user.id)
+      const result = await ItemsAPI.getAllWithFilter({
+        statuses: ["pending"],
+        sellerId: sellerId,
+        page: 1,
+        pageSize: 100,
+        sortBy: "CreatedAt",
+        sortOrder: "desc"
+      })
+      setPendingItems(result.data || [])
+    } catch (error) {
+      console.error("Error loading pending items:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải danh sách sản phẩm đang chờ duyệt",
+        variant: "destructive"
+      })
+    } finally {
+      setPendingLoading(false)
+    }
+  }
+
   const handleSelectDraft = (item: ItemResponseDto) => {
     if (onSelectDraftItem) {
       onSelectDraftItem(item)
     }
   }
 
-  // Load auctions for non-draft statuses
+  const handleDeleteItem = async (itemId: number) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa sản phẩm này?")) {
+      return
+    }
+
+    try {
+      await ItemsAPI.deleteItem(itemId)
+      toast({
+        title: "Thành công",
+        description: "Đã xóa sản phẩm thành công",
+      })
+      // Reload the list
+      if (status === "draft") {
+        loadDraftItems()
+      } else if (status === "pending") {
+        loadPendingItems()
+      }
+      // Trigger parent refresh
+      if (onItemDeleted) {
+        onItemDeleted()
+      }
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xóa sản phẩm",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Load auctions for non-draft and non-pending statuses
   useEffect(() => {
-    if (status === "draft" || !user?.id) return
+    if (status === "draft" || status === "pending" || !user?.id) return
 
     async function fetchAuctions() {
       if (!user?.id) return
@@ -294,6 +360,97 @@ export function SellerAuctionsList({ status, onSelectDraftItem, refreshTrigger }
                       Tiếp tục chỉnh sửa
                     </Button>
                   )}
+                </div>
+              </div>
+            </Card>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // For pending status, show pending items
+  if (status === "pending") {
+    if (pendingLoading) {
+      return (
+        <Card className="p-12 text-center">
+          <p className="text-muted-foreground">Đang tải...</p>
+        </Card>
+      )
+    }
+
+    if (pendingItems.length === 0) {
+      return (
+        <Card className="p-12 text-center">
+          <p className="text-muted-foreground">Không có sản phẩm nào đang chờ duyệt</p>
+        </Card>
+      )
+    }
+
+    return (
+      <div className="space-y-4">
+        {pendingItems.map((item) => {
+          const imageUrls = getImageUrls(item.images)
+          const firstImage = imageUrls[0] || "/placeholder.svg"
+          
+          return (
+            <Card key={item.id} className="p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex gap-4">
+                  <img
+                    src={firstImage}
+                    alt={item.title}
+                    className="h-20 w-20 rounded-lg object-cover"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-start gap-2">
+                      <h3 className="font-semibold text-foreground">{item.title}</h3>
+                      <Badge variant="outline" className="border-yellow-500 text-yellow-600">Đang chờ duyệt</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">{item.categoryName || "Chưa có danh mục"}</p>
+                    <div className="mt-2 flex flex-wrap gap-4 text-sm">
+                      <span className="text-muted-foreground">
+                        Giá khởi điểm:{" "}
+                        <span className="font-semibold text-foreground">
+                          {item.basePrice ? item.basePrice.toLocaleString('vi-VN') + ' VNĐ' : 'Chưa đặt'}
+                        </span>
+                      </span>
+                      {item.createdAt && (
+                        <span className="text-muted-foreground">
+                          Gửi lúc: <span className="font-semibold text-foreground">
+                            {new Date(item.createdAt).toLocaleDateString('vi-VN', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {onSelectDraftItem && (
+                    <Button 
+                      variant="default" 
+                      size="sm"
+                      onClick={() => handleSelectDraft(item)}
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      Chỉnh sửa
+                    </Button>
+                  )}
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={() => handleDeleteItem(item.id)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Xóa
+                  </Button>
                 </div>
               </div>
             </Card>
