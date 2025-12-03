@@ -55,6 +55,7 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
   const [newItemTitle, setNewItemTitle] = useState("")
   const [newItemCategoryId, setNewItemCategoryId] = useState<string>("")
   const [newItemDescription, setNewItemDescription] = useState("")
+  const [newItemSpecifics, setNewItemSpecifics] = useState<Array<{key: string, value: string}>>([{key: "", value: ""}])
   const [newItemBasePrice, setNewItemBasePrice] = useState("")
   const [newItemCondition, setNewItemCondition] = useState("")
   const [newItemLocation, setNewItemLocation] = useState("")
@@ -88,6 +89,25 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
         setNewItemTitle(draftItem.title || "")
         setNewItemCategoryId(draftItem.categoryId?.toString() || "")
         setNewItemDescription(draftItem.description || "")
+        // Parse itemSpecifics from JSON string to array
+        if (draftItem.itemSpecifics) {
+          try {
+            const parsed = JSON.parse(draftItem.itemSpecifics)
+            if (typeof parsed === 'object' && parsed !== null) {
+              const pairs = Object.entries(parsed).map(([key, value]) => ({
+                key: String(key),
+                value: String(value)
+              }))
+              setNewItemSpecifics(pairs.length > 0 ? pairs : [{key: "", value: ""}])
+            } else {
+              setNewItemSpecifics([{key: "", value: ""}])
+            }
+          } catch {
+            setNewItemSpecifics([{key: "", value: ""}])
+          }
+        } else {
+          setNewItemSpecifics([{key: "", value: ""}])
+        }
         setNewItemBasePrice(draftItem.basePrice?.toString() || "")
         setNewItemCondition(draftItem.condition || "")
         setNewItemLocation(draftItem.location || "")
@@ -100,20 +120,21 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
         setNewItemImages([]) // Clear new images when loading draft
       } else {
         // Reset form khi mở dialog (không có draftItem)
-        setStep(1)
-        setSelectedItemId("")
-        setStartingBid("")
-        setBuyNowOption("no")
-        setBuyNowPrice("")
+      setStep(1)
+      setSelectedItemId("")
+      setStartingBid("")
+      setBuyNowOption("no")
+      setBuyNowPrice("")
         setDuration("custom")
-        setCustomStartDate("")
-        setCustomStartTime("")
-        setCustomEndDate("")
-        setCustomEndTime("")
+      setCustomStartDate("")
+      setCustomStartTime("")
+      setCustomEndDate("")
+      setCustomEndTime("")
         // Reset item form
         setNewItemTitle("")
         setNewItemCategoryId("")
         setNewItemDescription("")
+        setNewItemSpecifics([{key: "", value: ""}])
         setNewItemBasePrice("")
         setNewItemCondition("")
         setNewItemLocation("")
@@ -273,6 +294,44 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
       }
     }
 
+    // Validate đặc tính thông số sản phẩm
+    const validPairs = newItemSpecifics.filter(pair => pair.key.trim() && pair.value.trim())
+    const incompletePairs = newItemSpecifics.filter(
+      pair => (pair.key.trim() && !pair.value.trim()) || (!pair.key.trim() && pair.value.trim())
+    )
+    
+    if (incompletePairs.length > 0) {
+      errors.itemSpecifics = "Vui lòng nhập đầy đủ cả thuộc tính và giá trị cho từng dòng"
+    } else {
+      // Check for duplicate keys
+      const keys = validPairs.map(pair => pair.key.trim().toLowerCase())
+      const duplicateKeys = keys.filter((key, index) => keys.indexOf(key) !== index)
+      if (duplicateKeys.length > 0) {
+        errors.itemSpecifics = `Thuộc tính "${duplicateKeys[0]}" bị trùng lặp. Vui lòng sửa hoặc xóa.`
+      } else {
+        // Validate key and value length
+        for (let i = 0; i < validPairs.length; i++) {
+          const pair = validPairs[i]
+          if (pair.key.trim().length < 2) {
+            errors.itemSpecifics = `Thuộc tính "${pair.key}" phải có ít nhất 2 ký tự`
+            break
+          }
+          if (pair.key.trim().length > 100) {
+            errors.itemSpecifics = `Thuộc tính "${pair.key}" không được vượt quá 100 ký tự`
+            break
+          }
+          if (pair.value.trim().length < 1) {
+            errors.itemSpecifics = `Giá trị của "${pair.key}" không được để trống`
+            break
+          }
+          if (pair.value.trim().length > 200) {
+            errors.itemSpecifics = `Giá trị của "${pair.key}" không được vượt quá 200 ký tự`
+            break
+          }
+        }
+      }
+    }
+
     setItemValidationErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -304,6 +363,16 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
         categoryId: parseInt(newItemCategoryId),
         title: newItemTitle.trim(),
         description: newItemDescription.trim() || undefined,
+        itemSpecifics: (() => {
+          // Convert array of key-value pairs to JSON string
+          const filtered = newItemSpecifics.filter(pair => pair.key.trim() && pair.value.trim())
+          if (filtered.length === 0) return undefined
+          const obj: Record<string, string> = {}
+          filtered.forEach(pair => {
+            obj[pair.key.trim()] = pair.value.trim()
+          })
+          return JSON.stringify(obj)
+        })(),
         basePrice: parseFloat(newItemBasePrice),
         condition: newItemCondition || undefined,
         location: newItemLocation.trim() || undefined
@@ -315,19 +384,48 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
       // Fetch existing images from URLs
       for (const url of existingImageUrls) {
         try {
-          const response = await fetch(url)
-          if (!response.ok) {
-            console.error(`Failed to fetch image from URL: ${url}, status: ${response.status}`)
+          // Skip if URL is invalid or placeholder
+          if (!url || url === "/placeholder.svg" || url.includes("placeholder")) {
             continue
           }
+
+          // Ensure URL is absolute
+          let imageUrl = url
+          if (url.startsWith("/")) {
+            // If relative path, prepend API_BASE
+            const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5167"
+            imageUrl = `${API_BASE}${url}`
+          }
+
+          const response = await fetch(imageUrl, {
+            method: 'GET',
+            mode: 'cors',
+            credentials: 'omit',
+            cache: 'no-cache'
+          })
+          
+          if (!response.ok) {
+            console.warn(`Failed to fetch image from URL: ${imageUrl}, status: ${response.status}`)
+            continue
+          }
+          
           const blob = await response.blob()
+          
+          // Validate that it's actually an image
+          if (!blob.type.startsWith('image/')) {
+            console.warn(`URL ${imageUrl} does not return an image, got type: ${blob.type}`)
+            continue
+          }
+          
           const fileName = url.split('/').pop() || `image-${Date.now()}.jpg`
           const fileExtension = fileName.split('.').pop() || 'jpg'
-          const mimeType = `image/${fileExtension}`
+          const mimeType = blob.type || `image/${fileExtension}`
           const file = new File([blob], fileName, { type: mimeType })
           imagesToUpload.push(file)
         } catch (error) {
-          console.error('Error fetching image:', url, error)
+          // Log warning but don't fail the entire operation
+          console.warn('Error fetching image:', url, error)
+          // Continue with other images - we'll just skip this one
         }
       }
       // Add newly uploaded images
@@ -335,23 +433,25 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
 
       await ItemsAPI.createItem(itemData, imagesToUpload.length > 0 ? imagesToUpload : undefined)
       
-      // If creating from a draft item, delete the old draft item
+      // If creating from a draft or pending item, delete the old item
       if (draftItem?.id) {
         try {
           await ItemsAPI.deleteItem(draftItem.id)
           toast({
             title: "Thành công",
-            description: "Bản nháp cũ đã được xóa.",
+            description: draftItem.status === "pending" 
+              ? "Sản phẩm cũ đã được cập nhật." 
+              : "Bản nháp cũ đã được xóa.",
           })
-          // Notify parent to refresh draft list
+          // Notify parent to refresh draft/pending list
           if (onDraftDeleted) {
             onDraftDeleted()
           }
         } catch (deleteError: any) {
-          console.error("Error deleting old draft item:", deleteError)
+          console.error("Error deleting old item:", deleteError)
           toast({
             title: "Cảnh báo",
-            description: `Không thể xóa bản nháp cũ: ${deleteError.message || "Lỗi không xác định"}`,
+            description: `Không thể xóa ${draftItem.status === "pending" ? "sản phẩm" : "bản nháp"} cũ: ${deleteError.message || "Lỗi không xác định"}`,
             variant: "destructive"
           })
         }
@@ -364,6 +464,7 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
       setNewItemTitle("")
       setNewItemCategoryId("")
       setNewItemDescription("")
+      setNewItemSpecifics([{key: "", value: ""}])
       setNewItemBasePrice("")
       setNewItemCondition("")
       setNewItemLocation("")
@@ -390,7 +491,7 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
     } finally {
       setLoading(false)
     }
-  }
+    }
 
   const handleSaveDraft = async () => {
     if (!user) return
@@ -419,6 +520,16 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
         categoryId: parseInt(newItemCategoryId),
         title: newItemTitle.trim(),
         description: newItemDescription.trim() || undefined,
+        itemSpecifics: (() => {
+          // Convert array of key-value pairs to JSON string
+          const filtered = newItemSpecifics.filter(pair => pair.key.trim() && pair.value.trim())
+          if (filtered.length === 0) return undefined
+          const obj: Record<string, string> = {}
+          filtered.forEach(pair => {
+            obj[pair.key.trim()] = pair.value.trim()
+          })
+          return JSON.stringify(obj)
+        })(),
         basePrice: parseFloat(newItemBasePrice) || 0,
         condition: newItemCondition || undefined,
         location: newItemLocation.trim() || undefined
@@ -430,35 +541,81 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
       // Fetch existing images from URLs
       for (const url of existingImageUrls) {
         try {
-          const response = await fetch(url)
-          if (!response.ok) {
-            console.error(`Failed to fetch image from URL: ${url}, status: ${response.status}`)
+          // Skip if URL is invalid or placeholder
+          if (!url || url === "/placeholder.svg" || url.includes("placeholder")) {
             continue
           }
+
+          // Ensure URL is absolute
+          let imageUrl = url
+          if (url.startsWith("/")) {
+            // If relative path, prepend API_BASE
+            const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5167"
+            imageUrl = `${API_BASE}${url}`
+          }
+
+          const response = await fetch(imageUrl, {
+            method: 'GET',
+            mode: 'cors',
+            credentials: 'omit',
+            cache: 'no-cache'
+          })
+          
+          if (!response.ok) {
+            console.warn(`Failed to fetch image from URL: ${imageUrl}, status: ${response.status}`)
+            continue
+          }
+          
           const blob = await response.blob()
+          
+          // Validate that it's actually an image
+          if (!blob.type.startsWith('image/')) {
+            console.warn(`URL ${imageUrl} does not return an image, got type: ${blob.type}`)
+            continue
+          }
+          
           const fileName = url.split('/').pop() || `image-${Date.now()}.jpg`
           const fileExtension = fileName.split('.').pop() || 'jpg'
-          const mimeType = `image/${fileExtension}`
+          const mimeType = blob.type || `image/${fileExtension}`
           const file = new File([blob], fileName, { type: mimeType })
           imagesToUpload.push(file)
         } catch (error) {
-          console.error('Error fetching image:', url, error)
+          // Log warning but don't fail the entire operation
+          console.warn('Error fetching image:', url, error)
+          // Continue with other images - we'll just skip this one
         }
       }
       // Add newly uploaded images
       imagesToUpload = [...imagesToUpload, ...newItemImages]
 
-      await ItemsAPI.createDraftItem(itemData, imagesToUpload.length > 0 ? imagesToUpload : undefined)
+      // Nếu đang chỉnh sửa bản nháp, cập nhật bản nháp hiện có
+      if (draftItem?.id && draftItem?.status === "draft") {
+        await ItemsAPI.updateDraftItem(draftItem.id, itemData, imagesToUpload.length > 0 ? imagesToUpload : undefined)
+        
+        toast({
+          title: "Thành công",
+          description: "Đã cập nhật bản nháp sản phẩm",
+        })
 
-      toast({
-        title: "Thành công",
-        description: "Đã lưu bản nháp sản phẩm",
-      })
+        // Notify parent to refresh draft list
+        if (onDraftDeleted) {
+          onDraftDeleted()
+        }
+      } else {
+        // Tạo bản nháp mới
+        await ItemsAPI.createDraftItem(itemData, imagesToUpload.length > 0 ? imagesToUpload : undefined)
+        
+        toast({
+          title: "Thành công",
+          description: "Đã lưu bản nháp sản phẩm",
+        })
+      }
 
       // Reset form
       setNewItemTitle("")
       setNewItemCategoryId("")
       setNewItemDescription("")
+      setNewItemSpecifics([{key: "", value: ""}])
       setNewItemBasePrice("")
       setNewItemCondition("")
       setNewItemLocation("")
@@ -555,11 +712,11 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
       console.error('Validation failed:', auctionValidationErrors)
       const firstError = Object.values(auctionValidationErrors)[0]
       if (firstError) {
-        toast({
+      toast({
           title: "Lỗi validation",
           description: firstError,
-          variant: "destructive"
-        })
+        variant: "destructive"
+      })
       }
       // Scroll to first error
       const firstErrorField = Object.keys(auctionValidationErrors)[0]
@@ -609,20 +766,20 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
       console.log('Calculating times, duration:', duration)
 
       // Always use custom datetime - interpret as local time
-      console.log('Using custom time:', { customStartDate, customStartTime, customEndDate, customEndTime })
+        console.log('Using custom time:', { customStartDate, customStartTime, customEndDate, customEndTime })
       
-      if (!customStartDate || !customStartTime || !customEndDate || !customEndTime) {
-        setLoading(false)
-        toast({
-          title: "Lỗi",
+        if (!customStartDate || !customStartTime || !customEndDate || !customEndTime) {
+          setLoading(false)
+          toast({
+            title: "Lỗi",
           description: "Vui lòng nhập đầy đủ thời gian bắt đầu và kết thúc",
-          variant: "destructive"
-        })
-        return
-      }
+            variant: "destructive"
+          })
+          return
+        }
       
-      startTime = new Date(`${customStartDate}T${customStartTime}`)
-      endTime = new Date(`${customEndDate}T${customEndTime}`)
+        startTime = new Date(`${customStartDate}T${customStartTime}`)
+        endTime = new Date(`${customEndDate}T${customEndTime}`)
       console.log('Parsed custom times:', {
         startTime: startTime.toString(),
         endTime: endTime.toString(),
@@ -656,7 +813,7 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
 
       if (startTime < now) {
         console.error('Validation failed: startTime < now', {
-          startTime: startTime.toISOString(),
+          startTime: startTime.toISOString(), 
           now: now.toISOString()
         })
         setLoading(false)
@@ -715,7 +872,7 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString()
       }
-      
+
       console.log('Auction data to send:', auctionData)
       console.log('Start time details:', {
         local: startTime.toString(),
@@ -738,20 +895,20 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
       // Show success message
       setShowAuctionSuccessMessage(true)
 
-      // Reload items to update the list (hide item with active auction)
-      await loadApprovedItems()
+        // Reload items to update the list (hide item with active auction)
+        await loadApprovedItems()
 
-      // Reset form
-      setStep(1)
-      setSelectedItemId("")
-      setStartingBid("")
-      setBuyNowOption("no")
-      setBuyNowPrice("")
+        // Reset form
+        setStep(1)
+        setSelectedItemId("")
+        setStartingBid("")
+        setBuyNowOption("no")
+        setBuyNowPrice("")
       setDuration("custom")
-      setCustomStartDate("")
-      setCustomStartTime("")
-      setCustomEndDate("")
-      setCustomEndTime("")
+        setCustomStartDate("")
+        setCustomStartTime("")
+        setCustomEndDate("")
+        setCustomEndTime("")
       setAuctionValidationErrors({})
       
       // Close dialog after showing success message
@@ -776,14 +933,26 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Tạo phiên đấu giá mới</DialogTitle>
+          <DialogTitle>
+            {draftItem?.status === "pending" 
+              ? "Chỉnh Sửa Sản Phẩm Chờ Duyệt" 
+              : draftItem?.status === "draft"
+              ? "Tiếp Tục Chỉnh Sửa Bản Nháp"
+              : "Tạo phiên đấu giá mới"}
+          </DialogTitle>
           <DialogDescription>
-            {step === 1 ? "Chọn hoặc tạo sản phẩm để đấu giá" : `Bước ${step}/3`}
+            {draftItem?.status === "pending" 
+              ? "Cập nhật thông tin sản phẩm đang chờ phê duyệt"
+              : draftItem?.status === "draft"
+              ? "Tiếp tục chỉnh sửa bản nháp sản phẩm của bạn"
+              : step === 1 ? "Chọn hoặc tạo sản phẩm để đấu giá" : `Bước ${step}/3`}
           </DialogDescription>
         </DialogHeader>
 
         {step === 1 && (
           <div className="space-y-4 py-4">
+            {/* Chỉ hiển thị tabs khi không phải đang chỉnh sửa draft hoặc pending item */}
+            {draftItem?.status !== "pending" && draftItem?.status !== "draft" ? (
             <Tabs value={itemMode} onValueChange={(v) => setItemMode(v as "select" | "create")}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="select">Chọn sản phẩm có sẵn</TabsTrigger>
@@ -903,10 +1072,10 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="newItemDescription">Mô tả chi tiết *</Label>
+                    <Label htmlFor="newItemDescription">Mô tả chi tiết từ người bán *</Label>
                     <Textarea 
                       id="newItemDescription" 
-                      placeholder="Mô tả chi tiết về sản phẩm, tình trạng, xuất xứ..." 
+                      placeholder="Mô tả chi tiết về sản phẩm, tình trạng, xuất xứ, lý do bán..." 
                       rows={4}
                       value={newItemDescription}
                       onChange={(e) => {
@@ -923,6 +1092,109 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
                     />
                     {itemValidationErrors.description && (
                       <p className="text-sm text-red-500">{itemValidationErrors.description}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Đặc tính thông số sản phẩm *</Label>
+                    <div className="space-y-3">
+                      {newItemSpecifics.map((pair, index) => {
+                        // Check if this pair has validation issues
+                        const hasKeyError = pair.key.trim() && !pair.value.trim()
+                        const hasValueError = !pair.key.trim() && pair.value.trim()
+                        const showError = itemValidationErrors.itemSpecifics && (hasKeyError || hasValueError)
+                        
+                        return (
+                          <div key={index} className="space-y-1">
+                            <div className="flex gap-2 items-start">
+                              <div className="flex-1">
+                                <Input
+                                  placeholder="VD: Pin, Màn hình, RAM..."
+                                  value={pair.key}
+                                  onChange={(e) => {
+                                    const updated = [...newItemSpecifics]
+                                    updated[index].key = e.target.value
+                                    setNewItemSpecifics(updated)
+                                    // Clear error when user starts typing
+                                    if (itemValidationErrors.itemSpecifics) {
+                                      setItemValidationErrors(prev => {
+                                        const newErrors = { ...prev }
+                                        delete newErrors.itemSpecifics
+                                        return newErrors
+                                      })
+                                    }
+                                  }}
+                                  className={showError || (itemValidationErrors.itemSpecifics && hasKeyError) ? "border-red-500" : ""}
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <Input
+                                  placeholder="VD: 100%, 15inch, 8GB..."
+                                  value={pair.value}
+                                  onChange={(e) => {
+                                    const updated = [...newItemSpecifics]
+                                    updated[index].value = e.target.value
+                                    setNewItemSpecifics(updated)
+                                    // Clear error when user starts typing
+                                    if (itemValidationErrors.itemSpecifics) {
+                                      setItemValidationErrors(prev => {
+                                        const newErrors = { ...prev }
+                                        delete newErrors.itemSpecifics
+                                        return newErrors
+                                      })
+                                    }
+                                  }}
+                                  className={showError || (itemValidationErrors.itemSpecifics && hasValueError) ? "border-red-500" : ""}
+                                />
+                              </div>
+                              {newItemSpecifics.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    const updated = newItemSpecifics.filter((_, i) => i !== index)
+                                    setNewItemSpecifics(updated.length > 0 ? updated : [{key: "", value: ""}])
+                                    // Clear error when removing pair
+                                    if (itemValidationErrors.itemSpecifics) {
+                                      setItemValidationErrors(prev => {
+                                        const newErrors = { ...prev }
+                                        delete newErrors.itemSpecifics
+                                        return newErrors
+                                      })
+                                    }
+                                  }}
+                                  className="h-10 w-10 shrink-0"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                            {showError && (
+                              <p className="text-xs text-red-500 ml-1">
+                                Vui lòng nhập đầy đủ cả thuộc tính và giá trị
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setNewItemSpecifics([...newItemSpecifics, {key: "", value: ""}])
+                        }}
+                        className="w-full"
+                      >
+                        + Thêm thuộc tính
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Nhập các thông số kỹ thuật của sản phẩm từ nhà sản xuất (tùy chọn)
+                    </p>
+                    {itemValidationErrors.itemSpecifics && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.itemSpecifics}</p>
                     )}
                   </div>
 
@@ -1074,7 +1346,395 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
 
                   <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
                     <p className="text-sm text-muted-foreground">
-                      Sản phẩm sẽ được tạo với trạng thái "Chờ phê duyệt". Sau khi được admin phê duyệt, bạn mới có thể tạo phiên đấu giá cho sản phẩm này.
+                      {draftItem?.status === "pending" 
+                        ? 'Sản phẩm đã được chỉnh sửa thành công với trạng thái "Chờ phê duyệt". Sau khi được admin phê duyệt, bạn mới có thể tạo phiên đấu giá cho sản phẩm này.'
+                        : draftItem?.status === "draft"
+                        ? 'Bạn đang chỉnh sửa bản nháp. Sau khi hoàn tất, bạn có thể lưu lại bản nháp hoặc gửi sản phẩm cho admin phê duyệt để tạo phiên đấu giá.'
+                        : 'Sản phẩm sẽ được tạo với trạng thái "Chờ phê duyệt". Sau khi được admin phê duyệt, bạn mới có thể tạo phiên đấu giá cho sản phẩm này.'}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                  <Button 
+                      onClick={handleCreateItemClick} 
+                    disabled={loading}
+                    className="w-full"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {draftItem?.status === "pending" 
+                            ? "Đang cập nhật..." 
+                            : draftItem?.status === "draft"
+                            ? "Đang tạo..."
+                            : "Đang tạo..."}
+                      </>
+                    ) : (
+                        draftItem?.status === "pending" 
+                          ? "Xác nhận" 
+                          : draftItem?.status === "draft"
+                          ? "Tạo sản phẩm"
+                          : "Tạo sản phẩm"
+                    )}
+                  </Button>
+                    
+                    {/* Chỉ hiển thị "Lưu bản nháp" khi tạo mới hoặc chỉnh sửa draft, không hiển thị khi chỉnh sửa pending */}
+                    {(!draftItem || draftItem?.status === "draft") && (
+                      <Button 
+                        type="button"
+                        onClick={handleSaveDraft} 
+                        disabled={loading}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Đang lưu...
+                          </>
+                        ) : (
+                          "Lưu bản nháp"
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+            ) : (
+              // Hiển thị trực tiếp form khi chỉnh sửa pending item (không có tabs)
+              <div className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="newItemTitle">Tên sản phẩm *</Label>
+                    <Input 
+                      id="newItemTitle" 
+                      placeholder="VD: iPhone 15 Pro Max 256GB" 
+                      value={newItemTitle}
+                      onChange={(e) => {
+                        setNewItemTitle(e.target.value)
+                        if (itemValidationErrors.title) {
+                          setItemValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.title
+                            return newErrors
+                          })
+                        }
+                      }}
+                      className={itemValidationErrors.title ? "border-red-500" : ""}
+                    />
+                    {itemValidationErrors.title && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.title}</p>
+                    )}
+          </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="newItemCategory">Danh mục *</Label>
+                    <Select 
+                      value={newItemCategoryId} 
+                      onValueChange={(value) => {
+                        setNewItemCategoryId(value)
+                        if (itemValidationErrors.categoryId) {
+                          setItemValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.categoryId
+                            return newErrors
+                          })
+                        }
+                      }}
+                    >
+                      <SelectTrigger 
+                        id="newItemCategory"
+                        className={itemValidationErrors.categoryId ? "border-red-500" : ""}
+                      >
+                        <SelectValue placeholder="Chọn danh mục" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={String(cat.id)}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {itemValidationErrors.categoryId && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.categoryId}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="newItemDescription">Mô tả chi tiết từ người bán *</Label>
+                    <Textarea 
+                      id="newItemDescription" 
+                      placeholder="Mô tả chi tiết về sản phẩm, tình trạng, xuất xứ, lý do bán..." 
+                      rows={4}
+                      value={newItemDescription}
+                      onChange={(e) => {
+                        setNewItemDescription(e.target.value)
+                        if (itemValidationErrors.description) {
+                          setItemValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.description
+                            return newErrors
+                          })
+                        }
+                      }}
+                      className={itemValidationErrors.description ? "border-red-500" : ""}
+                    />
+                    {itemValidationErrors.description && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.description}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Đặc tính thông số sản phẩm *</Label>
+                    <div className="space-y-3">
+                      {newItemSpecifics.map((pair, index) => {
+                        const hasKeyError = pair.key.trim() && !pair.value.trim()
+                        const hasValueError = !pair.key.trim() && pair.value.trim()
+                        const showError = itemValidationErrors.itemSpecifics && (hasKeyError || hasValueError)
+                        
+                        return (
+                          <div key={index} className="space-y-1">
+                            <div className="flex gap-2 items-start">
+                              <div className="flex-1">
+                                <Input
+                                  placeholder="VD: Pin, Màn hình, RAM..."
+                                  value={pair.key}
+                                  onChange={(e) => {
+                                    const updated = [...newItemSpecifics]
+                                    updated[index].key = e.target.value
+                                    setNewItemSpecifics(updated)
+                                    if (itemValidationErrors.itemSpecifics) {
+                                      setItemValidationErrors(prev => {
+                                        const newErrors = { ...prev }
+                                        delete newErrors.itemSpecifics
+                                        return newErrors
+                                      })
+                                    }
+                                  }}
+                                  className={showError || (itemValidationErrors.itemSpecifics && hasKeyError) ? "border-red-500" : ""}
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <Input
+                                  placeholder="VD: 100%, 15inch, 8GB..."
+                                  value={pair.value}
+                                  onChange={(e) => {
+                                    const updated = [...newItemSpecifics]
+                                    updated[index].value = e.target.value
+                                    setNewItemSpecifics(updated)
+                                    if (itemValidationErrors.itemSpecifics) {
+                                      setItemValidationErrors(prev => {
+                                        const newErrors = { ...prev }
+                                        delete newErrors.itemSpecifics
+                                        return newErrors
+                                      })
+                                    }
+                                  }}
+                                  className={showError || (itemValidationErrors.itemSpecifics && hasValueError) ? "border-red-500" : ""}
+                                />
+                              </div>
+                              {newItemSpecifics.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    const updated = newItemSpecifics.filter((_, i) => i !== index)
+                                    setNewItemSpecifics(updated.length > 0 ? updated : [{key: "", value: ""}])
+                                    if (itemValidationErrors.itemSpecifics) {
+                                      setItemValidationErrors(prev => {
+                                        const newErrors = { ...prev }
+                                        delete newErrors.itemSpecifics
+                                        return newErrors
+                                      })
+                                    }
+                                  }}
+                                  className="h-10 w-10 shrink-0"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                            {showError && (
+                              <p className="text-xs text-red-500 ml-1">
+                                Vui lòng nhập đầy đủ cả thuộc tính và giá trị
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setNewItemSpecifics([...newItemSpecifics, {key: "", value: ""}])
+                        }}
+                        className="w-full"
+                      >
+                        + Thêm thuộc tính
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Nhập các thông số kỹ thuật của sản phẩm từ nhà sản xuất (tùy chọn)
+                    </p>
+                    {itemValidationErrors.itemSpecifics && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.itemSpecifics}</p>
+                    )}
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="newItemBasePrice">Giá khởi điểm (VNĐ) *</Label>
+                      <Input 
+                        id="newItemBasePrice" 
+                        type="number" 
+                        placeholder="VD: 20000000" 
+                        value={newItemBasePrice}
+                        onChange={(e) => {
+                          setNewItemBasePrice(e.target.value)
+                          if (itemValidationErrors.basePrice) {
+                            setItemValidationErrors(prev => {
+                              const newErrors = { ...prev }
+                              delete newErrors.basePrice
+                              return newErrors
+                            })
+                          }
+                        }}
+                        min="0"
+                        step="1000"
+                        className={itemValidationErrors.basePrice ? "border-red-500" : ""}
+                      />
+                      {itemValidationErrors.basePrice && (
+                        <p className="text-sm text-red-500">{itemValidationErrors.basePrice}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="newItemCondition">Tình trạng *</Label>
+                      <Select 
+                        value={newItemCondition} 
+                        onValueChange={(value) => {
+                          setNewItemCondition(value)
+                          if (itemValidationErrors.condition) {
+                            setItemValidationErrors(prev => {
+                              const newErrors = { ...prev }
+                              delete newErrors.condition
+                              return newErrors
+                            })
+                          }
+                        }}
+                      >
+                        <SelectTrigger 
+                          id="newItemCondition"
+                          className={itemValidationErrors.condition ? "border-red-500" : ""}
+                        >
+                          <SelectValue placeholder="Chọn tình trạng" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="new">Mới 100%</SelectItem>
+                          <SelectItem value="like-new">Như mới</SelectItem>
+                          <SelectItem value="good">Tốt</SelectItem>
+                          <SelectItem value="fair">Khá</SelectItem>
+                          <SelectItem value="used">Đã sử dụng</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {itemValidationErrors.condition && (
+                        <p className="text-sm text-red-500">{itemValidationErrors.condition}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="newItemLocation">Địa điểm *</Label>
+                    <Input 
+                      id="newItemLocation" 
+                      placeholder="VD: Hà Nội, Việt Nam" 
+                      value={newItemLocation}
+                      onChange={(e) => {
+                        setNewItemLocation(e.target.value)
+                        if (itemValidationErrors.location) {
+                          setItemValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.location
+                            return newErrors
+                          })
+                        }
+                      }}
+                      className={itemValidationErrors.location ? "border-red-500" : ""}
+                    />
+                    {itemValidationErrors.location && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.location}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Hình ảnh sản phẩm *</Label>
+                    
+                    {existingImageUrls.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Hình ảnh hiện có</Label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                          {existingImageUrls.map((url: string, index: number) => (
+                            <div key={`existing-${index}`} className="relative group">
+                              <div className="aspect-square rounded-lg border border-border overflow-hidden bg-muted">
+                                <img
+                                  src={url}
+                                  alt={`Existing ${index + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setExistingImageUrls((prev: string[]) => prev.filter((_: string, i: number) => i !== index))
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Đã có {existingImageUrls.length} hình ảnh. Bạn có thể thêm tối đa {10 - existingImageUrls.length} hình ảnh mới.
+                        </p>
+                      </div>
+                    )}
+
+                    <ImageUploadFile
+                      files={newItemImages}
+                      onChange={(files) => {
+                        const maxNewImages = Math.max(0, 10 - existingImageUrls.length)
+                        const limitedFiles = files.slice(0, maxNewImages)
+                        setNewItemImages(limitedFiles)
+                        if (itemValidationErrors.images) {
+                          setItemValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.images
+                            return newErrors
+                          })
+                        }
+                      }}
+                      maxImages={10 - existingImageUrls.length}
+                      maxSizeMB={10}
+                    />
+                    {itemValidationErrors.images && (
+                      <p className="text-sm text-red-500">{itemValidationErrors.images}</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
+                    <p className="text-sm text-muted-foreground">
+                      {draftItem?.status === "pending" 
+                        ? 'Sản phẩm đã được chỉnh sửa thành công với trạng thái "Chờ phê duyệt". Sau khi được admin phê duyệt, bạn mới có thể tạo phiên đấu giá cho sản phẩm này.'
+                        : draftItem?.status === "draft"
+                        ? 'Bạn đang chỉnh sửa bản nháp. Sau khi hoàn tất, bạn có thể lưu lại bản nháp hoặc gửi sản phẩm cho admin phê duyệt để tạo phiên đấu giá.'
+                        : 'Sản phẩm sẽ được tạo với trạng thái "Chờ phê duyệt". Sau khi được admin phê duyệt, bạn mới có thể tạo phiên đấu giá cho sản phẩm này.'}
                     </p>
                   </div>
 
@@ -1087,33 +1747,43 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
                       {loading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Đang tạo...
+                          {draftItem?.status === "pending" 
+                            ? "Đang cập nhật..." 
+                            : draftItem?.status === "draft"
+                            ? "Đang tạo..."
+                            : "Đang tạo..."}
                         </>
                       ) : (
-                        "Tạo sản phẩm"
+                        draftItem?.status === "pending" 
+                          ? "Xác nhận" 
+                          : draftItem?.status === "draft"
+                          ? "Tạo sản phẩm"
+                          : "Tạo sản phẩm"
                       )}
                     </Button>
                     
-                    <Button 
-                      type="button"
-                      onClick={handleSaveDraft} 
-                      disabled={loading}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Đang lưu...
-                        </>
-                      ) : (
-                        "Lưu bản nháp"
-                      )}
-                    </Button>
+                    {/* Chỉ hiển thị "Lưu bản nháp" khi tạo mới hoặc chỉnh sửa draft, không hiển thị khi chỉnh sửa pending */}
+                    {(!draftItem || draftItem?.status === "draft") && (
+                      <Button 
+                        type="button"
+                        onClick={handleSaveDraft} 
+                        disabled={loading}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Đang lưu...
+                          </>
+                        ) : (
+                          "Lưu bản nháp"
+                        )}
+                      </Button>
+                    )}
                   </div>
-                </div>
-              </TabsContent>
-            </Tabs>
+              </div>
+            )}
           </div>
         )}
 
@@ -1207,20 +1877,20 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
             </div>
 
             <div className="space-y-4">
-              <div className="space-y-2">
+            <div className="space-y-2">
                 <Label>Thiết lập thời gian đấu giá *</Label>
                 <p className="text-sm text-muted-foreground">
                   Vui lòng chọn thời gian bắt đầu và kết thúc cho phiên đấu giá
                 </p>
-              </div>
+            </div>
 
               <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border bg-muted/50 p-4">
-                  <div className="space-y-2">
+                <div className="space-y-2">
                     <Label htmlFor="startDate">Ngày bắt đầu *</Label>
-                    <Input 
-                      id="startDate" 
-                      type="date" 
-                      value={customStartDate}
+                  <Input 
+                    id="startDate" 
+                    type="date" 
+                    value={customStartDate}
                       onChange={(e) => {
                         setCustomStartDate(e.target.value)
                         if (auctionValidationErrors.customTime) {
@@ -1231,16 +1901,16 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
                           })
                         }
                       }}
-                      min={new Date().toISOString().split('T')[0]}
+                    min={new Date().toISOString().split('T')[0]}
                       className={auctionValidationErrors.customTime ? "border-red-500" : ""}
-                    />
-                  </div>
-                   <div className="space-y-2">
+                  />
+                </div>
+                <div className="space-y-2">
                      <Label htmlFor="startTime">Thời gian bắt đầu: *</Label>
-                     <Input 
-                       id="startTime" 
-                       type="time" 
-                       value={customStartTime}
+                  <Input 
+                    id="startTime" 
+                    type="time" 
+                    value={customStartTime}
                        onChange={(e) => {
                          setCustomStartTime(e.target.value)
                          if (auctionValidationErrors.customTime) {
@@ -1254,13 +1924,13 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
                        className={auctionValidationErrors.customTime ? "border-red-500" : ""}
                      />
                      {/* <p className="text-xs text-muted-foreground">Định dạng: 00:00 - 23:59 (24 giờ, không dùng AM/PM)</p> */}
-                   </div>
-                  <div className="space-y-2">
+                </div>
+                <div className="space-y-2">
                     <Label htmlFor="endDate">Ngày kết thúc *</Label>
-                    <Input 
-                      id="endDate" 
-                      type="date" 
-                      value={customEndDate}
+                  <Input 
+                    id="endDate" 
+                    type="date" 
+                    value={customEndDate}
                       onChange={(e) => {
                         setCustomEndDate(e.target.value)
                         if (auctionValidationErrors.customTime) {
@@ -1271,16 +1941,16 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
                           })
                         }
                       }}
-                      min={customStartDate || new Date().toISOString().split('T')[0]}
+                    min={customStartDate || new Date().toISOString().split('T')[0]}
                       className={auctionValidationErrors.customTime ? "border-red-500" : ""}
-                    />
-                  </div>
-                   <div className="space-y-2">
+                  />
+                </div>
+                <div className="space-y-2">
                      <Label htmlFor="endTime">Thời gian kết thúc *</Label>
-                     <Input 
-                       id="endTime" 
-                       type="time" 
-                       value={customEndTime}
+                  <Input 
+                    id="endTime" 
+                    type="time" 
+                    value={customEndTime}
                        onChange={(e) => {
                          setCustomEndTime(e.target.value)
                          if (auctionValidationErrors.customTime) {
@@ -1294,11 +1964,11 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
                        className={auctionValidationErrors.customTime ? "border-red-500" : ""}
                      />
                      {/* <p className="text-xs text-muted-foreground">Định dạng: 00:00 - 23:59 (24 giờ, không dùng AM/PM)</p> */}
-                   </div>
                 </div>
+              </div>
                 {auctionValidationErrors.customTime && (
                   <p className="text-sm text-red-500">{auctionValidationErrors.customTime}</p>
-                )}
+            )}
             </div>
           </div>
         )}
@@ -1374,6 +2044,8 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
             </Button>
           )}
           {step < 3 ? (
+            // Chỉ hiển thị "Tiếp tục" khi chọn sản phẩm có sẵn, không hiển thị khi tạo sản phẩm mới
+            step === 1 && itemMode === "create" ? null : (
             <Button 
               onClick={() => {
                 if (step === 1) {
@@ -1385,55 +2057,52 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
                     })
                     return
                   }
-                  // If creating item, don't proceed - user needs to create item first
-                  if (itemMode === "create") {
-                    return
                   }
-                }
-                 if (step === 2) {
-                   if (!validateAuctionForm()) {
-                     // Scroll to first error
-                     const firstErrorField = Object.keys(auctionValidationErrors)[0]
-                     if (firstErrorField === "startingBid") {
-                       document.getElementById("startPrice")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                       document.getElementById("startPrice")?.focus()
-                     } else if (firstErrorField === "buyNowPrice") {
-                       document.getElementById("buyNowPrice")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                       document.getElementById("buyNowPrice")?.focus()
-                     } else if (firstErrorField === "customTime") {
-                       document.getElementById("startDate")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                   if (step === 2) {
+                     if (!validateAuctionForm()) {
+                       // Scroll to first error
+                       const firstErrorField = Object.keys(auctionValidationErrors)[0]
+                       if (firstErrorField === "startingBid") {
+                         document.getElementById("startPrice")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                         document.getElementById("startPrice")?.focus()
+                       } else if (firstErrorField === "buyNowPrice") {
+                         document.getElementById("buyNowPrice")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                         document.getElementById("buyNowPrice")?.focus()
+                       } else if (firstErrorField === "customTime") {
+                         document.getElementById("startDate")?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                       }
+                  return
                      }
-                     return
-                   }
-                 }
+                }
                 setStep(step + 1)
               }}
-              disabled={loading || (step === 1 && itemMode === "create")}
+                disabled={loading}
             >
               Tiếp tục
             </Button>
+            )
           ) : (
-             <Button 
-               type="button"
-               onClick={(e) => {
-                 e.preventDefault()
-                 e.stopPropagation()
-                 if (!loading) {
+            <Button 
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                if (!loading) {
                    handleSubmitClick()
-                 }
-               }} 
-               disabled={loading}
-               className="min-w-[150px]"
-             >
-               {loading ? (
-                 <>
-                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                   Đang tạo...
-                 </>
-               ) : (
-                 "Tạo phiên đấu giá"
-               )}
-             </Button>
+                }
+              }} 
+              disabled={loading}
+              className="min-w-[150px]"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Đang tạo...
+                </>
+              ) : (
+                "Tạo phiên đấu giá"
+              )}
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>
@@ -1442,9 +2111,13 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận tạo sản phẩm</AlertDialogTitle>
+            <AlertDialogTitle>
+              {draftItem?.status === "pending" ? "Xác nhận cập nhật sản phẩm" : "Xác nhận tạo sản phẩm"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn có chắc chắn muốn tạo sản phẩm này? Sản phẩm sẽ được gửi cho admin phê duyệt trước khi có thể sử dụng để tạo phiên đấu giá.
+              {draftItem?.status === "pending" 
+                ? "Bạn có chắc chắn muốn cập nhật sản phẩm này? Thay đổi sẽ được gửi lại cho admin phê duyệt."
+                : "Bạn có chắc chắn muốn tạo sản phẩm này? Sản phẩm sẽ được gửi cho admin phê duyệt trước khi có thể sử dụng để tạo phiên đấu giá."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1470,7 +2143,9 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
                Thành công!
              </AlertDialogTitle>
              <AlertDialogDescription>
-               Sản phẩm đã được gửi đi cho admin phê duyệt. Bạn sẽ nhận được thông báo khi sản phẩm được phê duyệt.
+               {draftItem?.status === "pending" 
+                 ? "Sản phẩm đã được cập nhật và gửi lại cho admin phê duyệt. Bạn sẽ nhận được thông báo khi sản phẩm được phê duyệt."
+                 : "Sản phẩm đã được gửi đi cho admin phê duyệt. Bạn sẽ nhận được thông báo khi sản phẩm được phê duyệt."}
              </AlertDialogDescription>
            </AlertDialogHeader>
            <AlertDialogFooter>
@@ -1523,6 +2198,6 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
            </AlertDialogFooter>
          </AlertDialogContent>
        </AlertDialog>
-     </Dialog>
-   )
- }
+    </Dialog>
+  )
+}
