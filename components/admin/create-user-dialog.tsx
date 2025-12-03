@@ -43,11 +43,15 @@ export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDia
       newErrors.fullName = "Họ tên là bắt buộc"
     }
 
-    if (formData.phone && !/^[0-9+\-\s()]+$/.test(formData.phone)) {
+if (!formData.phone) {
+      newErrors.phone = "Số điện thoại là bắt buộc"
+    } else if (!/^[0-9+\-\s()]+$/.test(formData.phone)) {
       newErrors.phone = "Số điện thoại không hợp lệ"
     }
 
-    if (formData.avatarUrl && !/^https?:\/\/.+/.test(formData.avatarUrl)) {
+    if (!formData.avatarUrl) {
+      newErrors.avatarUrl = "URL avatar là bắt buộc"
+    } else if (!/^https?:\/\/.+/.test(formData.avatarUrl)) {
       newErrors.avatarUrl = "URL avatar không hợp lệ"
     }
 
