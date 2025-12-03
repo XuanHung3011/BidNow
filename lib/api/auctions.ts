@@ -39,6 +39,8 @@ export interface AuctionDetailDto {
   status: string
   bidCount?: number
   pausedAt?: string
+  winnerId?: number
+  winnerName?: string
 }
 
 export interface CreateAuctionDto {
@@ -225,6 +227,26 @@ export const AuctionsAPI = {
     return response.json()
   },
 
+  async buyNow(id: number, payload: BuyNowRequestDto): Promise<AuctionCompletionResultDto> {
+    const response = await fetch(`${API_BASE}/api/auctions/${id}/buy-now`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const raw = await response.text().catch(() => '')
+      try {
+        const parsed = raw ? JSON.parse(raw) : {}
+        throw new Error(parsed.message || 'Mua ngay thất bại')
+      } catch {
+        throw new Error(raw || 'Mua ngay thất bại')
+      }
+    }
+
+    return response.json()
+  },
+
   // Get recent bids for an auction
   async getRecentBids(id: number, limit = 100): Promise<BidDto[]> {
     const response = await fetch(`${API_BASE}/api/auctions/${id}/bids/recent?limit=${limit}`)
@@ -282,4 +304,17 @@ export interface SellerAuctionDto {
   winnerId?: number
   winnerName?: string
   hasRated: boolean
+}
+
+export interface BuyNowRequestDto {
+  buyerId: number
+}
+
+export interface AuctionCompletionResultDto {
+  auctionId: number
+  winnerId?: number
+  finalPrice?: number
+  status: string
+  completionType: string
+  completedAt: string
 }
