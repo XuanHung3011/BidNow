@@ -46,7 +46,7 @@ interface AuctionDetailProps {
 export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const { user } = useAuth()
   const [timeLeft, setTimeLeft] = useState("")
-  const [auctionStatus, setAuctionStatus] = useState<"scheduled" | "active" | "ended" | "cancelled">("active")
+  const [auctionStatus, setAuctionStatus] = useState<"scheduled" | "active" | "ended" | "paused" | "cancelled">("active")
   const [bidAmount, setBidAmount] = useState("")
   const [placing, setPlacing] = useState(false)
   const [placeError, setPlaceError] = useState<string | null>(null)
@@ -66,6 +66,53 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const [loadingWatchlist, setLoadingWatchlist] = useState(false)
   const [watchlistMessage, setWatchlistMessage] = useState<string | null>(null)
   const [recentBids, setRecentBids] = useState<BidDto[]>([])
+  const [buyNowLoading, setBuyNowLoading] = useState(false)
+  const [buyNowMessage, setBuyNowMessage] = useState<string | null>(null)
+  const [buyNowError, setBuyNowError] = useState<string | null>(null)
+
+  const normalizedStatus = useMemo(() => auction?.status?.toLowerCase() ?? "", [auction?.status])
+  const isAuctionLocked = useMemo(() => ["paused", "cancelled", "completed"].includes(normalizedStatus), [normalizedStatus])
+
+  const handleBuyNow = async () => {
+    if (!auction?.buyNowPrice) {
+      return
+    }
+    if (!user) {
+      setBuyNowError("Bạn cần đăng nhập để sử dụng mua ngay")
+      return
+    }
+    if (isAuctionLocked) {
+      setBuyNowError("Phiên đấu giá đã không còn hoạt động")
+      return
+    }
+
+    try {
+      setBuyNowLoading(true)
+      setBuyNowError(null)
+      setBuyNowMessage(null)
+
+      const result = await AuctionsAPI.buyNow(Number(auctionId), { buyerId: Number(user.id) })
+      setBuyNowMessage("Mua ngay thành công! Chúng tôi đã kết thúc phiên đấu giá.")
+
+      setAuction((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          status: result.status,
+          currentBid: result.finalPrice ?? prev.currentBid,
+          winnerId: result.winnerId ?? prev.winnerId,
+          winnerName:
+            result.winnerId && result.winnerId === Number(user.id)
+              ? user.fullName ?? user.email ?? "Bạn"
+              : prev.winnerName,
+        }
+      })
+    } catch (err: any) {
+      setBuyNowError(err.message || "Không thể mua ngay")
+    } finally {
+      setBuyNowLoading(false)
+    }
+  }
 
   // Fetch auction detail
   useEffect(() => {
@@ -93,19 +140,28 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     
     return () => { mounted = false }
   }, [auctionId])
+
+  useEffect(() => {
+    setBuyNowError(null)
+    setBuyNowMessage(null)
+  }, [auctionId])
   
   // SignalR: subscribe to BidPlaced and update UI in real-time
   useEffect(() => {
     let isMounted = true
     const connection = createAuctionHubConnection()
     let started = false
+    let isStarting = false
 
     const start = async () => {
       try {
+        isStarting = true
         await connection.start()
         started = true
+        isStarting = false
         await connection.invoke("JoinAuctionGroup", String(auctionId))
       } catch (e) {
+        isStarting = false
         // ignore transient connection errors
       }
     }
@@ -181,12 +237,28 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       connection.off("AuctionStatusUpdated")
       const leaveAndStop = async () => {
         try {
-          if (started) {
-            await connection.invoke("LeaveAuctionGroup", String(auctionId))
-            await connection.stop()
+          // If connection is still starting, wait for it to complete or fail
+          if (isStarting) {
+            const maxWait = 2000
+            const startTime = Date.now()
+            while (isStarting && (Date.now() - startTime) < maxWait) {
+              await new Promise((resolve) => setTimeout(resolve, 100))
+            }
+          }
+          
+          // Try to leave group if connection was started
+          if (started && connection) {
+            await connection.invoke("LeaveAuctionGroup", String(auctionId)).catch(() => {})
+          }
+          
+          // Stop connection - ignore all errors silently
+          if (connection) {
+            await connection.stop().catch(() => {
+              // Silently ignore all errors
+            })
           }
         } catch {
-          // ignore
+          // Ignore all errors silently
         }
       }
       void leaveAndStop()
@@ -217,6 +289,11 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   // Check if seller is favorite
   useEffect(() => {
     if (!auction?.sellerId) return
+    // Chỉ check favorite nếu user đã đăng nhập
+    if (!user?.id) {
+      setIsFavoriteSeller(false)
+      return
+    }
     
     let mounted = true
     const checkFavorite = async () => {
@@ -225,14 +302,15 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
         if (!mounted) return
         setIsFavoriteSeller(isFav)
       } catch (err) {
-        console.error('Failed to check favorite:', err)
-        // Không hiển thị lỗi cho user, chỉ log
+        // Không log lỗi nếu user chưa đăng nhập (đã được xử lý ở trên)
+        if (!mounted) return
+        setIsFavoriteSeller(false)
       }
     }
     
     checkFavorite()
     return () => { mounted = false }
-  }, [auction?.sellerId])
+  }, [auction?.sellerId, user?.id])
 
   // 3. USEEFFECT - Thêm useEffect mới để check watchlist
   useEffect(() => {
@@ -266,9 +344,11 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   useEffect(() => {
     if (!auction) return
 
+    const normalizedStatus = auction.status?.toLowerCase() ?? ""
+
     // Nếu auction bị tạm dừng, dừng timer và hiển thị thời gian tạm dừng
-    if (auction.status?.toLowerCase() === "cancelled") {
-      setAuctionStatus("cancelled")
+    if (normalizedStatus === "paused") {
+      setAuctionStatus("paused")
       if (auction.pausedAt) {
         const pausedDate = new Date(auction.pausedAt)
         const pausedTime = pausedDate.toLocaleString("vi-VN", {
@@ -282,6 +362,13 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       } else {
         setTimeLeft("Đã tạm dừng")
       }
+      return
+    }
+
+    // Nếu auction đã bị hủy, dừng timer và hiển thị trạng thái hủy
+    if (normalizedStatus === "cancelled") {
+      setAuctionStatus("cancelled")
+      setTimeLeft("Đã hủy")
       return
     }
 
@@ -520,8 +607,10 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
               <div className="space-y-6">
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
-                    {auction.status?.toLowerCase() === "cancelled" ? (
+                    {auction.status?.toLowerCase() === "paused" ? (
                       <Badge className="bg-orange-500 text-white">Đã tạm dừng</Badge>
+                    ) : auction.status?.toLowerCase() === "cancelled" ? (
+                      <Badge className="bg-gray-500 text-white">Đã hủy</Badge>
                     ) : (
                       <Badge className="bg-primary text-primary-foreground">Đang mở</Badge>
                     )}
@@ -531,7 +620,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                     <h1 className="text-3xl font-bold leading-tight text-foreground lg:text-4xl">{auction.itemTitle}</h1>
                     {/* <p className="mt-1 text-sm text-muted-foreground">{auction.status}</p> */}
                   </div>
-                  {auction.status?.toLowerCase() === "cancelled" && (
+                  {auction.status?.toLowerCase() === "paused" && (
                     <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
                       <div className="flex items-start gap-3">
                         <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
@@ -544,6 +633,19 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                                 Thời gian tạm dừng: {new Date(auction.pausedAt).toLocaleString("vi-VN")}
                               </span>
                             )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {auction.status?.toLowerCase() === "cancelled" && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
+                        <div>
+                          <p className="font-semibold text-red-900">Phiên đấu giá đã bị hủy</p>
+                          <p className="mt-1 text-sm text-red-700">
+                            Phiên đấu giá này đã bị hủy bởi quản trị viên hoặc hệ thống. Bạn không thể tiếp tục đặt giá cho phiên này.
                           </p>
                         </div>
                       </div>
@@ -565,19 +667,22 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                       variant={
                         auctionStatus === "scheduled" ? "secondary" :
                         auctionStatus === "active" ? "default" :
+                        auctionStatus === "paused" ? "destructive" :
                         auctionStatus === "cancelled" ? "destructive" :
                         "outline"
                       }
                       className={
                         auctionStatus === "scheduled" ? "bg-blue-500 text-white" :
                         auctionStatus === "active" ? "bg-green-500 text-white" :
-                        auctionStatus === "cancelled" ? "bg-orange-500 text-white" :
+                        auctionStatus === "paused" ? "bg-orange-500 text-white" :
+                        auctionStatus === "cancelled" ? "bg-gray-500 text-white" :
                         "bg-gray-500 text-white"
                       }
                     >
                       {auctionStatus === "scheduled" ? "Sắp diễn ra" :
                        auctionStatus === "active" ? "Đang diễn ra" :
-                       auctionStatus === "cancelled" ? "Đã tạm dừng" :
+                       auctionStatus === "paused" ? "Đã tạm dừng" :
+                       auctionStatus === "cancelled" ? "Đã hủy" :
                        "Đã kết thúc"}
                     </Badge>
                   </div>
@@ -708,7 +813,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                     <li>3. Nhấn "Đặt giá" để xác nhận.</li>
                   </ol>
           </div>
-                <div className="space-y-3">
+              <div className="space-y-3">
             <div className="flex gap-2">
               <Input
                 type="number"
@@ -716,10 +821,10 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 value={bidAmount}
                 onChange={(e) => setBidAmount(e.target.value)}
                 className="flex-1"
-                disabled={auction.status?.toLowerCase() === "cancelled"}
+                disabled={["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
               />
               <Button 
-                disabled={placing || !user || auction.status?.toLowerCase() === "cancelled"}
+                disabled={placing || !user || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
                 onClick={async () => {
                   if (!auction) return
                   setPlaceError(null)
@@ -756,20 +861,48 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
               </Button>
             </div>
             {placeError && <div className="text-sm text-destructive">{placeError}</div>}
+                  {auction.buyNowPrice && (
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="default"
+                        className="w-full"
+                        disabled={
+                          buyNowLoading ||
+                          !user ||
+                          isAuctionLocked ||
+                          auctionStatus !== "active"
+                        }
+                        onClick={handleBuyNow}
+                      >
+                        {buyNowLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <ShoppingBag className="mr-2 h-4 w-4" />
+                        )}
+                        Mua ngay với giá {formatPrice(auction.buyNowPrice)}
+                      </Button>
+                      {buyNowMessage && (
+                        <div className="text-sm text-emerald-600">{buyNowMessage}</div>
+                      )}
+                      {buyNowError && (
+                        <div className="text-sm text-destructive">{buyNowError}</div>
+                      )}
+                    </div>
+                  )}
                   <div className="grid grid-cols-3 gap-2">
                     {[0, 1, 2].map((idx) => (
               <Button
                         key={idx}
-                variant="outline"
-                className="flex-1 bg-transparent text-xs"
+                      variant="outline"
+                      className="flex-1 bg-transparent text-xs"
                         onClick={() => setBidAmount((suggestedBid + minIncrement * idx).toString())}
-                        disabled={auction.status?.toLowerCase() === "cancelled"}
+                        disabled={["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
               >
                         <span className="truncate">{formatPrice(suggestedBid + minIncrement * idx)}</span>
               </Button>
                     ))}
             </div>
-            {auction.status?.toLowerCase() !== "cancelled" && (
+            {![ "paused", "cancelled" ].includes(auction.status?.toLowerCase() ?? "") && (
               <AutoBidDialog auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} minIncrement={minIncrement} />
             )}
           </div>

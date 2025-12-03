@@ -78,19 +78,26 @@ export function AdminStats() {
   useEffect(() => {
     const connection = createAuctionHubConnection()
     let isMounted = true
+    let started = false
+    let isStarting = false
+    
     const startPromise = (async () => {
       try {
+        isStarting = true
         await connection.start()
+        isStarting = false
+        started = true
         if (!isMounted) {
-          await connection.stop()
+          await connection.stop().catch(() => {})
           return
         }
         await Promise.all([
-          connection.invoke("JoinAdminSection", "stats"),
-          connection.invoke("JoinAdminSection", "auctions"),
+          connection.invoke("JoinAdminSection", "stats").catch(() => {}),
+          connection.invoke("JoinAdminSection", "auctions").catch(() => {}),
         ])
       } catch (error) {
-        console.error("Admin stats SignalR connection error:", error)
+        isStarting = false
+        // Silently ignore connection errors
       }
     })()
 
@@ -105,20 +112,32 @@ export function AdminStats() {
       isMounted = false
       connection.off("AdminStatsUpdated", handleRealtimeUpdate)
       connection.off("AdminAuctionStatusUpdated", handleRealtimeUpdate)
-      startPromise
-        .catch(() => {})
-        .finally(() => {
-          if (connection.state === "Connected") {
-            Promise.all([
+      const cleanup = async () => {
+        // Wait for connection to finish starting
+        if (isStarting) {
+          const maxWait = 2000
+          const startTime = Date.now()
+          while (isStarting && (Date.now() - startTime) < maxWait) {
+            await new Promise((resolve) => setTimeout(resolve, 100))
+          }
+        }
+        
+        try {
+          await startPromise.catch(() => {})
+          if (started && connection) {
+            await Promise.all([
               connection.invoke("LeaveAdminSection", "stats").catch(() => {}),
               connection.invoke("LeaveAdminSection", "auctions").catch(() => {}),
-            ]).finally(() => {
-              connection.stop().catch(() => {})
-            })
-          } else {
-            connection.stop().catch(() => {})
+            ])
           }
-        })
+          if (connection) {
+            await connection.stop().catch(() => {})
+          }
+        } catch {
+          // Silently ignore all cleanup errors
+        }
+      }
+      void cleanup()
     }
   }, [fetchStats])
 

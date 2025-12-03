@@ -116,16 +116,23 @@ export function PendingAuctions() {
   useEffect(() => {
     const connection = createAuctionHubConnection()
     let mounted = true
+    let started = false
+    let isStarting = false
+    
     const startPromise = (async () => {
       try {
+        isStarting = true
         await connection.start()
+        isStarting = false
+        started = true
         if (!mounted) {
-          await connection.stop()
+          await connection.stop().catch(() => {})
           return
         }
-        await connection.invoke("JoinAdminSection", "pending")
+        await connection.invoke("JoinAdminSection", "pending").catch(() => {})
       } catch (error) {
-        console.error("Pending auctions SignalR connection error:", error)
+        isStarting = false
+        // Silently ignore connection errors
       }
     })()
 
@@ -136,14 +143,29 @@ export function PendingAuctions() {
     return () => {
       mounted = false
       connection.off("AdminPendingItemsChanged")
-      startPromise
-        .catch(() => {})
-        .finally(() => {
-          if (connection.state === "Connected") {
-            connection.invoke("LeaveAdminSection", "pending").catch(() => {})
+      const cleanup = async () => {
+        // Wait for connection to finish starting
+        if (isStarting) {
+          const maxWait = 2000
+          const startTime = Date.now()
+          while (isStarting && (Date.now() - startTime) < maxWait) {
+            await new Promise((resolve) => setTimeout(resolve, 100))
           }
-          connection.stop().catch(() => {})
-        })
+        }
+        
+        try {
+          await startPromise.catch(() => {})
+          if (started && connection) {
+            await connection.invoke("LeaveAdminSection", "pending").catch(() => {})
+          }
+          if (connection) {
+            await connection.stop().catch(() => {})
+          }
+        } catch {
+          // Silently ignore all cleanup errors
+        }
+      }
+      void cleanup()
     }
   }, [fetchPendingItems])
 
