@@ -5,6 +5,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { UserCreateDto } from "@/lib/api/types"
 
 interface CreateUserDialogProps {
@@ -23,6 +33,7 @@ export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDia
   })
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -55,13 +66,17 @@ export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDia
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!validateForm()) {
       return
     }
 
+    setConfirmOpen(true)
+  }
+
+  const handleConfirmCreate = async () => {
     try {
       setIsLoading(true)
       await onSubmit(formData)
@@ -74,9 +89,28 @@ export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDia
         avatarUrl: "",
       })
       setErrors({})
+      setConfirmOpen(false)
       onOpenChange(false)
-    } catch (error) {
-      console.error("Error creating user:", error)
+    } catch (error: any) {
+      const message = error?.message || "Không thể tạo người dùng"
+      const lowerMsg = message.toLowerCase()
+      const serverErrors: Record<string, string> = {}
+
+      if (lowerMsg.includes("email") && lowerMsg.includes("tồn tại")) {
+        serverErrors.email = "Email đã tồn tại"
+      }
+      if (lowerMsg.includes("số điện thoại") || lowerMsg.includes("phone")) {
+        serverErrors.phone = "Số điện thoại không hợp lệ"
+      }
+      if (lowerMsg.includes("url avatar") || lowerMsg.includes("avatar url")) {
+        serverErrors.avatarUrl = "URL avatar không hợp lệ"
+      }
+
+      setErrors((prev) => ({
+        ...prev,
+        ...(Object.keys(serverErrors).length > 0 ? serverErrors : { email: message }),
+      }))
+      setConfirmOpen(false)
     } finally {
       setIsLoading(false)
     }
@@ -91,18 +125,22 @@ export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDia
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email *</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="user@example.com"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              disabled={isLoading}
-            />
-            {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
-          </div>
+        <div className="space-y-2">
+  <Label htmlFor="email">Email *</Label>
+  <Input
+    id="email"
+    type="email"
+    placeholder="user@example.com"
+    value={formData.email}
+    onChange={(e) => {
+      setFormData({ ...formData, email: e.target.value })
+      setErrors((prev) => ({ ...prev, email: "" })) // XÓA LỖI EMAIL KHI USER NHẬP LẠI
+    }}
+    disabled={isLoading}
+  />
+  {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
+</div>
+
 
           <div className="space-y-2">
             <Label htmlFor="password">Mật khẩu *</Label>
@@ -136,7 +174,10 @@ export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDia
               type="tel"
               placeholder="0901234567"
               value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, phone: e.target.value })
+                setErrors((prev) => ({ ...prev, phone: "" }))
+              }}
               disabled={isLoading}
             />
             {errors.phone && <p className="text-sm text-destructive">{errors.phone}</p>}
@@ -149,7 +190,10 @@ export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDia
               type="url"
               placeholder="https://example.com/avatar.jpg"
               value={formData.avatarUrl}
-              onChange={(e) => setFormData({ ...formData, avatarUrl: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, avatarUrl: e.target.value })
+                setErrors((prev) => ({ ...prev, avatarUrl: "" }))
+              }}
               disabled={isLoading}
             />
             {errors.avatarUrl && <p className="text-sm text-destructive">{errors.avatarUrl}</p>}
@@ -165,6 +209,33 @@ export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDia
           </div>
         </form>
       </DialogContent>
+
+      {/* Xác nhận tạo người dùng */}
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (!isLoading) {
+            setConfirmOpen(open)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận tạo người dùng</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn tạo người dùng mới với các thông tin đã nhập?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isLoading} onClick={() => setConfirmOpen(false)}>
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction disabled={isLoading} onClick={handleConfirmCreate}>
+              {isLoading ? "Đang tạo..." : "Xác nhận"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

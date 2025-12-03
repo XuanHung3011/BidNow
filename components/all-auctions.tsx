@@ -208,6 +208,23 @@ useEffect(() => {
     return copy
   }, [items, sortBy])
 
+  // Chỉ hiển thị auction chưa bị hủy / chưa kết thúc
+  const visibleItems = useMemo(() => {
+    const isVisibleStatus = (status?: string | null) => {
+      const s = status?.toLowerCase() ?? ""
+      // Ẩn các phiên đã hủy hoặc đã kết thúc
+      if (s === "cancelled" || s === "canceled" || s === "completed" || s === "ended") {
+        return false
+      }
+      return true
+    }
+
+    return sortedItems.filter((auction) => {
+      if (!auction.auctionId) return false
+      return isVisibleStatus(auction.auctionStatus)
+    })
+  }, [sortedItems])
+
   const totalPages = totalCount ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1
 
   // statuses list (could be dynamic from API)
@@ -242,7 +259,7 @@ useEffect(() => {
   <div className="container mx-auto px-4">
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
       <p className="text-sm text-muted-foreground">
-        {loading ? 'Đang tải...' : `Hiển thị ${totalCount ?? 0} kết quả`}
+        {loading ? "Đang tải..." : `Hiển thị ${visibleItems.length} kết quả`}
       </p>
 
       <Select value={sortBy} onValueChange={setSortBy}>
@@ -356,9 +373,7 @@ useEffect(() => {
             ? Array.from({ length: pageSize }).map((_, i) => (
                 <div key={i} className="h-80 animate-pulse rounded-lg bg-gray-100" />
               ))
-            : sortedItems
-                .filter(auction => auction.auctionId) // Chỉ hiển thị items có auctionId
-                .map((auction, index) => {
+            : visibleItems.map((auction, index) => {
                 // Tạo key unique: luôn kết hợp với index để đảm bảo không trùng
                 const uniqueKey = `auction-${auction.auctionId}-${index}`;
                 return (

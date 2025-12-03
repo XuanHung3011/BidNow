@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -50,6 +50,13 @@ export function CategoryManagement() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryDtos | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [categoriesInUse, setCategoriesInUse] = useState<Record<number, boolean>>({})
+  const [confirmAction, setConfirmAction] = useState<"create" | "update" | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Result dialog state
+  const [resultDialogOpen, setResultDialogOpen] = useState(false)
+  const [resultDialogTitle, setResultDialogTitle] = useState("")
+  const [resultDialogMessage, setResultDialogMessage] = useState("")
 
   // Form states
   const [formData, setFormData] = useState<CreateCategoryDtos>({
@@ -156,170 +163,158 @@ export function CategoryManagement() {
     return true
   }
 
-  // Check name existence when name changes (debounced)
-  useEffect(() => {
-    const checkName = async () => {
+  const checkNameAvailability = useCallback(
+    async (showEmptyError: boolean) => {
       const name = formData.name.trim()
-      
-      // Validate required field first
+
       if (!name) {
-        if (touched.name) {
+        if (showEmptyError) {
           setNameError("Tên danh mục không được để trống")
         } else {
           setNameError("")
         }
-        return
+        return false
       }
 
-      // Only check if we're in create or edit dialog
       if (!showCreateDialog && !showEditDialog) {
-        return
+        return true
       }
 
       setIsCheckingName(true)
       try {
         const excludeId = showEditDialog && selectedCategory ? selectedCategory.id : undefined
         const exists = await CategoriesAPI.checkName(name, excludeId)
-        
+
         if (exists) {
           setNameError("Tên danh mục này đã tồn tại")
-        } else {
-          setNameError("")
+          return false
         }
-      } catch (error) {
-        // Silently fail validation check
+
         setNameError("")
+        return true
+      } catch {
+        setNameError("")
+        return true
       } finally {
         setIsCheckingName(false)
       }
-    }
+    },
+    [formData.name, showCreateDialog, showEditDialog, selectedCategory]
+  )
 
-    const timer = setTimeout(checkName, 500) // Debounce 500ms
-    return () => clearTimeout(timer)
-  }, [formData.name, showCreateDialog, showEditDialog, selectedCategory, touched.name])
-
-  // Validate slug when it changes
+  // Check name existence when name changes (debounced)
   useEffect(() => {
-    if (touched.slug) {
-      validateField("slug", formData.slug)
-    }
-  }, [formData.slug, touched.slug])
-
-  const handleCreate = async () => {
-    try {
-      // Mark all fields as touched
-      setTouched({ name: true, slug: true })
-
-      // Validate all required fields
-      const isNameValid = validateField("name", formData.name)
-      const isSlugValid = validateField("slug", formData.slug)
-
-      if (!isNameValid || !isSlugValid) {
-        toast({
-          title: "Lỗi",
-          description: "Vui lòng điền đầy đủ thông tin bắt buộc",
-          variant: "destructive",
-        })
+    const timer = setTimeout(() => {
+      if (!showCreateDialog && !showEditDialog) {
         return
       }
-
-      // Check name one more time before creating
-      if (nameError) {
-        toast({
-          title: "Lỗi",
-          description: nameError,
-          variant: "destructive",
-        })
-        return
-      }
-
-      // Wait for name check to complete if in progress
-      if (isCheckingName) {
-        await new Promise(resolve => setTimeout(resolve, 600))
-        if (nameError) {
-          toast({
-            title: "Lỗi",
-            description: nameError,
-            variant: "destructive",
-          })
+      // Trong edit mode, chỉ check nếu tên đã thay đổi
+      if (showEditDialog && selectedCategory) {
+        const currentName = formData.name.trim()
+        const originalName = selectedCategory.name.trim()
+        if (currentName === originalName) {
+          // Tên không thay đổi, không cần check
+          setNameError("")
+          setIsCheckingName(false)
           return
         }
       }
+      void checkNameAvailability(touched.name)
+    }, 500) // Debounce 500ms
 
-      await CategoriesAPI.create(formData)
+    return () => clearTimeout(timer)
+  }, [formData.name, checkNameAvailability, showCreateDialog, showEditDialog, touched.name, selectedCategory])
+
+  // Validate slug when it changes (chỉ khi đã touched)
+  useEffect(() => {
+    if (touched.slug && (showCreateDialog || showEditDialog)) {
+      validateField("slug", formData.slug)
+    }
+  }, [formData.slug, touched.slug, showCreateDialog, showEditDialog])
+
+  const validateForm = useCallback(async () => {
+    setTouched({ name: true, slug: true })
+
+    const isNameValid = validateField("name", formData.name)
+    const isSlugValid = validateField("slug", formData.slug)
+
+    if (!isNameValid || !isSlugValid) {
       toast({
-        title: "Thành công",
-        description: "Đã tạo danh mục mới",
+        title: "Lỗi",
+        description: "Vui lòng điền đầy đủ thông tin bắt buộc",
+        variant: "destructive",
       })
+      return false
+    }
+
+    const isNameAvailable = await checkNameAvailability(true)
+    if (!isNameAvailable) {
+      toast({
+        title: "Lỗi",
+        description: nameError || "Tên danh mục này đã tồn tại",
+        variant: "destructive",
+      })
+      return false
+    }
+
+    return true
+  }, [checkNameAvailability, formData.name, formData.slug, nameError, toast])
+
+  const requestConfirmation = async (action: "create" | "update") => {
+    const isValid = await validateForm()
+    if (!isValid) {
+      return
+    }
+    setConfirmAction(action)
+  }
+
+  const handleCreate = async () => {
+    setIsSubmitting(true)
+    try {
+      await CategoriesAPI.create(formData)
       setShowCreateDialog(false)
       resetForm()
       loadCategories()
+      setResultDialogTitle("Tạo danh mục thành công")
+      setResultDialogMessage(
+        `Danh mục "${formData.name}" đã được tạo thành công.`
+      )
+      setResultDialogOpen(true)
     } catch (error: any) {
-      toast({
-        title: "Lỗi",
-        description: error.message || "Không thể tạo danh mục",
-        variant: "destructive",
-      })
+      setResultDialogTitle("Tạo danh mục thất bại")
+      setResultDialogMessage(
+        error.message || "Không thể tạo danh mục. Vui lòng thử lại sau."
+      )
+      setResultDialogOpen(true)
+    } finally {
+      setIsSubmitting(false)
+      setConfirmAction(null)
     }
   }
 
   const handleUpdate = async () => {
     if (!selectedCategory) return
 
+    setIsSubmitting(true)
     try {
-      // Mark all fields as touched
-      setTouched({ name: true, slug: true })
-
-      // Validate all required fields
-      const isNameValid = validateField("name", formData.name)
-      const isSlugValid = validateField("slug", formData.slug)
-
-      if (!isNameValid || !isSlugValid) {
-        toast({
-          title: "Lỗi",
-          description: "Vui lòng điền đầy đủ thông tin bắt buộc",
-          variant: "destructive",
-        })
-        return
-      }
-
-      // Check name one more time before updating
-      if (nameError) {
-        toast({
-          title: "Lỗi",
-          description: nameError,
-          variant: "destructive",
-        })
-        return
-      }
-
-      // Wait for name check to complete if in progress
-      if (isCheckingName) {
-        await new Promise(resolve => setTimeout(resolve, 600))
-        if (nameError) {
-          toast({
-            title: "Lỗi",
-            description: nameError,
-            variant: "destructive",
-          })
-          return
-        }
-      }
-
       await CategoriesAPI.update(selectedCategory.id, formData)
-      toast({
-        title: "Thành công",
-        description: "Đã cập nhật danh mục",
-      })
       setShowEditDialog(false)
       resetForm()
       loadCategories()
+      setResultDialogTitle("Cập nhật danh mục thành công")
+      setResultDialogMessage(
+        `Danh mục "${formData.name}" đã được cập nhật thành công.`
+      )
+      setResultDialogOpen(true)
     } catch (error: any) {
-      toast({
-        title: "Lỗi",
-        description: error.message || "Không thể cập nhật danh mục",
-        variant: "destructive",
-      })
+      setResultDialogTitle("Cập nhật danh mục thất bại")
+      setResultDialogMessage(
+        error.message || "Không thể cập nhật danh mục. Vui lòng thử lại sau."
+      )
+      setResultDialogOpen(true)
+    } finally {
+      setIsSubmitting(false)
+      setConfirmAction(null)
     }
   }
 
@@ -331,22 +326,22 @@ export function CategoryManagement() {
   
     try {
       await CategoriesAPI.delete(selectedCategory.id)
-      toast({
-        title: "Xóa thành công",
-        description: `Đã xóa danh mục "${categoryName}"`,
-      })
       setShowDeleteDialog(false)
       setSelectedCategory(null)
       loadCategories()
+      setResultDialogTitle("Xóa danh mục thành công")
+      setResultDialogMessage(
+        `Danh mục "${categoryName}" đã được xóa thành công.`
+      )
+      setResultDialogOpen(true)
     } catch (error: any) {
       // Giữ dialog mở khi thất bại
-      toast({
-        title: "Không thể xóa",
-        description:
-          error.message ||
-          "Danh mục này đang được sử dụng hoặc có ràng buộc dữ liệu. Vui lòng kiểm tra lại.",
-        variant: "destructive",
-      })
+      setResultDialogTitle("Xóa danh mục thất bại")
+      setResultDialogMessage(
+        error.message ||
+          "Danh mục này đang được sử dụng hoặc có ràng buộc dữ liệu. Vui lòng kiểm tra lại."
+      )
+      setResultDialogOpen(true)
     } finally {
       setIsDeleting(false)
     }
@@ -381,6 +376,17 @@ export function CategoryManagement() {
     setTouched({ name: false, slug: false })
     setShowEditDialog(true)
   }
+  
+  // Reset form when closing edit dialog
+  useEffect(() => {
+    if (!showEditDialog) {
+      setSelectedCategory(null)
+      setNameError("")
+      setSlugError("")
+      setIsCheckingName(false)
+      setTouched({ name: false, slug: false })
+    }
+  }, [showEditDialog])
 
   const openDeleteDialog = (category: CategoryDtos) => {
     setSelectedCategory(category)
@@ -549,7 +555,12 @@ export function CategoryManagement() {
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, name: e.target.value })
+                  if (nameError && nameError !== "Tên danh mục này đã tồn tại") {
+                    setNameError("")
+                  }
+                }}
                 onBlur={() => {
                   setTouched((prev) => ({ ...prev, name: true }))
                   validateField("name", formData.name)
@@ -569,7 +580,10 @@ export function CategoryManagement() {
               <Input
                 id="slug"
                 value={formData.slug}
-                onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, slug: e.target.value })
+                  setSlugError("")
+                }}
                 onBlur={() => {
                   setTouched((prev) => ({ ...prev, slug: true }))
                   validateField("slug", formData.slug)
@@ -606,9 +620,15 @@ export function CategoryManagement() {
               <X className="mr-2 h-4 w-4" />
               Hủy
             </Button>
-            <Button 
-              onClick={handleCreate} 
-              disabled={!!nameError || !!slugError || isCheckingName || !formData.name.trim() || !formData.slug.trim()}
+            <Button
+              onClick={() => requestConfirmation("create")}
+              disabled={
+                !!nameError ||
+                !!slugError ||
+                isCheckingName ||
+                !formData.name.trim() ||
+                !formData.slug.trim()
+              }
             >
               <Save className="mr-2 h-4 w-4" />
               Tạo
@@ -630,7 +650,12 @@ export function CategoryManagement() {
               <Input
                 id="edit-name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, name: e.target.value })
+                  if (nameError && nameError !== "Tên danh mục này đã tồn tại") {
+                    setNameError("")
+                  }
+                }}
                 onBlur={() => {
                   setTouched((prev) => ({ ...prev, name: true }))
                   validateField("name", formData.name)
@@ -650,7 +675,10 @@ export function CategoryManagement() {
               <Input
                 id="edit-slug"
                 value={formData.slug}
-                onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, slug: e.target.value })
+                  setSlugError("")
+                }}
                 onBlur={() => {
                   setTouched((prev) => ({ ...prev, slug: true }))
                   validateField("slug", formData.slug)
@@ -687,9 +715,15 @@ export function CategoryManagement() {
               <X className="mr-2 h-4 w-4" />
               Hủy
             </Button>
-            <Button 
-              onClick={handleUpdate} 
-              disabled={!!nameError || !!slugError || isCheckingName || !formData.name.trim() || !formData.slug.trim()}
+            <Button
+              onClick={() => requestConfirmation("update")}
+              disabled={
+                !!nameError ||
+                !!slugError ||
+                isCheckingName ||
+                !formData.name.trim() ||
+                !formData.slug.trim()
+              }
             >
               <Save className="mr-2 h-4 w-4" />
               Lưu
@@ -697,6 +731,40 @@ export function CategoryManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Create / Update Confirmation Dialog */}
+      <AlertDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => {
+          if (!isSubmitting) {
+            setConfirmAction(open ? confirmAction : null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === "create" ? "Xác nhận thêm danh mục" : "Xác nhận lưu chỉnh sửa"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction === "create"
+                ? "Bạn có chắc chắn muốn tạo danh mục mới với các thông tin đã nhập?"
+                : `Bạn có chắc chắn muốn lưu thay đổi cho danh mục "${selectedCategory?.name}"?`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting} onClick={() => setConfirmAction(null)}>
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmAction === "create" ? handleCreate : handleUpdate}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Đang xử lý..." : "Xác nhận"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog
@@ -725,9 +793,23 @@ export function CategoryManagement() {
         {isDeleting ? "Đang xóa..." : "Xóa"}
       </AlertDialogAction>
     </AlertDialogFooter>
-  </AlertDialogContent>
+    </AlertDialogContent>
 </AlertDialog>
 
+      {/* Result Dialog */}
+      <Dialog open={resultDialogOpen} onOpenChange={setResultDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{resultDialogTitle || "Thông báo"}</DialogTitle>
+            <DialogDescription className="whitespace-pre-line">
+              {resultDialogMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setResultDialogOpen(false)}>Đóng</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

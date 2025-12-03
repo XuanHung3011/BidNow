@@ -80,7 +80,7 @@ export function HeroSearchBar() {
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
               <Input
                 type="text"
-                placeholder="Tìm kiếm sản phẩm, thương hiệu, từ khóa..."
+                placeholder="Tìm kiếm sản phẩm, người bán, từ khóa..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value)

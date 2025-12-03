@@ -480,12 +480,12 @@ export function Header() {
                   {notifications.length > 0 && (
                     <>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem
+                      {/* <DropdownMenuItem
                         className="justify-center text-xs text-muted-foreground cursor-pointer"
                         onClick={() => router.push("/notifications")}
                       >
                         Xem tất cả thông báo
-                      </DropdownMenuItem>
+                      </DropdownMenuItem> */}
                     </>
                   )}
                 </DropdownMenuContent>
