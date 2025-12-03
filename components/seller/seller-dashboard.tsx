@@ -12,6 +12,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 export function SellerDashboard() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [selectedDraftItem, setSelectedDraftItem] = useState<any>(null)
+  const [draftRefreshTrigger, setDraftRefreshTrigger] = useState(0)
   const searchParams = useSearchParams()
   const router = useRouter()
 
@@ -33,6 +34,16 @@ export function SellerDashboard() {
     setShowCreateDialog(true)
   }
 
+  const handleSelectPendingItem = (item: any) => {
+    setSelectedDraftItem(item)
+    setShowCreateDialog(true)
+  }
+
+  const handleDraftDeleted = () => {
+    // Trigger refresh of draft list and pending list
+    setDraftRefreshTrigger(prev => prev + 1)
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -49,10 +60,11 @@ export function SellerDashboard() {
       <SellerStats />
 
       <Tabs defaultValue="active" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto">
           <TabsTrigger value="active">Đang diễn ra</TabsTrigger>
           <TabsTrigger value="scheduled">Sắp diễn ra</TabsTrigger>
           <TabsTrigger value="completed">Đã kết thúc</TabsTrigger>
+          <TabsTrigger value="pending">Đang chờ duyệt</TabsTrigger>
           <TabsTrigger value="draft">Bản nháp</TabsTrigger>
         </TabsList>
 
@@ -68,8 +80,17 @@ export function SellerDashboard() {
           <SellerAuctionsList status="completed" />
         </TabsContent>
 
+        <TabsContent value="pending" className="mt-6">
+          <SellerAuctionsList 
+            status="pending" 
+            onSelectDraftItem={handleSelectPendingItem}
+            onItemDeleted={handleDraftDeleted}
+            refreshTrigger={draftRefreshTrigger} 
+          />
+        </TabsContent>
+
         <TabsContent value="draft" className="mt-6">
-          <SellerAuctionsList status="draft" onSelectDraftItem={handleSelectDraftItem} />
+          <SellerAuctionsList status="draft" onSelectDraftItem={handleSelectDraftItem} refreshTrigger={draftRefreshTrigger} />
         </TabsContent>
       </Tabs>
 
@@ -82,6 +103,7 @@ export function SellerDashboard() {
           }
         }}
         draftItem={selectedDraftItem}
+        onDraftDeleted={handleDraftDeleted}
       />
     </div>
   )
