@@ -103,7 +103,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
           winnerId: result.winnerId ?? prev.winnerId,
           winnerName:
             result.winnerId && result.winnerId === Number(user.id)
-              ? user.fullName ?? user.email ?? "Bạn"
+              ? user.name ?? user.email ?? "Bạn"
               : prev.winnerName,
         }
       })
@@ -114,14 +114,17 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     }
   }
 
-  // Fetch auction detail
+  // Fetch auction detail (kèm userId để backend log view cho AI recommend)
   useEffect(() => {
     let mounted = true
     
     const fetchAuction = async () => {
       try {
         setLoading(true)
-        const data = await AuctionsAPI.getDetail(Number(auctionId))
+        const data = await AuctionsAPI.getDetail(
+          Number(auctionId),
+          user?.id ? Number(user.id) : undefined
+        )
         
         if (!mounted) return
         setAuction(data)
@@ -135,11 +138,11 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
         setLoading(false)
       }
     }
-    
+
     fetchAuction()
     
     return () => { mounted = false }
-  }, [auctionId])
+  }, [auctionId, user?.id])
 
   useEffect(() => {
     setBuyNowError(null)
