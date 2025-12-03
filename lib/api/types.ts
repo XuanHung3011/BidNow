@@ -48,6 +48,7 @@ export interface ItemResponseDto {
   id: number;
   title: string;
   description?: string;
+  itemSpecifics?: string;
   basePrice?: number;
   condition?: string;
   images?: string | string[];
@@ -74,6 +75,7 @@ export interface CreateItemDto {
   categoryId: number;
   title: string;
   description?: string;
+  itemSpecifics?: string;
   condition?: string;
   location?: string;
   basePrice: number;
