@@ -78,6 +78,7 @@ export const API_ENDPOINTS = {
       GET_PAGED: "/api/home/items/paged",
       SEARCH: "/api/home/search",
       CREATE_DRAFT: "/api/Items/draft",
+      UPDATE_DRAFT: (id: number) => `/api/Items/draft/${id}`,
       SEARCH_PAGED: "/api/home/search/paged",
       FILTER: "/api/home/filter",            // <-- endpoint filter (POST)
       CATEGORIES: "/api/home/categories",
@@ -130,6 +131,7 @@ export const API_ENDPOINTS = {
     GET_ANALYTICS: "/api/PlatformAnalytics",
   },
   AUCTIONS: {
+    GET_ALL: "/api/Auctions",
     GET_BY_ID: (id: number) => `/api/Auctions/${id}`,
     CREATE: "/api/Auctions",
     GET_PENDING: "/api/Auctions/pending",

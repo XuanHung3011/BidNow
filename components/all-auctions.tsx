@@ -10,9 +10,10 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ItemsAPI } from "@/lib/api/items"
-import type { ItemResponseDto, ItemFilterDto, CategoryDto } from "@/lib/api/types"
+import { AuctionsAPI, AuctionListItemDto, AuctionFilterParams } from "@/lib/api/auctions"
+import type { ItemFilterDto, CategoryDto } from "@/lib/api/types"
 import { useSearchParams } from "next/navigation"
-import { getImageUrls } from "@/lib/api/config"
+import { getImageUrls, getImageUrl } from "@/lib/api/config"
 
 // helper nhỏ
 const formatCurrency = (v?: number) =>
@@ -27,61 +28,31 @@ export function AllAuctions() {
   const [debouncedQuery, setDebouncedQuery] = useState<string>(qParam)
 
   // filter states (form values inside sheet)
-  // <-- CHANGED: store category IDs as numbers
+  // Note: Category and price filters are not yet supported by auctions API
   const [selectedCategories, setSelectedCategories] = useState<number[]>([])
   const [minPriceStr, setMinPriceStr] = useState<string>("")
   const [maxPriceStr, setMaxPriceStr] = useState<string>("")
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
   const [categories, setCategories] = useState<CategoryDto[]>([])
 
-  // activeFilter = filter đã nhấn "Áp dụng"
-  const [activeFilter, setActiveFilter] = useState<ItemFilterDto | null>(null)
-
   const [sortBy, setSortBy] = useState("ending-soon")
   const [page, setPage] = useState(1)
   const [pageSize] = useState(12)
 
-  const [items, setItems] = useState<ItemResponseDto[]>([])
+  const [auctions, setAuctions] = useState<AuctionListItemDto[]>([])
   const [totalCount, setTotalCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-// sync q param & categoryId param -> searchQuery, reset page
+// sync q param -> searchQuery, reset page
 useEffect(() => {
   const newQ = searchParams?.get("q") ?? ""
   setSearchQuery(newQ)
   setDebouncedQuery(newQ)
   setPage(1)
 
-  // NEW: check categoryId param and auto-apply or clear
-  const catIdParam = searchParams?.get("categoryId")
-
-  if (catIdParam) {
-    const parsed = Number(catIdParam)
-    if (!Number.isNaN(parsed)) {
-      // if categoryId exists -> set selection + apply filter for that single category
-      setSelectedCategories([parsed])
-      const newFilter: ItemFilterDto = {
-        categoryIds: [parsed],
-        // keep searchTerm if present
-        searchTerm: newQ || undefined
-      }
-      setActiveFilter(newFilter)
-      setPage(1)
-    } else {
-      // malformed param -> clear filters
-      setSelectedCategories([])
-      setActiveFilter(null)
-      setPage(1)
-    }
-  } else {
-    // NO categoryId param -> clear category filter so "Tất cả" shows everything
-    setSelectedCategories([])
-    // Only clear activeFilter if it was set by URL category. 
-    // For simplicity and to match "All" behavior, we clear activeFilter here.
-    setActiveFilter(null)
-    setPage(1)
-  }
+  // Note: Category filter from URL is not yet supported by auctions API
+  // Can be added later if needed
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [searchParams?.toString()])
@@ -112,24 +83,11 @@ useEffect(() => {
   const toggleArrayItemNum = (arr: number[], value: number) =>
     arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value]
 
-  // Apply filter: build ItemFilterDto and set activeFilter
+  // Apply filter: Note - Category and price filters are not yet supported by auctions API
   const applyFilter = () => {
-    const filter: ItemFilterDto = {}
-
-    // <-- CHANGED: send categoryIds as number[] to match backend DTO
-    if (selectedCategories.length) filter.categoryIds = selectedCategories
-
-    // <-- CHANGED: send auctionStatuses (backend expects auctionStatuses)
-    if (selectedStatuses.length) filter.auctionStatuses = selectedStatuses
-
-    const min = Number(minPriceStr)
-    const max = Number(maxPriceStr)
-    if (!Number.isNaN(min) && min > 0) filter.minPrice = min
-    if (!Number.isNaN(max) && max > 0) filter.maxPrice = max
-    // include search term if present (optional)
-    if (debouncedQuery) filter.searchTerm = debouncedQuery
-
-    setActiveFilter(filter)
+    // For now, just show a message that these filters are not yet supported
+    // In the future, these can be added to the backend auctions API
+    console.log("Category and price filters are not yet supported for auctions API")
     setPage(1)
   }
 
@@ -138,12 +96,10 @@ useEffect(() => {
     setSelectedStatuses([])
     setMinPriceStr("")
     setMaxPriceStr("")
-    setActiveFilter(null)
-    // optionally refetch unfiltered results; page already set to 1
     setPage(1)
   }
 
-  // fetch whenever page / debouncedQuery / activeFilter changes
+  // fetch whenever page / debouncedQuery / activeFilter / sortBy changes
   useEffect(() => {
     let isMounted = true
     setLoading(true)
@@ -151,27 +107,38 @@ useEffect(() => {
 
     const fetchData = async () => {
       try {
-        if (activeFilter) {
-          const res = await ItemsAPI.filterPaged(activeFilter, page, pageSize)
-          if (!isMounted) return
-          setItems(res.items)
-          setTotalCount(res.pagination?.totalCount ?? res.items.length)
-        } else if (debouncedQuery) {
-          const res = await ItemsAPI.searchPaged(debouncedQuery, page, pageSize)
-          if (!isMounted) return
-          setItems(res.items)
-          setTotalCount(res.pagination?.totalCount ?? res.items.length)
-        } else {
-          const res = await ItemsAPI.getPaged(page, pageSize)
-          if (!isMounted) return
-          setItems(res.items)
-          setTotalCount(res.pagination?.totalCount ?? res.items.length)
+        // Map sortBy to backend sortBy values
+        let backendSortBy = "EndTime"
+        if (sortBy === 'ending-soon') backendSortBy = "EndTime"
+        else if (sortBy === 'newest') backendSortBy = "EndTime" // Use EndTime as proxy for newest
+        else if (sortBy === 'price-low' || sortBy === 'price-high') backendSortBy = "CurrentBid"
+        else if (sortBy === 'most-bids') backendSortBy = "BidCount"
+
+        const backendSortOrder = (sortBy === 'price-low' || sortBy === 'newest') ? "asc" : "desc"
+
+        const params: AuctionFilterParams = {
+          page,
+          pageSize,
+          sortBy: backendSortBy,
+          sortOrder: backendSortOrder
         }
+
+        if (debouncedQuery) {
+          params.searchTerm = debouncedQuery
+        }
+
+        // Note: Category and price filters are not yet supported by auctions API
+        // These would need backend support to filter auctions by category/price
+
+        const res = await AuctionsAPI.getAll(params)
+        if (!isMounted) return
+        setAuctions(res.data)
+        setTotalCount(res.totalCount)
       } catch (err: any) {
-        console.error('Fetch items error', err)
+        console.error('Fetch auctions error', err)
         if (!isMounted) return
         setError(err.message || 'Lỗi khi tải dữ liệu')
-        setItems([])
+        setAuctions([])
         setTotalCount(null)
       } finally {
         if (!isMounted) return
@@ -181,32 +148,13 @@ useEffect(() => {
 
     fetchData()
     return () => { isMounted = false }
-  }, [debouncedQuery, activeFilter, page, pageSize])
+  }, [debouncedQuery, page, pageSize, sortBy])
 
-  // sort client-side unchanged
-  const sortedItems = useMemo(() => {
-    const copy = [...items]
-    if (sortBy === 'ending-soon') {
-      return copy.sort((a, b) => {
-        const at = a.auctionEndTime ? new Date(a.auctionEndTime).getTime() : Infinity
-        const bt = b.auctionEndTime ? new Date(b.auctionEndTime).getTime() : Infinity
-        return at - bt
-      })
-    }
-    if (sortBy === 'newest') {
-      return copy.sort((a,b)=> new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime())
-    }
-    if (sortBy === 'price-low') {
-      return copy.sort((a,b)=>(a.currentBid ?? a.startingBid ?? a.basePrice ?? 0) - (b.currentBid ?? b.startingBid ?? b.basePrice ?? 0))
-    }
-    if (sortBy === 'price-high') {
-      return copy.sort((a,b)=>(b.currentBid ?? b.startingBid ?? b.basePrice ?? 0) - (a.currentBid ?? a.startingBid ?? a.basePrice ?? 0))
-    }
-    if (sortBy === 'most-bids') {
-      return copy.sort((a,b)=> (b.bidCount ?? 0) - (a.bidCount ?? 0))
-    }
-    return copy
-  }, [items, sortBy])
+  // Sort is now handled by backend, but we can do additional client-side sorting if needed
+  const sortedAuctions = useMemo(() => {
+    // Backend already sorts, but we can apply additional sorting if needed
+    return [...auctions]
+  }, [auctions])
 
   // Chỉ hiển thị auction chưa bị hủy / chưa kết thúc
   const visibleItems = useMemo(() => {
@@ -307,24 +255,158 @@ useEffect(() => {
               ))
             )}
           </div>
-        </div>
 
-        {/* Khoảng giá */}
-        <div className="space-y-3 mb-6">
-          <Label className="text-base font-semibold">Khoảng giá</Label>
-          <div className="flex gap-2">
-            <Input
-              value={minPriceStr}
-              onChange={(e) => setMinPriceStr(e.target.value)}
-              type="number"
-              placeholder="Tối thiểu"
-            />
-            <Input
-              value={maxPriceStr}
-              onChange={(e) => setMaxPriceStr(e.target.value)}
-              type="number"
-              placeholder="Tối đa"
-            />
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Sidebar Filter */}
+            <aside className="lg:col-span-1 rounded-xl border p-4 bg-white shadow-sm h-fit sticky top-4">
+              <h2 className="text-lg font-semibold mb-4 flex items-center">
+                <SlidersHorizontal className="mr-2 h-5 w-5" />
+                Bộ lọc nâng cao
+              </h2>
+
+              {/* Danh mục */}
+              <div className="space-y-3 mb-6">
+                <Label className="text-base font-semibold">Danh mục</Label>
+                <div className="space-y-2 max-h-48 overflow-auto pr-2">
+                  {categories.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">Đang tải danh mục...</div>
+                  ) : (
+                    categories.map((category) => (
+                      <div key={category.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`cat-${category.id}`}
+                          checked={selectedCategories.includes(Number(category.id))}
+                          onCheckedChange={() =>
+                            setSelectedCategories(toggleArrayItemNum(selectedCategories, Number(category.id)))
+                          }
+                        />
+                        <label htmlFor={`cat-${category.id}`} className="text-sm leading-none">
+                          {category.name}
+                        </label>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Khoảng giá */}
+              <div className="space-y-3 mb-6">
+                <Label className="text-base font-semibold">Khoảng giá</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={minPriceStr}
+                    onChange={(e) => setMinPriceStr(e.target.value)}
+                    type="number"
+                    placeholder="Tối thiểu"
+                  />
+                  <Input
+                    value={maxPriceStr}
+                    onChange={(e) => setMaxPriceStr(e.target.value)}
+                    type="number"
+                    placeholder="Tối đa"
+                  />
+                </div>
+              </div>
+
+              {/* Status filter - commented out for now */}
+              {/* <div className="space-y-3 mb-6">
+                <Label className="text-base font-semibold">Trạng thái</Label>
+                <div className="space-y-2">
+                  {statusOptions.map((status) => (
+                    <div key={status} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`status-${status}`}
+                        checked={selectedStatuses.includes(status)}
+                        onCheckedChange={() =>
+                          setSelectedStatuses(
+                            selectedStatuses.includes(status)
+                              ? selectedStatuses.filter((s) => s !== status)
+                              : [...selectedStatuses, status]
+                          )
+                        }
+                      />
+                      <label
+                        htmlFor={`status-${status}`}
+                        className="text-sm leading-none capitalize"
+                      >
+                        {status}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div> */}
+
+              <div className="flex gap-2">
+                <Button className="flex-1" onClick={applyFilter}>Áp dụng</Button>
+                <Button variant="ghost" className="flex-1" onClick={resetFilter}>Xóa</Button>
+              </div>
+            </aside>
+
+            {/* Danh sách đấu giá */}
+            <div className="lg:col-span-3">
+              {error && <div className="mb-4 text-red-600">Lỗi: {error}</div>}
+
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+                {loading
+                  ? Array.from({ length: pageSize }).map((_, i) => (
+                      <div key={i} className="h-80 animate-pulse rounded-lg bg-gray-100" />
+                    ))
+                  : sortedAuctions
+                      .map((auction, index) => {
+                        // Parse images from itemImages
+                        let firstImage = "/placeholder.jpg"
+                        if (auction.itemImages) {
+                          try {
+                            const imageUrls = getImageUrls(auction.itemImages)
+                            firstImage = imageUrls[0] || "/placeholder.jpg"
+                          } catch {
+                            // If not JSON, try comma-separated or direct URL
+                            firstImage = getImageUrl(auction.itemImages) || "/placeholder.jpg"
+                          }
+                        }
+
+                        return (
+                          <AuctionCard
+                            key={`auction-${auction.id}-${index}`}
+                            auction={{
+                              id: String(auction.id),
+                              title: auction.itemTitle,
+                              image: firstImage,
+                              currentBid: auction.currentBid ?? auction.startingBid ?? 0,
+                              startingBid: auction.startingBid,
+                              startTime: new Date(auction.startTime),
+                              endTime: new Date(auction.endTime),
+                              bidCount: auction.bidCount ?? 0,
+                              category: auction.categoryName ?? "Chưa phân loại",
+                              status: auction.displayStatus ?? auction.status ?? undefined,
+                              pausedAt: auction.pausedAt ?? undefined,
+                            }}
+                          />
+                        )
+                      })}
+              </div>
+
+              {/* Phân trang */}
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <Button
+                  variant="ghost"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1 || loading}
+                >
+                  Trước
+                </Button>
+                <span>
+                  Trang {page} / {totalPages}
+                </span>
+                <Button
+                  variant="ghost"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || loading}
+                >
+                  Sau
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
 
