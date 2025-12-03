@@ -163,6 +163,9 @@ export const ItemsAPI = {
       if (item.description) {
         formData.append('Description', item.description)
       }
+      if (item.itemSpecifics) {
+        formData.append('ItemSpecifics', item.itemSpecifics)
+      }
       if (item.condition) {
         formData.append('Condition', item.condition)
       }
@@ -248,6 +251,9 @@ export const ItemsAPI = {
       if (item.description) {
         formData.append('Description', item.description)
       }
+      if (item.itemSpecifics) {
+        formData.append('ItemSpecifics', item.itemSpecifics)
+      }
       if (item.condition) {
         formData.append('Condition', item.condition)
       }
@@ -308,6 +314,85 @@ export const ItemsAPI = {
       return result
     } catch (error) {
       console.error('Error creating draft item:', error)
+      throw error
+    }
+  },
+
+  // Seller: Update draft item
+  updateDraftItem: async (id: number, item: CreateItemDto, imageFiles?: File[]): Promise<ItemResponseDto> => {
+    try {
+      const url = `${API_BASE}${API_ENDPOINTS.ITEMS.UPDATE_DRAFT(id)}`
+      const formData = new FormData()
+      
+      formData.append('SellerId', item.sellerId.toString())
+      formData.append('CategoryId', item.categoryId.toString())
+      formData.append('Title', item.title)
+      if (item.description) {
+        formData.append('Description', item.description)
+      }
+      if (item.itemSpecifics) {
+        formData.append('ItemSpecifics', item.itemSpecifics)
+      }
+      if (item.condition) {
+        formData.append('Condition', item.condition)
+      }
+      if (item.location) {
+        formData.append('Location', item.location)
+      }
+      formData.append('BasePrice', (item.basePrice || 0).toString())
+      
+      // Add image files
+      if (imageFiles && imageFiles.length > 0) {
+        imageFiles.forEach((file) => {
+          formData.append('images', file)
+        })
+      }
+      
+      const res = await fetch(url, {
+        method: 'PUT',
+        body: formData,
+        cache: 'no-store'
+      })
+      
+      if (!res.ok) {
+        let errorText = ''
+        try {
+          errorText = await res.text()
+          console.error('Error response body:', errorText)
+        } catch (e) {
+          console.error('Error reading response:', e)
+          errorText = `HTTP error ${res.status} ${res.statusText}`
+        }
+        
+        let errorMessage = `Failed to update draft item: ${res.status} ${res.statusText}`
+        if (errorText) {
+          try {
+            const errorJson = JSON.parse(errorText)
+            if (errorJson.message) {
+              errorMessage = errorJson.message
+            } else if (errorJson.error) {
+              errorMessage = errorJson.error
+            }
+          } catch {
+            errorMessage = errorText || errorMessage
+          }
+        }
+        
+        throw new Error(errorMessage)
+      }
+      
+      const contentType = res.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text()
+        console.warn('Unexpected response type:', contentType, 'Body:', text)
+        throw new Error('Unexpected response format from server')
+      }
+      
+      const result = await res.json()
+      console.log('Draft item updated successfully:', result)
+      return result
+    } catch (error) {
+      console.error('Error updating draft item:', error)
       throw error
     }
   },

@@ -956,8 +956,52 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
               </TabsList>
 
               <TabsContent value="description" className="mt-6 space-y-4 text-muted-foreground">
-                <p className="text-lg font-semibold text-foreground">Chi tiết sản phẩm</p>
-                <p className="whitespace-pre-line">{auction.itemDescription || "Chưa có mô tả"}</p>
+                {/* Item Specifics Section */}
+                {auction.itemSpecifics && (() => {
+                  try {
+                    const parsed = JSON.parse(auction.itemSpecifics)
+                    if (typeof parsed === 'object' && parsed !== null) {
+                      const entries = Object.entries(parsed)
+                      if (entries.length > 0) {
+                        return (
+                          <div className="space-y-3">
+                            <p className="text-lg font-semibold text-foreground">Đặc tính thông số sản phẩm</p>
+                            <div className="rounded-lg border border-border bg-muted/30 p-4">
+                              <div className="space-y-2">
+                                {entries.map(([key, value], index) => (
+                                  <div key={index} className="flex gap-4 py-2 border-b border-border last:border-b-0">
+                                    <div className="font-medium text-foreground min-w-[120px]">{key}:</div>
+                                    <div className="text-foreground flex-1">{String(value)}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      }
+                    }
+                  } catch {
+                    // Fallback to plain text if not valid JSON
+                    return (
+                      <div className="space-y-3">
+                        <p className="text-lg font-semibold text-foreground">Đặc tính thông số sản phẩm</p>
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
+                          <pre className="whitespace-pre-wrap text-sm text-foreground font-normal">
+                            {auction.itemSpecifics}
+                          </pre>
+                        </div>
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
+
+                {/* Item Description from Seller Section */}
+                <div className="space-y-3">
+                  <p className="text-lg font-semibold text-foreground">Mô tả chi tiết từ người bán</p>
+                  <p className="whitespace-pre-line text-foreground">{auction.itemDescription || "Chưa có mô tả"}</p>
+                </div>
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-border bg-muted/30 p-4">
                     <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Danh mục</p>
