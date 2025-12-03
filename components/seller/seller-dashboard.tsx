@@ -34,8 +34,13 @@ export function SellerDashboard() {
     setShowCreateDialog(true)
   }
 
+  const handleSelectPendingItem = (item: any) => {
+    setSelectedDraftItem(item)
+    setShowCreateDialog(true)
+  }
+
   const handleDraftDeleted = () => {
-    // Trigger refresh of draft list
+    // Trigger refresh of draft list and pending list
     setDraftRefreshTrigger(prev => prev + 1)
   }
 
@@ -55,10 +60,11 @@ export function SellerDashboard() {
       <SellerStats />
 
       <Tabs defaultValue="active" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto">
           <TabsTrigger value="active">Đang diễn ra</TabsTrigger>
           <TabsTrigger value="scheduled">Sắp diễn ra</TabsTrigger>
           <TabsTrigger value="completed">Đã kết thúc</TabsTrigger>
+          <TabsTrigger value="pending">Đang chờ duyệt</TabsTrigger>
           <TabsTrigger value="draft">Bản nháp</TabsTrigger>
         </TabsList>
 
@@ -72,6 +78,15 @@ export function SellerDashboard() {
 
         <TabsContent value="completed" className="mt-6">
           <SellerAuctionsList status="completed" />
+        </TabsContent>
+
+        <TabsContent value="pending" className="mt-6">
+          <SellerAuctionsList 
+            status="pending" 
+            onSelectDraftItem={handleSelectPendingItem}
+            onItemDeleted={handleDraftDeleted}
+            refreshTrigger={draftRefreshTrigger} 
+          />
         </TabsContent>
 
         <TabsContent value="draft" className="mt-6">
