@@ -25,6 +25,7 @@ export interface AuctionDetailDto {
   itemId: number
   itemTitle: string
   itemDescription?: string
+  itemSpecifics?: string
   itemImages?: string
   categoryId: number
   categoryName?: string
