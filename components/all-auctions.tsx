@@ -167,11 +167,11 @@ useEffect(() => {
       return true
     }
 
-    return sortedItems.filter((auction) => {
-      if (!auction.auctionId) return false
-      return isVisibleStatus(auction.auctionStatus)
+    return sortedAuctions.filter((auction) => {
+      if (!auction.id) return false
+      return isVisibleStatus(auction.status)
     })
-  }, [sortedItems])
+  }, [sortedAuctions])
 
   const totalPages = totalCount ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1
 
@@ -255,159 +255,6 @@ useEffect(() => {
               ))
             )}
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* Sidebar Filter */}
-            <aside className="lg:col-span-1 rounded-xl border p-4 bg-white shadow-sm h-fit sticky top-4">
-              <h2 className="text-lg font-semibold mb-4 flex items-center">
-                <SlidersHorizontal className="mr-2 h-5 w-5" />
-                Bộ lọc nâng cao
-              </h2>
-
-              {/* Danh mục */}
-              <div className="space-y-3 mb-6">
-                <Label className="text-base font-semibold">Danh mục</Label>
-                <div className="space-y-2 max-h-48 overflow-auto pr-2">
-                  {categories.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">Đang tải danh mục...</div>
-                  ) : (
-                    categories.map((category) => (
-                      <div key={category.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`cat-${category.id}`}
-                          checked={selectedCategories.includes(Number(category.id))}
-                          onCheckedChange={() =>
-                            setSelectedCategories(toggleArrayItemNum(selectedCategories, Number(category.id)))
-                          }
-                        />
-                        <label htmlFor={`cat-${category.id}`} className="text-sm leading-none">
-                          {category.name}
-                        </label>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Khoảng giá */}
-              <div className="space-y-3 mb-6">
-                <Label className="text-base font-semibold">Khoảng giá</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={minPriceStr}
-                    onChange={(e) => setMinPriceStr(e.target.value)}
-                    type="number"
-                    placeholder="Tối thiểu"
-                  />
-                  <Input
-                    value={maxPriceStr}
-                    onChange={(e) => setMaxPriceStr(e.target.value)}
-                    type="number"
-                    placeholder="Tối đa"
-                  />
-                </div>
-              </div>
-
-              {/* Status filter - commented out for now */}
-              {/* <div className="space-y-3 mb-6">
-                <Label className="text-base font-semibold">Trạng thái</Label>
-                <div className="space-y-2">
-                  {statusOptions.map((status) => (
-                    <div key={status} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`status-${status}`}
-                        checked={selectedStatuses.includes(status)}
-                        onCheckedChange={() =>
-                          setSelectedStatuses(
-                            selectedStatuses.includes(status)
-                              ? selectedStatuses.filter((s) => s !== status)
-                              : [...selectedStatuses, status]
-                          )
-                        }
-                      />
-                      <label
-                        htmlFor={`status-${status}`}
-                        className="text-sm leading-none capitalize"
-                      >
-                        {status}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </div> */}
-
-              <div className="flex gap-2">
-                <Button className="flex-1" onClick={applyFilter}>Áp dụng</Button>
-                <Button variant="ghost" className="flex-1" onClick={resetFilter}>Xóa</Button>
-              </div>
-            </aside>
-
-            {/* Danh sách đấu giá */}
-            <div className="lg:col-span-3">
-              {error && <div className="mb-4 text-red-600">Lỗi: {error}</div>}
-
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
-                {loading
-                  ? Array.from({ length: pageSize }).map((_, i) => (
-                      <div key={i} className="h-80 animate-pulse rounded-lg bg-gray-100" />
-                    ))
-                  : sortedAuctions
-                      .map((auction, index) => {
-                        // Parse images from itemImages
-                        let firstImage = "/placeholder.jpg"
-                        if (auction.itemImages) {
-                          try {
-                            const imageUrls = getImageUrls(auction.itemImages)
-                            firstImage = imageUrls[0] || "/placeholder.jpg"
-                          } catch {
-                            // If not JSON, try comma-separated or direct URL
-                            firstImage = getImageUrl(auction.itemImages) || "/placeholder.jpg"
-                          }
-                        }
-
-                        return (
-                          <AuctionCard
-                            key={`auction-${auction.id}-${index}`}
-                            auction={{
-                              id: String(auction.id),
-                              title: auction.itemTitle,
-                              image: firstImage,
-                              currentBid: auction.currentBid ?? auction.startingBid ?? 0,
-                              startingBid: auction.startingBid,
-                              startTime: new Date(auction.startTime),
-                              endTime: new Date(auction.endTime),
-                              bidCount: auction.bidCount ?? 0,
-                              category: auction.categoryName ?? "Chưa phân loại",
-                              status: auction.displayStatus ?? auction.status ?? undefined,
-                              pausedAt: auction.pausedAt ?? undefined,
-                            }}
-                          />
-                        )
-                      })}
-              </div>
-
-              {/* Phân trang */}
-              <div className="mt-6 flex items-center justify-center gap-3">
-                <Button
-                  variant="ghost"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || loading}
-                >
-                  Trước
-                </Button>
-                <span>
-                  Trang {page} / {totalPages}
-                </span>
-                <Button
-                  variant="ghost"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages || loading}
-                >
-                  Sau
-                </Button>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Khoảng giá */}
@@ -429,36 +276,6 @@ useEffect(() => {
           </div>
         </div>
 
-       {/*
-  <div className="space-y-3 mb-6">
-    <Label className="text-base font-semibold">Trạng thái</Label>
-    <div className="space-y-2">
-      {statusOptions.map((status) => (
-        <div key={status} className="flex items-center space-x-2">
-          <Checkbox
-            id={`status-${status}`}
-            checked={selectedStatuses.includes(status)}
-            onCheckedChange={() =>
-              setSelectedStatuses(
-                selectedStatuses.includes(status)
-                  ? selectedStatuses.filter((s) => s !== status)
-                  : [...selectedStatuses, status]
-              )
-            }
-          />
-          <label
-            htmlFor={`status-${status}`}
-            className="text-sm leading-none capitalize"
-          >
-            {status}
-          </label>
-        </div>
-      ))}
-    </div>
-  </div>
-*/}
-
-
         <div className="flex gap-2">
           <Button className="flex-1" onClick={applyFilter}>Áp dụng</Button>
           <Button variant="ghost" className="flex-1" onClick={resetFilter}>Xóa</Button>
@@ -475,36 +292,37 @@ useEffect(() => {
                 <div key={i} className="h-80 animate-pulse rounded-lg bg-gray-100" />
               ))
             : visibleItems.map((auction, index) => {
-                // Tạo key unique: luôn kết hợp với index để đảm bảo không trùng
-                const uniqueKey = `auction-${auction.auctionId}-${index}`;
+                // Parse images from itemImages
+                let firstImage = "/placeholder.jpg"
+                if (auction.itemImages) {
+                  try {
+                    const imageUrls = getImageUrls(auction.itemImages)
+                    firstImage = imageUrls[0] || "/placeholder.jpg"
+                  } catch {
+                    // If not JSON, try comma-separated or direct URL
+                    firstImage = getImageUrl(auction.itemImages) || "/placeholder.jpg"
+                  }
+                }
+
                 return (
-                <AuctionCard
-                  key={uniqueKey}
-                  auction={{
-                    // Chỉ dùng auctionId vì API cần auctionId
-                    id: String(auction.auctionId!),
-                    title: auction.title,
-                    image: getImageUrls(auction.images)[0] || "/placeholder.jpg",
-                    currentBid:
-                      auction.currentBid ??
-                      auction.startingBid ??
-                      auction.basePrice ??
-                      0,
-                    startingBid:
-                      auction.startingBid ?? auction.basePrice ?? 0,
-                    startTime: auction.auctionStartTime
-                      ? new Date(auction.auctionStartTime)
-                      : undefined,
-                    endTime: auction.auctionEndTime
-                      ? new Date(auction.auctionEndTime)
-                      : new Date(0),
-                    bidCount: auction.bidCount ?? 0,
-                    category: auction.categoryName ?? "Chưa phân loại",
-                    status: auction.auctionStatus ?? undefined,
-                    pausedAt: auction.pausedAt ?? undefined,
-                  }}
-                />
-              )})}
+                  <AuctionCard
+                    key={`auction-${auction.id}-${index}`}
+                    auction={{
+                      id: String(auction.id),
+                      title: auction.itemTitle,
+                      image: firstImage,
+                      currentBid: auction.currentBid ?? auction.startingBid ?? 0,
+                      startingBid: auction.startingBid ?? 0,
+                      startTime: auction.startTime ? new Date(auction.startTime) : undefined,
+                      endTime: auction.endTime ? new Date(auction.endTime) : new Date(0),
+                      bidCount: auction.bidCount ?? 0,
+                      category: auction.categoryName ?? "Chưa phân loại",
+                      status: auction.displayStatus ?? auction.status ?? undefined,
+                      pausedAt: auction.pausedAt ?? undefined,
+                    }}
+                  />
+                )
+              })}
         </div>
 
         {/* Phân trang */}

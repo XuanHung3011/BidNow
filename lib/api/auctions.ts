@@ -1,5 +1,6 @@
 // lib/api/auctions.ts
 import { API_BASE, API_ENDPOINTS } from './config'
+import type { PaginatedResult } from './types'
 
 export interface BidRequestDto {
   bidderId: number
@@ -147,16 +148,6 @@ export interface AuctionFilterParams {
   sortOrder?: string // asc, desc
   page?: number
   pageSize?: number
-}
-
-export interface PaginatedResult<T> {
-  data: T[]
-  totalCount: number
-  page: number
-  pageSize: number
-  totalPages: number
-  hasPreviousPage: boolean
-  hasNextPage: boolean
 }
 
 export const AuctionsAPI = {
