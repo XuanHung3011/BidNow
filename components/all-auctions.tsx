@@ -210,18 +210,50 @@ useEffect(() => {
         {loading ? "Đang tải..." : `Hiển thị ${visibleItems.length} kết quả`}
       </p>
 
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Sắp xếp theo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ending-soon">Sắp kết thúc</SelectItem>
-                <SelectItem value="newest">Mới nhất</SelectItem>
-                <SelectItem value="price-low">Giá thấp đến cao</SelectItem>
-                <SelectItem value="price-high">Giá cao đến thấp</SelectItem>
-                <SelectItem value="most-bids">Nhiều lượt đấu nhất</SelectItem>
-              </SelectContent>
-            </Select>
+      <Select value={sortBy} onValueChange={setSortBy}>
+        <SelectTrigger className="w-[200px]">
+          <SelectValue placeholder="Sắp xếp theo" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ending-soon">Sắp kết thúc</SelectItem>
+          <SelectItem value="newest">Mới nhất</SelectItem>
+          <SelectItem value="price-low">Giá thấp đến cao</SelectItem>
+          <SelectItem value="price-high">Giá cao đến thấp</SelectItem>
+          <SelectItem value="most-bids">Nhiều lượt đấu nhất</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      {/* Sidebar Filter */}
+      <aside className="lg:col-span-1 rounded-xl border p-4 bg-white shadow-sm h-fit sticky top-4">
+        <h2 className="text-lg font-semibold mb-4 flex items-center">
+          <SlidersHorizontal className="mr-2 h-5 w-5" />
+          Bộ lọc nâng cao
+        </h2>
+
+        {/* Danh mục */}
+        <div className="space-y-3 mb-6">
+          <Label className="text-base font-semibold">Danh mục</Label>
+          <div className="space-y-2 max-h-48 overflow-auto pr-2">
+            {categories.length === 0 ? (
+              <div className="text-sm text-muted-foreground">Đang tải danh mục...</div>
+            ) : (
+              categories.map((category) => (
+                <div key={category.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`cat-${category.id}`}
+                    checked={selectedCategories.includes(Number(category.id))}
+                    onCheckedChange={() =>
+                      setSelectedCategories(toggleArrayItemNum(selectedCategories, Number(category.id)))
+                    }
+                  />
+                  <label htmlFor={`cat-${category.id}`} className="text-sm leading-none">
+                    {category.name}
+                  </label>
+                </div>
+              ))
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
