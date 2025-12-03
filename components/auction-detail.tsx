@@ -66,6 +66,53 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const [loadingWatchlist, setLoadingWatchlist] = useState(false)
   const [watchlistMessage, setWatchlistMessage] = useState<string | null>(null)
   const [recentBids, setRecentBids] = useState<BidDto[]>([])
+  const [buyNowLoading, setBuyNowLoading] = useState(false)
+  const [buyNowMessage, setBuyNowMessage] = useState<string | null>(null)
+  const [buyNowError, setBuyNowError] = useState<string | null>(null)
+
+  const normalizedStatus = useMemo(() => auction?.status?.toLowerCase() ?? "", [auction?.status])
+  const isAuctionLocked = useMemo(() => ["paused", "cancelled", "completed"].includes(normalizedStatus), [normalizedStatus])
+
+  const handleBuyNow = async () => {
+    if (!auction?.buyNowPrice) {
+      return
+    }
+    if (!user) {
+      setBuyNowError("Bạn cần đăng nhập để sử dụng mua ngay")
+      return
+    }
+    if (isAuctionLocked) {
+      setBuyNowError("Phiên đấu giá đã không còn hoạt động")
+      return
+    }
+
+    try {
+      setBuyNowLoading(true)
+      setBuyNowError(null)
+      setBuyNowMessage(null)
+
+      const result = await AuctionsAPI.buyNow(Number(auctionId), { buyerId: Number(user.id) })
+      setBuyNowMessage("Mua ngay thành công! Chúng tôi đã kết thúc phiên đấu giá.")
+
+      setAuction((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          status: result.status,
+          currentBid: result.finalPrice ?? prev.currentBid,
+          winnerId: result.winnerId ?? prev.winnerId,
+          winnerName:
+            result.winnerId && result.winnerId === Number(user.id)
+              ? user.fullName ?? user.email ?? "Bạn"
+              : prev.winnerName,
+        }
+      })
+    } catch (err: any) {
+      setBuyNowError(err.message || "Không thể mua ngay")
+    } finally {
+      setBuyNowLoading(false)
+    }
+  }
 
   // Fetch auction detail
   useEffect(() => {
@@ -92,6 +139,11 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     fetchAuction()
     
     return () => { mounted = false }
+  }, [auctionId])
+
+  useEffect(() => {
+    setBuyNowError(null)
+    setBuyNowMessage(null)
   }, [auctionId])
   
   // SignalR: subscribe to BidPlaced and update UI in real-time
@@ -761,7 +813,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                     <li>3. Nhấn "Đặt giá" để xác nhận.</li>
                   </ol>
           </div>
-                <div className="space-y-3">
+              <div className="space-y-3">
             <div className="flex gap-2">
               <Input
                 type="number"
@@ -809,6 +861,34 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
               </Button>
             </div>
             {placeError && <div className="text-sm text-destructive">{placeError}</div>}
+                  {auction.buyNowPrice && (
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="default"
+                        className="w-full"
+                        disabled={
+                          buyNowLoading ||
+                          !user ||
+                          isAuctionLocked ||
+                          auctionStatus !== "active"
+                        }
+                        onClick={handleBuyNow}
+                      >
+                        {buyNowLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <ShoppingBag className="mr-2 h-4 w-4" />
+                        )}
+                        Mua ngay với giá {formatPrice(auction.buyNowPrice)}
+                      </Button>
+                      {buyNowMessage && (
+                        <div className="text-sm text-emerald-600">{buyNowMessage}</div>
+                      )}
+                      {buyNowError && (
+                        <div className="text-sm text-destructive">{buyNowError}</div>
+                      )}
+                    </div>
+                  )}
                   <div className="grid grid-cols-3 gap-2">
                     {[0, 1, 2].map((idx) => (
               <Button
