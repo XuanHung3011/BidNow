@@ -59,7 +59,20 @@ export function SellerDashboard() {
 
       <SellerStats />
 
-      <Tabs defaultValue="active" className="w-full">
+      <Tabs 
+        value={searchParams.get("tab") || "active"} 
+        onValueChange={(value) => {
+          const params = new URLSearchParams(searchParams.toString())
+          if (value === "active") {
+            params.delete("tab")
+          } else {
+            params.set("tab", value)
+          }
+          const newQuery = params.toString()
+          router.replace(`/seller${newQuery ? `?${newQuery}` : ""}`, { scroll: false })
+        }}
+        className="w-full"
+      >
         <TabsList className="grid w-full grid-cols-5 lg:w-auto">
           <TabsTrigger value="active">Đang diễn ra</TabsTrigger>
           <TabsTrigger value="scheduled">Sắp diễn ra</TabsTrigger>
