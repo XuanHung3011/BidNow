@@ -4,10 +4,11 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Star, MessageSquare, Loader2, AlertCircle } from "lucide-react"
+import { Star, MessageSquare, Loader2, AlertCircle, CreditCard, CheckCircle2, Clock, XCircle } from "lucide-react"
 import Link from "next/link"
 import { AuctionsAPI, type BuyerWonAuctionDto } from "@/lib/api/auctions"
 import { RatingDialog } from "@/components/rating-dialog"
+import { PaymentButton } from "@/components/payment-button"
 
 interface WonAuctionsListProps {
   bidderId: number
@@ -37,6 +38,23 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
     }
   }, [bidderId, page])
 
+  // Refresh data when component becomes visible (e.g., after returning from payment)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible' && bidderId && !isNaN(bidderId)) {
+        loadWonAuctions()
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleFocus)
+    window.addEventListener('focus', handleFocus)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleFocus)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [bidderId])
+
   const loadWonAuctions = async () => {
     try {
       setLoading(true)
@@ -45,6 +63,24 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
       const result = await AuctionsAPI.getBuyerWonAuctions(bidderId, page, pageSize)
       setAuctions(result.data)
       setTotalCount(result.totalCount)
+      
+      // Sync payment status for orders that might have been paid but webhook not called
+      // Only sync if payment status is pending or unknown
+      for (const auction of result.data) {
+        if (auction.hasOrder && auction.orderId && 
+            (!auction.hasPayment || auction.paymentStatus === 'pending')) {
+          try {
+            // Try to sync payment status in background (don't wait)
+            const { PaymentsAPI } = await import('@/lib/api/payments')
+            PaymentsAPI.syncPaymentStatus(auction.orderId).catch(err => {
+              console.log('Background sync payment status failed (non-critical):', err)
+            })
+          } catch (err) {
+            // Ignore errors in background sync
+            console.log('Background sync payment status error (non-critical):', err)
+          }
+        }
+      }
     } catch (err) {
       console.error('Error loading won auctions:', err)
       setError(err instanceof Error ? err.message : 'Không thể tải danh sách đấu giá đã thắng')
@@ -67,6 +103,81 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
       month: '2-digit',
       year: 'numeric'
     })
+  }
+
+  const getPaymentStatusBadge = (auction: BuyerWonAuctionDto) => {
+    if (!auction.hasOrder) {
+      return (
+        <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
+          <Clock className="h-3 w-3 mr-1" />
+          Chưa có đơn hàng
+        </Badge>
+      )
+    }
+
+    // Check payment status first (most important)
+    const paymentStatus = auction.paymentStatus?.toLowerCase() || ''
+    
+    // Priority: Check paid status first
+    if (paymentStatus === 'paid_held' || paymentStatus === 'released_to_seller') {
+      return (
+        <Badge className="bg-green-500 hover:bg-green-600 text-white">
+          <CheckCircle2 className="h-3 w-3 mr-1" />
+          Đã thanh toán
+        </Badge>
+      )
+    }
+
+    if (paymentStatus === 'refunded_to_buyer') {
+      return (
+        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+          <XCircle className="h-3 w-3 mr-1" />
+          Đã hoàn tiền
+        </Badge>
+      )
+    }
+
+    // If has payment record but status is pending or unknown
+    if (auction.hasPayment) {
+      if (paymentStatus === 'pending') {
+        return (
+          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
+            <Clock className="h-3 w-3 mr-1" />
+            Đang chờ thanh toán
+          </Badge>
+        )
+      }
+      // Other payment statuses
+      return (
+        <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-300">
+          <CreditCard className="h-3 w-3 mr-1" />
+          {auction.paymentStatus || 'Chưa xác định'}
+        </Badge>
+      )
+    }
+
+    // No payment record yet
+    return (
+      <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
+        <CreditCard className="h-3 w-3 mr-1" />
+        Chưa thanh toán
+      </Badge>
+    )
+  }
+
+  const getOrderStatusText = (orderStatus?: string) => {
+    if (!orderStatus) return null
+    
+    const statusMap: Record<string, string> = {
+      'awaiting_payment': 'Chờ thanh toán',
+      'awaiting_shipment': 'Chờ vận chuyển',
+      'shipped': 'Đã gửi hàng',
+      'dispute': 'Khiếu nại',
+      'completed': 'Hoàn thành',
+      'cancelled': 'Đã hủy'
+    }
+    
+    return statusMap[orderStatus.toLowerCase()] || orderStatus
   }
 
   const getFirstImage = (images?: string) => {
@@ -147,6 +258,21 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
         <p className="text-sm text-muted-foreground">
           Tổng cộng: <span className="font-semibold">{totalCount}</span> phiên đã thắng
         </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={loadWonAuctions}
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Đang tải...
+            </>
+          ) : (
+            'Làm mới'
+          )}
+        </Button>
       </div>
 
       {auctions.map((auction) => (
@@ -169,6 +295,7 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
                       {auction.categoryName}
                     </Badge>
                   )}
+                  {getPaymentStatusBadge(auction)}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-4 text-sm">
                   <span className="text-muted-foreground">
@@ -180,33 +307,49 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
                   <span className="text-muted-foreground">
                     Ngày thắng: <span className="font-semibold text-foreground">{formatDate(auction.wonDate)}</span>
                   </span>
+                  {auction.orderStatus && (
+                    <span className="text-muted-foreground">
+                      Trạng thái đơn: <span className="font-semibold text-foreground">{getOrderStatusText(auction.orderStatus)}</span>
+                    </span>
+                  )}
+                  {auction.paidAt && (
+                    <span className="text-muted-foreground">
+                      Đã thanh toán: <span className="font-semibold text-green-600">{formatDate(auction.paidAt)}</span>
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {!auction.hasRated ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-yellow-500 text-yellow-600 hover:bg-yellow-50 bg-transparent"
-                  onClick={() => handleRateClick(auction)}
-                >
-                  <Star className="mr-2 h-4 w-4" />
-                  Đánh giá
-                </Button>
-              ) : (
-                <Badge variant="secondary" className="gap-1">
-                  <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
-                  Đã đánh giá
-                </Badge>
-              )}
-              
-              <Link href={`/auction/${auction.auctionId}`}>
-                <Button variant="outline" size="sm">
-                  Xem chi tiết
-                </Button>
-              </Link>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-2">
+                {!auction.hasOrder || (!auction.hasPayment && auction.orderStatus === 'awaiting_payment') ? (
+                  <PaymentButton auctionId={auction.auctionId} />
+                ) : null}
+                
+                {!auction.hasRated ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-yellow-500 text-yellow-600 hover:bg-yellow-50 bg-transparent"
+                    onClick={() => handleRateClick(auction)}
+                  >
+                    <Star className="mr-2 h-4 w-4" />
+                    Đánh giá
+                  </Button>
+                ) : (
+                  <Badge variant="secondary" className="gap-1">
+                    <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
+                    Đã đánh giá
+                  </Badge>
+                )}
+                
+                <Link href={`/auction/${auction.auctionId}`}>
+                  <Button variant="outline" size="sm">
+                    Xem chi tiết
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </Card>

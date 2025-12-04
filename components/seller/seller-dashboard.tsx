@@ -6,10 +6,13 @@ import { Plus } from "lucide-react"
 import { SellerStats } from "./seller-stats"
 import { SellerAuctionsList } from "./seller-auctions-list"
 import { CreateAuctionDialog } from "./create-auction-dialog"
+import { SellerOrdersList } from "./seller-orders-list"
 import { useState, useEffect } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
 
 export function SellerDashboard() {
+  const { user } = useAuth()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [selectedDraftItem, setSelectedDraftItem] = useState<any>(null)
   const [draftRefreshTrigger, setDraftRefreshTrigger] = useState(0)
@@ -60,12 +63,13 @@ export function SellerDashboard() {
       <SellerStats />
 
       <Tabs defaultValue="active" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 lg:w-auto">
+        <TabsList className="grid w-full grid-cols-6 lg:w-auto">
           <TabsTrigger value="active">Đang diễn ra</TabsTrigger>
           <TabsTrigger value="scheduled">Sắp diễn ra</TabsTrigger>
           <TabsTrigger value="completed">Đã kết thúc</TabsTrigger>
           <TabsTrigger value="pending">Đang chờ duyệt</TabsTrigger>
           <TabsTrigger value="draft">Bản nháp</TabsTrigger>
+          <TabsTrigger value="orders">Đơn hàng</TabsTrigger>
         </TabsList>
 
         <TabsContent value="active" className="mt-6">
@@ -91,6 +95,16 @@ export function SellerDashboard() {
 
         <TabsContent value="draft" className="mt-6">
           <SellerAuctionsList status="draft" onSelectDraftItem={handleSelectDraftItem} refreshTrigger={draftRefreshTrigger} />
+        </TabsContent>
+
+        <TabsContent value="orders" className="mt-6">
+          {user ? (
+            <SellerOrdersList sellerId={Number(user.id)} />
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              Vui lòng đăng nhập để xem đơn hàng
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
