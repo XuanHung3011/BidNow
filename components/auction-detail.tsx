@@ -103,7 +103,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
           winnerId: result.winnerId ?? prev.winnerId,
           winnerName:
             result.winnerId && result.winnerId === Number(user.id)
-              ? user.fullName ?? user.email ?? "Bạn"
+              ? user.name ?? user.email ?? "Bạn"
               : prev.winnerName,
         }
       })
