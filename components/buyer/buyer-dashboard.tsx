@@ -7,6 +7,7 @@ import { WonAuctionsList } from "./won-auctions-list"
 import { WatchlistList } from "./watchlist-list"
 import { BiddingHistory } from "./bidding-history"
 import { FavoriteSellersList } from "./FavoriteSellersList"
+import { BuyerOrdersList } from "./buyer-orders-list"
 import { useAuth } from "@/lib/auth-context"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
@@ -20,7 +21,7 @@ export function BuyerDashboard() {
   // Update active tab when URL query param changes
   useEffect(() => {
     const tabParam = searchParams.get("tab")
-    if (tabParam && ["active", "watchlist", "history", "favorites"].includes(tabParam)) {
+    if (tabParam && ["active", "won", "orders", "watchlist", "history", "favorites"].includes(tabParam)) {
       setActiveTab(tabParam)
     } else {
       setActiveTab("active")
@@ -63,11 +64,10 @@ export function BuyerDashboard() {
       <BuyerStats />
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto">
+        <TabsList className="grid w-full grid-cols-6 lg:w-auto">
           <TabsTrigger value="active">Đang đấu giá</TabsTrigger>
-          {/*
           <TabsTrigger value="won">Đã thắng</TabsTrigger>
-          */}
+          <TabsTrigger value="orders">Đơn hàng</TabsTrigger>
           <TabsTrigger value="watchlist">Theo dõi</TabsTrigger>
           <TabsTrigger value="history">Lịch sử</TabsTrigger>
           <TabsTrigger value="favorites">Seller yêu thích</TabsTrigger>
@@ -76,11 +76,12 @@ export function BuyerDashboard() {
         <TabsContent value="active" className="mt-6">
           <ActiveBidsList bidderId={userId} />
         </TabsContent>
-        {/*
         <TabsContent value="won" className="mt-6">
           <WonAuctionsList bidderId={userId} />
         </TabsContent>
-        */}
+        <TabsContent value="orders" className="mt-6">
+          <BuyerOrdersList buyerId={userId} />
+        </TabsContent>
         <TabsContent value="watchlist" className="mt-6">
           <WatchlistList />
         </TabsContent>

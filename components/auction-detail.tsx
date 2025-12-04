@@ -38,6 +38,7 @@ import { useAuth } from "@/lib/auth-context"
 import { createAuctionHubConnection, type BidPlacedPayload, type AuctionStatusUpdatedPayload } from "@/lib/realtime/auctionHub"
 import { getImageUrls } from "@/lib/api/config"
 import { WatchlistAPI } from "@/lib/api"
+import { PaymentButton } from "@/components/payment-button"
 
 interface AuctionDetailProps {
   auctionId: string
@@ -115,10 +116,24 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   }
 
   // Fetch auction detail
+  const fetchAuction = async () => {
+    try {
+      setLoading(true)
+      const data = await AuctionsAPI.getDetail(Number(auctionId))
+      setAuction(data)
+      setError(null)
+    } catch (err: any) {
+      console.error('Failed to fetch auction:', err)
+      setError(err.message || 'Không thể tải thông tin đấu giá')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     let mounted = true
     
-    const fetchAuction = async () => {
+    const loadAuction = async () => {
       try {
         setLoading(true)
         const data = await AuctionsAPI.getDetail(Number(auctionId))
@@ -136,7 +151,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       }
     }
     
-    fetchAuction()
+    loadAuction()
     
     return () => { mounted = false }
   }, [auctionId])
@@ -928,6 +943,24 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
               <BidHistory auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} />
             </div>
           </Card>
+
+          {/* Payment Button - Show when auction completed and current user is winner */}
+          {auction && 
+           auction.status?.toLowerCase() === "completed" && 
+           auction.winnerId && 
+           user && 
+           Number(user.id) === Number(auction.winnerId) && (
+            <div className="mt-4">
+              <PaymentButton
+                auctionId={Number(auctionId)}
+                winnerId={auction.winnerId}
+                finalPrice={auction.currentBid || auction.startingBid}
+                onPaymentSuccess={() => {
+                  fetchAuction();
+                }}
+              />
+            </div>
+          )}
         </section>
 
         <section>
