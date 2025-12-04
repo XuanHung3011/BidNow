@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { UserResponse, UserUpdateDto } from "@/lib/api/types"
 import {
   AlertDialog,
@@ -16,6 +17,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Upload, X } from "lucide-react"
+import { getImageUrl } from "@/lib/api/config"
 
 interface EditUserDialogProps {
   open: boolean
@@ -30,9 +33,12 @@ export function EditUserDialog({ open, onOpenChange, user, onSubmit }: EditUserD
     phone: "",
     avatarUrl: "",
   })
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (user) {
@@ -41,6 +47,11 @@ export function EditUserDialog({ open, onOpenChange, user, onSubmit }: EditUserD
         phone: user.phone || "",
         avatarUrl: user.avatarUrl || "",
       })
+      setAvatarFile(null)
+      if (avatarPreview) {
+        URL.revokeObjectURL(avatarPreview)
+      }
+      setAvatarPreview(user.avatarUrl ? getImageUrl(user.avatarUrl) : null)
       setErrors({})
     }
   }, [user])
@@ -56,12 +67,69 @@ export function EditUserDialog({ open, onOpenChange, user, onSubmit }: EditUserD
       newErrors.phone = "Số điện thoại không hợp lệ"
     }
 
-    if (formData.avatarUrl && !/^https?:\/\/.+/.test(formData.avatarUrl)) {
-      newErrors.avatarUrl = "URL avatar không hợp lệ"
+    if (avatarFile) {
+      if (!avatarFile.type.startsWith("image/")) {
+        newErrors.avatar = "Chỉ chấp nhận file hình ảnh"
+      } else if (avatarFile.size > 10 * 1024 * 1024) {
+        newErrors.avatar = "Kích thước file không được vượt quá 10MB"
+      }
     }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setErrors((prev) => ({ ...prev, avatar: "" }))
+
+    if (!file.type.startsWith("image/")) {
+      setErrors((prev) => ({ ...prev, avatar: "Chỉ chấp nhận file hình ảnh" }))
+      return
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setErrors((prev) => ({ ...prev, avatar: "Kích thước file không được vượt quá 10MB" }))
+      return
+    }
+
+    setAvatarFile(file)
+    const preview = URL.createObjectURL(file)
+    setAvatarPreview(preview)
+  }
+
+  const handleRemoveAvatar = () => {
+    setAvatarFile(null)
+    if (avatarPreview && avatarFile) {
+      URL.revokeObjectURL(avatarPreview)
+    }
+    setAvatarPreview(user?.avatarUrl ? getImageUrl(user.avatarUrl) : null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+    setErrors((prev) => ({ ...prev, avatar: "" }))
+  }
+
+  const uploadAvatarFile = async (file: File, userId: number): Promise<string> => {
+    const formData = new FormData()
+    formData.append("file", file)
+
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5167"
+    const response = await fetch(`${API_BASE}/api/Users/${userId}/avatar`, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Không thể upload avatar" }))
+      throw new Error(error.message || "Không thể upload avatar")
+    }
+
+    const data = await response.json()
+    return data.avatarUrl
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -79,7 +147,38 @@ export function EditUserDialog({ open, onOpenChange, user, onSubmit }: EditUserD
 
     try {
       setIsLoading(true)
-      await onSubmit(user.id, formData)
+      setErrors({})
+
+      let avatarUrl: string | undefined = undefined
+
+      // Upload avatar file if selected
+      if (avatarFile) {
+        try {
+          await uploadAvatarFile(avatarFile, user.id)
+          // Avatar is already updated by the upload endpoint, so we don't need to include it in updateData
+        } catch (error: any) {
+          setErrors((prev) => ({
+            ...prev,
+            avatar: error?.message || "Không thể upload avatar",
+          }))
+          setConfirmOpen(false)
+          return
+        }
+      }
+
+      const updateData: UserUpdateDto = {
+        fullName: formData.fullName?.trim() || undefined,
+        phone: formData.phone?.trim() || undefined,
+        // Only update avatarUrl if no file was uploaded (using existing URL)
+        avatarUrl: avatarFile ? undefined : (formData.avatarUrl || undefined),
+      }
+
+      await onSubmit(user.id, updateData)
+      
+      setAvatarFile(null)
+      if (avatarPreview && avatarFile) {
+        URL.revokeObjectURL(avatarPreview)
+      }
       setConfirmOpen(false)
       onOpenChange(false)
     } catch (error: any) {
@@ -91,7 +190,7 @@ export function EditUserDialog({ open, onOpenChange, user, onSubmit }: EditUserD
         serverErrors.phone = "Số điện thoại không hợp lệ"
       }
       if (lowerMsg.includes("url avatar") || lowerMsg.includes("avatar url")) {
-        serverErrors.avatarUrl = "URL avatar không hợp lệ"
+        serverErrors.avatar = "URL avatar không hợp lệ"
       }
 
       setErrors((prev) => ({
@@ -157,21 +256,50 @@ export function EditUserDialog({ open, onOpenChange, user, onSubmit }: EditUserD
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="avatarUrl">URL Avatar</Label>
-            <Input
-              id="avatarUrl"
-              type="url"
-              placeholder="https://example.com/avatar.jpg"
-              value={formData.avatarUrl}
-              onChange={(e) => {
-                setFormData({ ...formData, avatarUrl: e.target.value })
-                setErrors((prev) => ({ ...prev, avatarUrl: "" }))
-              }}
-              onBlur={() => validateForm()}
-              disabled={isLoading}
-              className={errors.avatarUrl ? "border-destructive" : ""}
-            />
-            {errors.avatarUrl && <p className="text-sm text-destructive">{errors.avatarUrl}</p>}
+            <Label htmlFor="avatar">Ảnh đại diện</Label>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  ref={fileInputRef}
+                  id="avatar"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading}
+                  className="w-full"
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Chọn ảnh
+                </Button>
+              </div>
+              {avatarPreview && (
+                <div className="relative inline-block">
+                  <Avatar className="h-24 w-24">
+                    <AvatarImage src={avatarPreview} alt="Preview" />
+                    <AvatarFallback>
+                      {user.fullName?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="absolute -right-2 -top-2 h-6 w-6 rounded-full"
+                    onClick={handleRemoveAvatar}
+                    disabled={isLoading}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              {errors.avatar && <p className="text-sm text-destructive">{errors.avatar}</p>}
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-4">

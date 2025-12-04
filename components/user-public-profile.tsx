@@ -220,10 +220,6 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
                 <span>{profile.email}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4" />
-                <span>ID: {profile.id}</span>
-              </div>
-              <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
                 <span>Gia nhập: {profile.createdAt ? new Date(profile.createdAt).toLocaleDateString() : "Không rõ"}</span>
               </div>
@@ -240,20 +236,26 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Tổng giao dịch</p>
-              <p className="mt-2 text-3xl font-bold text-primary">{profile.totalSales ?? 0}</p>
+              <p className="text-sm text-muted-foreground">Điểm đánh giá</p>
+              <p className="mt-2 text-3xl font-bold text-primary">
+                {profile.reputationScore != null && profile.reputationScore !== undefined
+                  ? profile.reputationScore.toFixed(1)
+                  : "N/A"}
+              </p>
+              {profile.totalRatings != null && profile.totalRatings > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  ({profile.totalRatings} {profile.totalRatings === 1 ? "đánh giá" : "đánh giá"})
+                </p>
+              )}
             </div>
             <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Lượt mua</p>
-              <p className="mt-2 text-3xl font-bold text-primary">{profile.totalPurchases ?? 0}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Điểm uy tín</p>
-              <p className="mt-2 text-3xl font-bold text-primary">{profile.reputationScore ?? "N/A"}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Đánh giá</p>
-              <p className="mt-2 text-3xl font-bold text-primary">{profile.totalRatings ?? 0}</p>
+              <p className="text-sm text-muted-foreground">Tổng sản phẩm</p>
+              <p className="mt-2 text-3xl font-bold text-primary">
+                {loadingAuctions ? "..." : sellerAuctions.length}
+              </p>
+              {profile.roles?.includes("seller") && (
+                <p className="mt-1 text-xs text-muted-foreground">Sản phẩm đã đăng</p>
+              )}
             </div>
           </div>
 

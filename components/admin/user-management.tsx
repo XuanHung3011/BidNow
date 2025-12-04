@@ -79,14 +79,15 @@ export function UserManagement() {
     return () => clearTimeout(timeoutId)
   }, [page, searchTerm])
 
-  const handleCreateUser = async (userData: UserCreateDto) => {
+  const handleCreateUser = async (userData: UserCreateDto): Promise<UserResponse> => {
     try {
-      await UsersAPI.create(userData)
+      const createdUser = await UsersAPI.create(userData)
       toast({
         title: "Thành công",
         description: "Tạo người dùng thành công",
       })
       fetchUsers()
+      return createdUser
     } catch (error: any) {
       let message = error?.message || "Không thể tạo người dùng"
 

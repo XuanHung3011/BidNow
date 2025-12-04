@@ -1,3 +1,4 @@
+/*
 "use client"
 
 import { useEffect, useState } from "react"
@@ -140,4 +141,10 @@ export function CategorySection() {
       </div>
     </section>
   )
+}
+*/
+
+// Component tạm thời không sử dụng
+export function CategorySection() {
+  return null
 }
