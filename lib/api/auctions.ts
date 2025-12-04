@@ -100,6 +100,13 @@ export interface BuyerWonAuctionDto {
   sellerName?: string
   sellerId: number
   hasRated: boolean
+  // Order and Payment information
+  orderId?: number
+  orderStatus?: string
+  paymentStatus?: string
+  paidAt?: string
+  hasOrder: boolean
+  hasPayment: boolean
 }
 
 export interface BiddingHistoryDto {
