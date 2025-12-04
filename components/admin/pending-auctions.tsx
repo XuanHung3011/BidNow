@@ -51,6 +51,10 @@ export function PendingAuctions() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState("")
   const [itemToReject, setItemToReject] = useState<number | null>(null)
+  
+  // Approve confirmation dialog state
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false)
+  const [itemToApprove, setItemToApprove] = useState<number | null>(null)
 
   const fetchPendingItems = useCallback(async () => {
     try {
@@ -169,14 +173,23 @@ export function PendingAuctions() {
     }
   }, [fetchPendingItems])
 
-  const handleApprove = async (itemId: number) => {
+  const handleApproveClick = (itemId: number) => {
+    setItemToApprove(itemId)
+    setApproveDialogOpen(true)
+  }
+
+  const handleConfirmApprove = async () => {
+    if (!itemToApprove) return
+    
     try {
-      setProcessingIds((prev) => new Set(prev).add(itemId))
-      await ItemsAPI.approveItem(itemId)
+      setProcessingIds((prev) => new Set(prev).add(itemToApprove))
+      await ItemsAPI.approveItem(itemToApprove)
       toast({
         title: "Thành công",
         description: "Đã phê duyệt sản phẩm",
       })
+      setApproveDialogOpen(false)
+      setItemToApprove(null)
       // Refresh list after approve/reject
       await fetchPendingItems()
     } catch (error) {
@@ -189,7 +202,7 @@ export function PendingAuctions() {
     } finally {
       setProcessingIds((prev) => {
         const newSet = new Set(prev)
-        newSet.delete(itemId)
+        newSet.delete(itemToApprove)
         return newSet
       })
     }
@@ -460,7 +473,7 @@ export function PendingAuctions() {
                 <Button 
                   size="sm" 
                   className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
-                  onClick={() => handleApprove(itemId)}
+                  onClick={() => handleApproveClick(itemId)}
                   disabled={isProcessing}
                 >
                   {isProcessing ? (
@@ -684,6 +697,48 @@ export function PendingAuctions() {
               </div>
             </>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Approve Confirmation Dialog */}
+      <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xác nhận phê duyệt sản phẩm</DialogTitle>
+            <DialogDescription>
+              <div className="space-y-2 mt-2">
+                <p>Bạn có chắc chắn muốn phê duyệt sản phẩm này?</p>
+                <p className="text-sm text-muted-foreground">
+                  Sản phẩm sẽ được chuyển sang trạng thái "Đã phê duyệt" và người bán có thể sử dụng để tạo phiên đấu giá.
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setApproveDialogOpen(false)
+                setItemToApprove(null)
+              }}
+            >
+              Hủy
+            </Button>
+            <Button
+              onClick={handleConfirmApprove}
+              disabled={itemToApprove !== null && processingIds.has(itemToApprove)}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {itemToApprove !== null && processingIds.has(itemToApprove) ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Đang xử lý...
+                </>
+              ) : (
+                "Xác nhận"
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
