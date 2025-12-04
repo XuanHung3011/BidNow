@@ -171,6 +171,11 @@ export const API_ENDPOINTS = {
   AUCTION_CHAT: {
     LIST: (auctionId: number) => `/api/AuctionMessages/${auctionId}`,
     CREATE: "/api/AuctionMessages",
+  },
+  RATINGS: {
+    CREATE: "/api/Ratings",
+    GET_FOR_USER: (userId: number) => `/api/Ratings/user/${userId}`,
+    GET_FOR_AUCTION: (auctionId: number) => `/api/Ratings/auction/${auctionId}`,
   }
 } as const;
 
