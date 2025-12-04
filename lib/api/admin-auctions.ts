@@ -1,5 +1,6 @@
 // lib/api/admin-auctions.ts
 import { API_BASE, API_ENDPOINTS } from './config'
+import type { PaginatedResult } from './types'
 
 export interface AuctionListItemDto {
   id: number
@@ -35,16 +36,6 @@ export interface AuctionDetailDto {
   status: string
   bidCount?: number
   pausedAt?: string
-}
-
-export interface PaginatedResult<T> {
-  data: T[]
-  totalCount: number
-  page: number
-  pageSize: number
-  totalPages: number
-  hasPreviousPage: boolean
-  hasNextPage: boolean
 }
 
 export interface AuctionFilterParams {
