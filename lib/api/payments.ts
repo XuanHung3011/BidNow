@@ -1,6 +1,24 @@
 // lib/api/payments.ts
 import { API_BASE } from './config'
 
+// Helper to get auth headers with X-User-Id
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const storedUser = localStorage.getItem("bidnow_user")
+  if (!storedUser) {
+    return { 'Content-Type': 'application/json' }
+  }
+  
+  try {
+    const user = JSON.parse(storedUser)
+    return {
+      'Content-Type': 'application/json',
+      'X-User-Id': String(user.id).trim(),
+    }
+  } catch {
+    return { 'Content-Type': 'application/json' }
+  }
+}
+
 export interface OrderDto {
   id: number
   auctionId: number
@@ -187,9 +205,7 @@ export const PaymentsAPI = {
   async reportOrderIssue(orderId: number, issueDescription: string): Promise<OrderDto> {
     const res = await fetch(`${API_BASE}/api/Payment/order/${orderId}/report-issue`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await getAuthHeaders(),
       credentials: 'include',
       body: JSON.stringify({ issueDescription }),
     })

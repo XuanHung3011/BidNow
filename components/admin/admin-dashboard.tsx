@@ -22,7 +22,7 @@ export function AdminDashboard() {
     const tabParam = searchParams.get("tab")
     if (tabParam) {
       // Validate tab value
-      const validTabs = ["auctions", "pending", "users", "categories", "analytics", "disputes"]
+      const validTabs = ["auctions", "pending", "users", "disputes", "categories", "analytics"]
       if (validTabs.includes(tabParam)) {
         setActiveTab(tabParam)
         // Remove query param from URL
@@ -44,7 +44,7 @@ export function AdminDashboard() {
       <AdminStats />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 lg:w-auto">
+        <TabsList className="grid w-full grid-cols-6 lg:w-auto">
           <TabsTrigger
             value="auctions"
             className="data-[state=active]:bg-primary data-[state=active]:text-white"
@@ -63,7 +63,12 @@ export function AdminDashboard() {
           >
             Người dùng
           </TabsTrigger>
-          {/* <TabsTrigger value="disputes">Tranh chấp</TabsTrigger> */}
+          <TabsTrigger
+            value="disputes"
+            className="data-[state=active]:bg-primary data-[state=active]:text-white"
+          >
+            Khiếu nại
+          </TabsTrigger>
           <TabsTrigger
             value="categories"
             className="data-[state=active]:bg-primary data-[state=active]:text-white"

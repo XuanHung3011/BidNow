@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2, CreditCard, CheckCircle2 } from "lucide-react"
 import { PaymentsAPI, type OrderDto } from "@/lib/api/payments"
+import { OrderStatusBadge, PaymentStatusBadge } from "@/components/status-badges"
 
 interface PaymentButtonProps {
   auctionId: number
@@ -24,7 +25,20 @@ export function PaymentButton({ auctionId, winnerId, finalPrice, onPaymentSucces
 
   useEffect(() => {
     loadOrder()
-  }, [auctionId])
+
+    // Auto-polling: Tự động check payment status mỗi 5 giây nếu order đang chờ thanh toán
+    // Dừng polling khi đã thanh toán hoặc không có order
+    const pollInterval = setInterval(() => {
+      if (order && order.orderStatus === 'awaiting_payment' && 
+          order.payment?.paymentStatus === 'pending' && 
+          order.payment?.transactionId) {
+        console.log('Auto-polling: Checking payment status for order', order.id)
+        loadOrder()
+      }
+    }, 5000) // Poll mỗi 5 giây
+
+    return () => clearInterval(pollInterval)
+  }, [auctionId, order?.id, order?.orderStatus, order?.payment?.paymentStatus])
 
   const loadOrder = async () => {
     try {
@@ -168,15 +182,15 @@ export function PaymentButton({ auctionId, winnerId, finalPrice, onPaymentSucces
           </div>
         )}
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Trạng thái đơn hàng:</span>
-            <span className="font-medium">{order.orderStatus}</span>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Trạng thái đơn hàng:</span>
+            <OrderStatusBadge status={order.orderStatus} />
           </div>
           {order.payment && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Trạng thái thanh toán:</span>
-              <span className="font-medium">{order.payment.paymentStatus}</span>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Trạng thái thanh toán:</span>
+              <PaymentStatusBadge status={order.payment.paymentStatus} />
             </div>
           )}
         </div>
