@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Eye, PauseCircle, XCircle, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react"
+import { Search, Eye, PauseCircle, XCircle, ChevronLeft, ChevronRight, PlayCircle } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -593,9 +593,9 @@ export function AllAuctionsManagement() {
                               }
                               disabled={resumingId === auction.id}
                             >
-                              <RotateCcw
+                              <PlayCircle
                                 className={`h-4 w-4 ${
-                                  resumingId === auction.id ? "animate-pulse text-muted-foreground" : "text-primary"
+                                  resumingId === auction.id ? "animate-pulse text-muted-foreground" : "text-green-500"
                                 }`}
                               />
                             </Button>
@@ -782,7 +782,7 @@ export function AllAuctionsManagement() {
                       }
                       disabled={resumingId === selectedAuction.id}
                     >
-                      <RotateCcw className="mr-2 h-4 w-4" />
+                      <PlayCircle className="mr-2 h-4 w-4" />
                       {resumingId === selectedAuction.id ? "Đang tiếp tục..." : "Tiếp tục phiên đấu giá"}
                     </Button>
                   )}

@@ -21,7 +21,7 @@ export function TopSearchBar() {
 const handleSubmit = (e: React.FormEvent) => {
   e.preventDefault()
   if (!query.trim()) return
-  router.push(`/auctions?q=${encodeURIComponent(query.trim())}`)
+  router.push(`/search?q=${encodeURIComponent(query.trim())}`)
 }
 
   if (isAdmin || !shouldShow) return null
@@ -34,7 +34,7 @@ const handleSubmit = (e: React.FormEvent) => {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tìm kiếm sản phẩm, thương hiệu, từ khóa..."
+            placeholder="Tìm kiếm sản phẩm, người bán, từ khóa..."
             className="h-11 pl-10 pr-28"
           />
           <Button type="submit" className="absolute right-1 top-1/2 -translate-y-1/2 h-9 px-4">
@@ -45,5 +45,3 @@ const handleSubmit = (e: React.FormEvent) => {
     </div>
   )
 }
-
-

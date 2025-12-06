@@ -38,14 +38,32 @@ export class UsersAPI {
       if (responseText && responseText.trim().length > 0) {
         try {
           const error = JSON.parse(responseText);
-          // Try common error message fields
-          errorMessage = error.message || error.error || error.title || errorMessage;
-          // If error object has multiple messages (like validation errors), include them
+
+          // Nếu là lỗi validation (ASP.NET style) thì map sang tiếng Việt thân thiện
           if (error.errors && typeof error.errors === 'object') {
-            const errorDetails = Object.values(error.errors).flat().join(', ');
-            if (errorDetails) {
-              errorMessage += `: ${errorDetails}`;
+            const friendlyMessages: string[] = [];
+
+            // Phone validation
+            if (error.errors.Phone) {
+              friendlyMessages.push('Số điện thoại không hợp lệ');
             }
+
+            // AvatarUrl validation
+            if (error.errors.AvatarUrl) {
+              friendlyMessages.push('URL avatar không hợp lệ');
+            }
+
+            if (friendlyMessages.length > 0) {
+              errorMessage = friendlyMessages.join(', ');
+            } else {
+              // Fallback: ghép tất cả message validation lại
+              const errorDetails = Object.values(error.errors).flat().join(', ');
+              errorMessage = (error.message || error.error || error.title || errorMessage) +
+                             (errorDetails ? `: ${errorDetails}` : '');
+            }
+          } else {
+            // Các lỗi khác: dùng message/error/title hoặc text gốc
+            errorMessage = error.message || error.error || error.title || errorMessage;
           }
         } catch (e) {
           // If not JSON, use text as error message (could be plain text error from server)
@@ -125,7 +143,6 @@ export class UsersAPI {
       });
       return await this.handleResponse<UserResponse>(response);
     } catch (error) {
-      console.error('Create user error:', error);
       throw error;
     }
   }
@@ -151,17 +168,12 @@ export class UsersAPI {
    * Change user password
    */
   static async changePassword(id: number, passwordData: ChangePasswordDto): Promise<{ message: string }> {
-    try {
-      const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.CHANGE_PASSWORD(id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(passwordData),
-      });
-      return await this.handleResponse<{ message: string }>(response);
-    } catch (error) {
-      console.error('Change password error:', error);
-      throw error;
-    }
+    const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.CHANGE_PASSWORD(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(passwordData),
+    });
+    return await this.handleResponse<{ message: string }>(response);
   }
 
   /**

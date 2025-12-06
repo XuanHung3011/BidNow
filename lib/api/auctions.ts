@@ -187,9 +187,12 @@ export const AuctionsAPI = {
     return handleResponse<PaginatedResult<AuctionListItemDto>>(res)
   },
 
-  async getDetail(id: number): Promise<AuctionDetailDto> {
-    const response = await fetch(`${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BY_ID(id)}`)
-    
+  async getDetail(id: number, userId?: number): Promise<AuctionDetailDto> {
+    const baseUrl = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BY_ID(id)}`
+    const url = userId && userId > 0 ? `${baseUrl}?userId=${userId}` : baseUrl
+
+    const response = await fetch(url)
+
     if (!response.ok) {
       throw new Error('Failed to fetch auction detail')
     }

@@ -27,15 +27,20 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { UsersAPI } from "@/lib/api/users"
+import { disputesAPI, type DisputeDto } from "@/lib/api/disputes"
+import { DisputeChat } from "@/components/disputes/dispute-chat"
 
 const SUPPORT_ADMIN_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_ADMIN_EMAIL || "admin@bidnow.local"
 
 export function MessagesView() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null)
   const [selectedAuctionId, setSelectedAuctionId] = useState<number | null>(null)
+  const [disputeId, setDisputeId] = useState<number | null>(null)
+  const [disputeInfo, setDisputeInfo] = useState<DisputeDto | null>(null)
   const [messageInput, setMessageInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [conversations, setConversations] = useState<ConversationDto[]>([])
@@ -97,12 +102,55 @@ export function MessagesView() {
     }
   }, [])
 
+  // Check for disputeId in URL
+  useEffect(() => {
+    const disputeIdParam = searchParams?.get("disputeId")
+    if (disputeIdParam) {
+      const id = parseInt(disputeIdParam, 10)
+      if (!isNaN(id)) {
+        setDisputeId(id)
+      }
+    }
+  }, [searchParams])
+
+  // Load dispute info when disputeId is set
+  useEffect(() => {
+    if (disputeId) {
+      loadDisputeInfo()
+    }
+  }, [disputeId])
+
+  const loadDisputeInfo = async () => {
+    try {
+      const data = await disputesAPI.getById(disputeId!)
+      setDisputeInfo(data)
+      // Auto-select conversations with buyer and seller
+      if (data && userIdRef.current) {
+        // For admin, show both conversations
+        if (user?.currentRole === "admin") {
+          // Select buyer conversation first
+          setSelectedConversation(data.buyerId)
+        } else {
+          // For buyer/seller, select the other party
+          const otherPartyId = userIdRef.current === data.buyerId ? data.sellerId : data.buyerId
+          setSelectedConversation(otherPartyId)
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể tải thông tin khiếu nại",
+        variant: "destructive",
+      })
+    }
+  }
+
   // Load conversations
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !disputeId) {
       loadConversations()
     }
-  }, [user?.id])
+  }, [user?.id, disputeId])
 
   useEffect(() => {
     const currentUserId = userIdRef.current
@@ -988,6 +1036,19 @@ export function MessagesView() {
     </div>
   )
 
+  // If disputeId is set, show dispute chat
+  if (disputeId) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Chat khiếu nại</h1>
+          <p className="text-muted-foreground">Trao đổi về khiếu nại đơn hàng</p>
+        </div>
+        <DisputeChat disputeId={disputeId} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -995,7 +1056,7 @@ export function MessagesView() {
         <p className="text-muted-foreground">
           {user?.currentRole === "admin"
             ? "Quản lý trao đổi với người dùng"
-            : `Trò chuyện với ${user?.currentRole === "buyer" ? "người bán" : "người mua"}`}
+            : `Trò chuyện với ${user?.currentRole === "buyer" ? "mọi người" : "mọi người"}`}
         </p>
       </div>
       {conversationBody}

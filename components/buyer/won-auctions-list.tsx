@@ -165,6 +165,7 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
     )
   }
 
+  // Import utility functions for status display
   const getOrderStatusText = (orderStatus?: string) => {
     if (!orderStatus) return null
     
@@ -172,7 +173,7 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
       'awaiting_payment': 'Chờ thanh toán',
       'awaiting_shipment': 'Chờ vận chuyển',
       'shipped': 'Đã gửi hàng',
-      'dispute': 'Khiếu nại',
+      'dispute': 'Đang khiếu nại',
       'completed': 'Hoàn thành',
       'cancelled': 'Đã hủy'
     }
