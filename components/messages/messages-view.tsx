@@ -995,7 +995,7 @@ export function MessagesView() {
         <p className="text-muted-foreground">
           {user?.currentRole === "admin"
             ? "Quản lý trao đổi với người dùng"
-            : `Trò chuyện với ${user?.currentRole === "buyer" ? "người bán" : "người mua"}`}
+            : `Trò chuyện với ${user?.currentRole === "buyer" ? "mọi người" : "mọi người"}`}
         </p>
       </div>
       {conversationBody}
