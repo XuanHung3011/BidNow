@@ -36,7 +36,7 @@ export function PersonalizedAuctionsSection() {
       setIsLoading(true)
       setHasError(false)
       try {
-        const items = await RecommendationsAPI.getPersonalized(Number(user.id), 8)
+        const items = await RecommendationsAPI.getPersonalized(Number(user.id), 4)
         const mapped: CardAuction[] = items
           .filter((i) => i.auctionStatus === "active" && i.auctionId)
           .map((i) => ({
