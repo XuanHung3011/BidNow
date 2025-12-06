@@ -294,7 +294,7 @@ export default function SearchPage() {
                                     ))}
                                   </div>
                                   <div className="grid grid-cols-2 gap-4 w-full mt-4 pt-4 border-t">
-                                    <div className="text-center">
+                                    {/* <div className="text-center">
                                       <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
                                         <Star className="h-4 w-4" />
                                         <span className="text-xs">Điểm uy tín</span>
@@ -311,7 +311,7 @@ export default function SearchPage() {
                                       <p className="text-lg font-semibold text-foreground">
                                         {seller.totalSales ?? 0}
                                       </p>
-                                    </div>
+                                    </div> */}
                                   </div>
                                 </div>
                               </CardContent>

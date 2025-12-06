@@ -282,10 +282,10 @@ export function UserProfile() {
               </div>
 
               <div className="mt-6 w-full space-y-2 text-left">
-                <div className="flex items-center gap-2 text-sm">
+                {/* <div className="flex items-center gap-2 text-sm">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Tham gia: Tháng 1, 2025</span>
-                </div>
+                </div> */}
                 <div className="flex items-center gap-2 text-sm">
                   <Award className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Thành viên đáng tin cậy</span>
