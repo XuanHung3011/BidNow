@@ -40,9 +40,13 @@ export const ItemsAPI = {
   },
 
   // 🔹 Search (no pagination)
-  search: async (term: string): Promise<ItemResponseDto[]> => {
+  // Optional userId để backend có thể log từ khóa tìm kiếm cho user đã đăng nhập
+  search: async (term: string, userId?: number): Promise<ItemResponseDto[]> => {
     const url = new URL(`${API_BASE}${API_ENDPOINTS.ITEMS.SEARCH}`)
     url.searchParams.set('searchTerm', term)
+    if (userId && userId > 0) {
+      url.searchParams.set('userId', String(userId))
+    }
     const res = await fetch(url.toString(), { cache: 'no-store' })
     return handleResponse<ItemResponseDto[]>(res)
   },
@@ -53,11 +57,14 @@ export const ItemsAPI = {
     return handleResponse<CategoryDto[]>(res)
   },
 
-  searchPaged: async (term: string, page = 1, pageSize = 12): Promise<PagedResponse> => {
+  searchPaged: async (term: string, page = 1, pageSize = 12, userId?: number): Promise<PagedResponse> => {
     const url = new URL(`${API_BASE}${API_ENDPOINTS.ITEMS.SEARCH_PAGED}`)
     url.searchParams.set('searchTerm', term)
     url.searchParams.set('page', String(page))
     url.searchParams.set('pageSize', String(pageSize))
+    if (userId && userId > 0) {
+      url.searchParams.set('userId', String(userId))
+    }
     const res = await fetch(url.toString(), { cache: 'no-store' })
     return handleResponse<PagedResponse>(res)
   },

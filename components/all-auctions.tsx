@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -14,6 +14,7 @@ import { AuctionsAPI, AuctionListItemDto, AuctionFilterParams } from "@/lib/api/
 import type { ItemFilterDto, CategoryDto } from "@/lib/api/types"
 import { useSearchParams } from "next/navigation"
 import { getImageUrls, getImageUrl } from "@/lib/api/config"
+import { useAuth } from "@/lib/auth-context"
 
 // helper nhỏ
 const formatCurrency = (v?: number) =>
@@ -22,10 +23,14 @@ const formatCurrency = (v?: number) =>
 export function AllAuctions() {
   const searchParams = useSearchParams()
   const qParam = searchParams?.get("q") ?? ""
+  const { user } = useAuth()
 
   // search
   const [searchQuery, setSearchQuery] = useState<string>(qParam)
   const [debouncedQuery, setDebouncedQuery] = useState<string>(qParam)
+  
+  // Track last logged query to prevent duplicate logging
+  const lastLoggedQueryRef = useRef<string>("")
 
   // filter states (form values inside sheet)
   // Note: Category and price filters are not yet supported by auctions API
@@ -72,6 +77,34 @@ useEffect(() => {
     load()
     return () => { mounted = false }
   }, [])
+
+  // Log search keyword when URL query changes (only once per search)
+  useEffect(() => {
+    const queryFromUrl = searchParams?.get("q")?.trim() ?? ""
+    // Only log if query changed and user is logged in
+    if (queryFromUrl && queryFromUrl !== lastLoggedQueryRef.current && user?.id) {
+      try {
+        const userId = Number(user.id)
+        if (userId > 0) {
+          // Update ref before logging to prevent duplicate logs
+          lastLoggedQueryRef.current = queryFromUrl
+          // Call searchPaged API to log search keyword (fire and forget)
+          ItemsAPI.searchPaged(queryFromUrl, 1, 1, userId).catch(err => {
+            console.error('Failed to log search keyword:', err)
+            // Reset ref on error so it can be retried if needed
+            lastLoggedQueryRef.current = ""
+          })
+        }
+      } catch (err) {
+        console.error('Error logging search keyword:', err)
+        lastLoggedQueryRef.current = ""
+      }
+    } else if (!queryFromUrl) {
+      // Reset ref when query is cleared
+      lastLoggedQueryRef.current = ""
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams?.toString(), user?.id])
 
   // debounce search
   useEffect(() => {
@@ -148,7 +181,7 @@ useEffect(() => {
 
     fetchData()
     return () => { isMounted = false }
-  }, [debouncedQuery, page, pageSize, sortBy])
+  }, [debouncedQuery, page, pageSize, sortBy, user?.id])
 
   // Sort is now handled by backend, but we can do additional client-side sorting if needed
   const sortedAuctions = useMemo(() => {

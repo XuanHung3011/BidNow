@@ -45,5 +45,3 @@ const handleSubmit = (e: React.FormEvent) => {
     </div>
   )
 }
-
-

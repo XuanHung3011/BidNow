@@ -33,20 +33,33 @@ export function PaymentButton({ auctionId, winnerId, finalPrice, onPaymentSucces
       const orderData = await PaymentsAPI.getOrderByAuctionId(auctionId)
       setOrder(orderData)
       
-      // If order exists and payment status is pending, try to sync payment status
-      // This helps fix cases where webhook wasn't called but payment was completed
-      if (orderData && orderData.id && 
-          (!orderData.payment || orderData.payment.paymentStatus === 'pending')) {
+      // Nếu order có payment status là pending, tự động sync từ PayOS API
+      // Điều này giúp fix trường hợp webhook chưa được gọi nhưng đã thanh toán
+      if (orderData && orderData.id && orderData.orderStatus === 'awaiting_payment' &&
+          orderData.payment && orderData.payment.paymentStatus === 'pending' && 
+          orderData.payment.transactionId) {
         try {
-          // Sync payment status in background (don't wait)
+          console.log('Auto-syncing payment status from PayOS for order', orderData.id)
+          // Sync payment status từ PayOS API
           const syncedOrder = await PaymentsAPI.syncPaymentStatus(orderData.id)
-          // Update order state if payment status changed
-          if (syncedOrder.payment?.paymentStatus !== orderData.payment?.paymentStatus) {
+          // Cập nhật order state nếu payment status thay đổi
+          if (syncedOrder.payment?.paymentStatus !== orderData.payment?.paymentStatus ||
+              syncedOrder.orderStatus !== orderData.orderStatus) {
+            console.log('Payment status synced:', {
+              old: orderData.payment?.paymentStatus,
+              new: syncedOrder.payment?.paymentStatus,
+              oldOrderStatus: orderData.orderStatus,
+              newOrderStatus: syncedOrder.orderStatus
+            })
             setOrder(syncedOrder)
+            // Nếu đã thanh toán thành công, gọi callback
+            if (syncedOrder.payment?.paymentStatus === 'paid_held' && onPaymentSuccess) {
+              onPaymentSuccess()
+            }
           }
         } catch (syncErr) {
-          // Ignore sync errors (non-critical)
-          console.log('Background sync payment status failed (non-critical):', syncErr)
+          // Log nhưng không block UI
+          console.warn('Background sync payment status failed (non-critical):', syncErr)
         }
       }
     } catch (err) {
