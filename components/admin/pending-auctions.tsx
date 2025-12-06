@@ -66,14 +66,15 @@ export function PendingAuctions() {
 
   // Helper function để loại bỏ duplicate items
   const removeDuplicates = useCallback((itemsData: ItemResponseDto[]): ItemResponseDto[] => {
+    if (!itemsData || itemsData.length === 0) return []
+    
     // Loại bỏ duplicate items
     // 1. Loại bỏ duplicate dựa trên ID (nếu backend trả về cùng item nhiều lần)
     // 2. Loại bỏ duplicate dựa trên seller + title + category (nếu người bán sửa item pending tạo item mới)
     const uniqueItemsMap = new Map<number, ItemResponseDto>()
-    const duplicateKeyMap = new Map<string, ItemResponseDto>() // Key: sellerId_title_categoryId
     
+    // Bước 1: Loại bỏ duplicate dựa trên ID
     itemsData.forEach((item) => {
-      // Bước 1: Loại bỏ duplicate dựa trên ID
       const existingItem = uniqueItemsMap.get(item.id)
       if (!existingItem) {
         uniqueItemsMap.set(item.id, item)
@@ -89,20 +90,21 @@ export function PendingAuctions() {
     })
     
     // Bước 2: Loại bỏ duplicate dựa trên seller + title + category
-    // Chỉ áp dụng cho items có cùng seller, title, category và tạo trong vòng 5 phút
+    // Chỉ áp dụng cho items có cùng seller, title, category và tạo trong vòng 10 phút
     // (Trường hợp người bán sửa item pending tạo item mới nhưng item cũ chưa bị xóa)
-    const fiveMinutes = 5 * 60 * 1000
+    const tenMinutes = 10 * 60 * 1000 // Tăng lên 10 phút để đảm bảo bắt được duplicate
     const finalItems: ItemResponseDto[] = []
+    const duplicateKeyMap = new Map<string, ItemResponseDto>() // Key: sellerId_title_categoryId
     
     // Sắp xếp items theo thời gian tạo (mới nhất trước) để ưu tiên item mới hơn
     const sortedItems = Array.from(uniqueItemsMap.values()).sort((a, b) => {
       const timeA = new Date(a.createdAt || 0).getTime()
       const timeB = new Date(b.createdAt || 0).getTime()
-      return timeB - timeA
+      return timeB - timeA // Mới nhất trước
     })
     
     sortedItems.forEach((item) => {
-      const key = `${item.sellerId || 0}_${item.title || ''}_${item.categoryId || 0}`.toLowerCase()
+      const key = `${item.sellerId || 0}_${(item.title || '').trim()}_${item.categoryId || 0}`.toLowerCase()
       const itemTime = new Date(item.createdAt || 0).getTime()
       
       // Kiểm tra xem có item tương tự đã được thêm vào finalItems chưa
@@ -111,13 +113,24 @@ export function PendingAuctions() {
         const existingTime = new Date(existingDuplicate.createdAt || 0).getTime()
         const timeDiff = Math.abs(itemTime - existingTime)
         
-        // Nếu cách nhau ít hơn 5 phút, coi như duplicate và bỏ qua item này (vì item mới hơn đã được thêm trước)
-        if (timeDiff >= fiveMinutes) {
-          // Nếu cách nhau hơn 5 phút, coi như 2 items khác nhau
+        // Nếu cách nhau ít hơn 10 phút, coi như duplicate
+        if (timeDiff < tenMinutes) {
+          // So sánh thời gian tạo để giữ item mới hơn
+          if (itemTime > existingTime) {
+            // Item hiện tại mới hơn, thay thế item cũ trong finalItems
+            const index = finalItems.findIndex(i => i.id === existingDuplicate.id)
+            if (index >= 0) {
+              finalItems[index] = item
+            }
+            duplicateKeyMap.set(key, item)
+          }
+          // Nếu item hiện tại cũ hơn, bỏ qua
+          return
+        } else {
+          // Nếu cách nhau hơn 10 phút, coi như 2 items khác nhau
           duplicateKeyMap.set(key, item)
           finalItems.push(item)
         }
-        // Nếu trong vòng 5 phút, bỏ qua item này (item mới hơn đã được thêm vào finalItems)
       } else {
         // Chưa có item tương tự, thêm vào
         duplicateKeyMap.set(key, item)
