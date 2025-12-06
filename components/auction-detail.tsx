@@ -1021,7 +1021,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
             <div className="mb-2 flex items-center gap-2">
               <MessageCircle className="h-5 w-5 text-primary" />
               <div>
-                <h3 className="font-semibold text-foreground">Bình luận phiên đấu giá</h3>
+                <h3 className="font-semibold text-foreground">Phòng Chat Đấu Giá</h3>
                 <p className="text-xs text-muted-foreground">Trao đổi ẩn danh, mọi người đều xem được.</p>
               </div>
             </div>

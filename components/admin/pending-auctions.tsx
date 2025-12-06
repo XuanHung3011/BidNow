@@ -75,10 +75,78 @@ export function PendingAuctions() {
         page: page,
         pageSize: pageSize,
       })
-      setAllItems(result.data || [])
-      setItems(result.data || [])
-      setTotalCount(result.totalCount || 0)
-      setTotalPages(result.totalPages || 0)
+      
+      // Loại bỏ duplicate items
+      // 1. Loại bỏ duplicate dựa trên ID (nếu backend trả về cùng item nhiều lần)
+      // 2. Loại bỏ duplicate dựa trên seller + title + category (nếu người bán sửa item pending tạo item mới)
+      const itemsData = result.data || []
+      const uniqueItemsMap = new Map<number, ItemResponseDto>()
+      const duplicateKeyMap = new Map<string, ItemResponseDto>() // Key: sellerId_title_categoryId
+      
+      itemsData.forEach((item) => {
+        // Bước 1: Loại bỏ duplicate dựa trên ID
+        const existingItem = uniqueItemsMap.get(item.id)
+        if (!existingItem) {
+          uniqueItemsMap.set(item.id, item)
+        } else {
+          // Nếu đã tồn tại, so sánh thời gian tạo để giữ item mới hơn
+          const existingTime = new Date(existingItem.createdAt || 0).getTime()
+          const currentTime = new Date(item.createdAt || 0).getTime()
+          // Nếu item hiện tại mới hơn, thay thế
+          if (currentTime > existingTime) {
+            uniqueItemsMap.set(item.id, item)
+          }
+        }
+      })
+      
+      // Bước 2: Loại bỏ duplicate dựa trên seller + title + category
+      // Chỉ áp dụng cho items có cùng seller, title, category và tạo trong vòng 5 phút
+      // (Trường hợp người bán sửa item pending tạo item mới nhưng item cũ chưa bị xóa)
+      const fiveMinutes = 5 * 60 * 1000
+      const finalItems: ItemResponseDto[] = []
+      
+      // Sắp xếp items theo thời gian tạo (mới nhất trước) để ưu tiên item mới hơn
+      const sortedItems = Array.from(uniqueItemsMap.values()).sort((a, b) => {
+        const timeA = new Date(a.createdAt || 0).getTime()
+        const timeB = new Date(b.createdAt || 0).getTime()
+        return timeB - timeA
+      })
+      
+      sortedItems.forEach((item) => {
+        const key = `${item.sellerId || 0}_${item.title || ''}_${item.categoryId || 0}`.toLowerCase()
+        const itemTime = new Date(item.createdAt || 0).getTime()
+        
+        // Kiểm tra xem có item tương tự đã được thêm vào finalItems chưa
+        const existingDuplicate = duplicateKeyMap.get(key)
+        if (existingDuplicate) {
+          const existingTime = new Date(existingDuplicate.createdAt || 0).getTime()
+          const timeDiff = Math.abs(itemTime - existingTime)
+          
+          // Nếu cách nhau ít hơn 5 phút, coi như duplicate và bỏ qua item này (vì item mới hơn đã được thêm trước)
+          if (timeDiff >= fiveMinutes) {
+            // Nếu cách nhau hơn 5 phút, coi như 2 items khác nhau
+            duplicateKeyMap.set(key, item)
+            finalItems.push(item)
+          }
+          // Nếu trong vòng 5 phút, bỏ qua item này (item mới hơn đã được thêm vào finalItems)
+        } else {
+          // Chưa có item tương tự, thêm vào
+          duplicateKeyMap.set(key, item)
+          finalItems.push(item)
+        }
+      })
+      
+      const uniqueItems = finalItems.length > 0 ? finalItems : Array.from(uniqueItemsMap.values())
+      
+      // Sử dụng totalCount từ backend, nhưng điều chỉnh nếu có duplicate
+      const backendTotalCount = result.totalCount || 0
+      const duplicateCount = itemsData.length - uniqueItems.length
+      const adjustedTotalCount = Math.max(0, backendTotalCount - duplicateCount)
+      
+      setAllItems(uniqueItems)
+      setItems(uniqueItems)
+      setTotalCount(adjustedTotalCount)
+      setTotalPages(result.totalPages || Math.ceil(adjustedTotalCount / pageSize))
     } catch (error: any) {
       toast({
         title: "Lỗi",
