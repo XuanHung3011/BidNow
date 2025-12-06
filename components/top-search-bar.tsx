@@ -18,11 +18,13 @@ export function TopSearchBar() {
   // Only show on home page, auctions page, and categories page
   const shouldShow = pathname === "/" || pathname === "/auctions" || pathname.startsWith("/categories")
 
-const handleSubmit = (e: React.FormEvent) => {
-  e.preventDefault()
-  if (!query.trim()) return
-  router.push(`/auctions?q=${encodeURIComponent(query.trim())}`)
-}
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!query.trim()) return
+    
+    // Just navigate - let AllAuctions handle the search logging
+    router.push(`/auctions?q=${encodeURIComponent(query.trim())}`)
+  }
 
   if (isAdmin || !shouldShow) return null
 
@@ -45,5 +47,3 @@ const handleSubmit = (e: React.FormEvent) => {
     </div>
   )
 }
-
-

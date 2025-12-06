@@ -1,5 +1,6 @@
 // lib/api/auctions.ts
 import { API_BASE, API_ENDPOINTS } from './config'
+import type { PaginatedResult } from './types'
 
 export interface BidRequestDto {
   bidderId: number
@@ -156,15 +157,7 @@ export interface AuctionFilterParams {
   pageSize?: number
 }
 
-export interface PaginatedResult<T> {
-  data: T[]
-  totalCount: number
-  page: number
-  pageSize: number
-  totalPages: number
-  hasPreviousPage: boolean
-  hasNextPage: boolean
-}
+
 
 export const AuctionsAPI = {
   // Get all auctions with pagination, search, and filtering (Public endpoint)
@@ -196,9 +189,12 @@ export const AuctionsAPI = {
     return handleResponse<PaginatedResult<AuctionListItemDto>>(res)
   },
 
-  async getDetail(id: number): Promise<AuctionDetailDto> {
-    const response = await fetch(`${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BY_ID(id)}`)
-    
+  async getDetail(id: number, userId?: number): Promise<AuctionDetailDto> {
+    const baseUrl = `${API_BASE}${API_ENDPOINTS.AUCTIONS.GET_BY_ID(id)}`
+    const url = userId && userId > 0 ? `${baseUrl}?userId=${userId}` : baseUrl
+
+    const response = await fetch(url)
+
     if (!response.ok) {
       throw new Error('Failed to fetch auction detail')
     }
