@@ -38,8 +38,6 @@ export interface AuctionDetailDto {
   pausedAt?: string
 }
 
-
-
 export interface AuctionFilterParams {
   searchTerm?: string
   statuses?: string // comma-separated: active,scheduled,completed,paused,cancelled

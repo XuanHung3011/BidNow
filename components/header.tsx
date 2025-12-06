@@ -296,13 +296,14 @@ export function Header() {
       const params = new URLSearchParams(searchParams.toString())
       params.delete("notificationId")
       const newQuery = params.toString()
-      router.replace(`${pathname}${newQuery ? `?${newQuery}` : ""}`, { scroll: false })
+      router.replace(`${pathname}${newQuery ? "?" + newQuery : ""}`, { scroll: false })
     }
   }, [handleMarkAsRead, pathname, router, searchParams, user])
 
   const parseNotificationDate = (value: string) => {
     if (!value) return new Date()
-    const hasTimezoneInfo = /([zZ])|([+\-]\d{2}:?\d{2}$)/.test(value)
+    const timezonePattern = /([zZ])|([+\-]\d{2}:?\d{2}$)/
+    const hasTimezoneInfo = timezonePattern.test(value)
     const normalizedValue = hasTimezoneInfo ? value : `${value}Z`
 
     const parsedUtc = new Date(normalizedValue)

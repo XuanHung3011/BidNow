@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ChangePasswordDto } from "@/lib/api/types"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface ChangePasswordDialogProps {
   open: boolean
@@ -22,6 +32,7 @@ export function ChangePasswordDialog({ open, onOpenChange, userId, onSubmit }: C
   const [confirmPassword, setConfirmPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -46,13 +57,17 @@ export function ChangePasswordDialog({ open, onOpenChange, userId, onSubmit }: C
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!validateForm()) {
       return
     }
 
+    setConfirmOpen(true)
+  }
+
+  const handleConfirmChange = async () => {
     try {
       setIsLoading(true)
       await onSubmit(userId, formData)
@@ -63,9 +78,21 @@ export function ChangePasswordDialog({ open, onOpenChange, userId, onSubmit }: C
       })
       setConfirmPassword("")
       setErrors({})
+      setConfirmOpen(false)
       onOpenChange(false)
-    } catch (error) {
-      console.error("Error changing password:", error)
+    } catch (error: any) {
+      let message = error?.message || "Không thể đổi mật khẩu"
+      
+      // Map lỗi server generic thành thông báo cụ thể về mật khẩu hiện tại
+      if (message.includes("Lỗi server") || message.includes("vui lòng thử lại sau")) {
+        message = "Mật khẩu hiện tại không đúng"
+      }
+      
+      setErrors((prev) => ({
+        ...prev,
+        currentPassword: message,
+      }))
+      setConfirmOpen(false)
     } finally {
       setIsLoading(false)
     }
@@ -87,8 +114,13 @@ export function ChangePasswordDialog({ open, onOpenChange, userId, onSubmit }: C
               type="password"
               placeholder="Nhập mật khẩu hiện tại"
               value={formData.currentPassword}
-              onChange={(e) => setFormData({ ...formData, currentPassword: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, currentPassword: e.target.value })
+                setErrors((prev) => ({ ...prev, currentPassword: "" }))
+              }}
+              onBlur={() => validateForm()}
               disabled={isLoading}
+              className={errors.currentPassword ? "border-destructive" : ""}
             />
             {errors.currentPassword && <p className="text-sm text-destructive">{errors.currentPassword}</p>}
           </div>
@@ -100,8 +132,13 @@ export function ChangePasswordDialog({ open, onOpenChange, userId, onSubmit }: C
               type="password"
               placeholder="Ít nhất 6 ký tự"
               value={formData.newPassword}
-              onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, newPassword: e.target.value })
+                setErrors((prev) => ({ ...prev, newPassword: "" }))
+              }}
+              onBlur={() => validateForm()}
               disabled={isLoading}
+              className={errors.newPassword ? "border-destructive" : ""}
             />
             {errors.newPassword && <p className="text-sm text-destructive">{errors.newPassword}</p>}
           </div>
@@ -113,8 +150,13 @@ export function ChangePasswordDialog({ open, onOpenChange, userId, onSubmit }: C
               type="password"
               placeholder="Nhập lại mật khẩu mới"
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={(e) => {
+                setConfirmPassword(e.target.value)
+                setErrors((prev) => ({ ...prev, confirmPassword: "" }))
+              }}
+              onBlur={() => validateForm()}
               disabled={isLoading}
+              className={errors.confirmPassword ? "border-destructive" : ""}
             />
             {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword}</p>}
           </div>
@@ -129,6 +171,33 @@ export function ChangePasswordDialog({ open, onOpenChange, userId, onSubmit }: C
           </div>
         </form>
       </DialogContent>
+
+      {/* Xác nhận đổi mật khẩu */}
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (!isLoading) {
+            setConfirmOpen(open)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận đổi mật khẩu</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn đổi mật khẩu cho người dùng này?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isLoading} onClick={() => setConfirmOpen(false)}>
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction disabled={isLoading} onClick={handleConfirmChange}>
+              {isLoading ? "Đang đổi..." : "Xác nhận"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

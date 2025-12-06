@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserResponse } from "@/lib/api/types"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface UserRoleDialogProps {
   open: boolean
@@ -15,7 +25,7 @@ interface UserRoleDialogProps {
   onRemoveRole: (userId: number, role: string) => Promise<void>
 }
 
-const AVAILABLE_ROLES = ["buyer", "seller", "admin"]
+const MANAGEABLE_ROLES = ["buyer", "seller"]
 
 const getRoleLabel = (role: string) => {
   const labels: Record<string, string> = {
@@ -29,29 +39,32 @@ const getRoleLabel = (role: string) => {
 export function UserRoleDialog({ open, onOpenChange, user, onAddRole, onRemoveRole }: UserRoleDialogProps) {
   const [selectedRole, setSelectedRole] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<{ type: "add" | "remove"; role: string } | null>(null)
 
-  const handleAddRole = async () => {
+  const handleAddRole = () => {
     if (!user || !selectedRole) return
 
-    try {
-      setIsLoading(true)
-      await onAddRole(user.id, selectedRole)
-      setSelectedRole("")
-    } catch (error) {
-      console.error("Error adding role:", error)
-    } finally {
-      setIsLoading(false)
-    }
+    setConfirmAction({ type: "add", role: selectedRole })
   }
 
-  const handleRemoveRole = async (role: string) => {
+  const handleRemoveRole = (role: string) => {
     if (!user) return
 
+    setConfirmAction({ type: "remove", role })
+  }
+
+  const handleConfirm = async () => {
+    if (!user || !confirmAction) return
+
+    setIsLoading(true)
     try {
-      setIsLoading(true)
-      await onRemoveRole(user.id, role)
-    } catch (error) {
-      console.error("Error removing role:", error)
+      if (confirmAction.type === "add") {
+        await onAddRole(user.id, confirmAction.role)
+        setSelectedRole("")
+      } else {
+        await onRemoveRole(user.id, confirmAction.role)
+      }
+      setConfirmAction(null)
     } finally {
       setIsLoading(false)
     }
@@ -59,7 +72,8 @@ export function UserRoleDialog({ open, onOpenChange, user, onAddRole, onRemoveRo
 
   if (!user) return null
 
-  const availableRolesToAdd = AVAILABLE_ROLES.filter(role => !user.roles.includes(role))
+  const availableRolesToAdd = MANAGEABLE_ROLES.filter((role) => !user.roles.includes(role))
+  const displayedRoles = user.roles.filter((role) => MANAGEABLE_ROLES.includes(role))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -73,8 +87,8 @@ export function UserRoleDialog({ open, onOpenChange, user, onAddRole, onRemoveRo
           <div className="space-y-2">
             <Label>Vai trò hiện tại</Label>
             <div className="flex flex-wrap gap-2">
-              {user.roles.length > 0 ? (
-                user.roles.map((role) => (
+              {displayedRoles.length > 0 ? (
+                displayedRoles.map((role) => (
                   <div
                     key={role}
                     className="flex items-center gap-2 rounded-md bg-secondary px-3 py-1 text-sm"
@@ -132,6 +146,46 @@ export function UserRoleDialog({ open, onOpenChange, user, onAddRole, onRemoveRo
           </div>
         </div>
       </DialogContent>
+
+      {/* Xác nhận thay đổi vai trò */}
+      <AlertDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => {
+          if (!isLoading) {
+            setConfirmAction(open ? confirmAction : null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction?.type === "add" ? "Xác nhận thêm vai trò" : "Xác nhận xóa vai trò"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.type === "add"
+                ? `Bạn có chắc chắn muốn thêm vai trò "${getRoleLabel(confirmAction.role)}" cho người dùng ${
+                    user?.email
+                  }?`
+                : `Bạn có chắc chắn muốn xóa vai trò "${getRoleLabel(confirmAction?.role || "")}" khỏi người dùng ${
+                    user?.email
+                  }?`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={isLoading}
+              onClick={() => {
+                if (!isLoading) setConfirmAction(null)
+              }}
+            >
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction disabled={isLoading || !confirmAction} onClick={handleConfirm}>
+              {isLoading ? "Đang xử lý..." : "Xác nhận"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

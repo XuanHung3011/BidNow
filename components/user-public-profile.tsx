@@ -4,9 +4,15 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { UsersAPI } from "@/lib/api/users"
+import { AuctionsAPI, type SellerAuctionDto } from "@/lib/api/auctions"
 import type { UserResponse } from "@/lib/api/types"
-import { Loader2, Mail, Shield, Calendar } from "lucide-react"
+import { Loader2, Mail, Shield, Calendar, Package } from "lucide-react"
+import { getImageUrls } from "@/lib/api/config"
+import Link from "next/link"
+import Image from "next/image"
 
 interface UserPublicProfileProps {
   userId?: number | null
@@ -16,6 +22,9 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
   const [profile, setProfile] = useState<UserResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [sellerAuctions, setSellerAuctions] = useState<SellerAuctionDto[]>([])
+  const [loadingAuctions, setLoadingAuctions] = useState(false)
+  const [showAllProductsDialog, setShowAllProductsDialog] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -56,6 +65,40 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
     }
   }, [userId])
 
+  // Fetch seller auctions if user is a seller
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchSellerAuctions = async () => {
+      if (!profile || !userId || !profile.roles?.includes("seller")) {
+        return
+      }
+
+      try {
+        setLoadingAuctions(true)
+        const auctions = await AuctionsAPI.getBySeller(userId)
+        if (isMounted) {
+          setSellerAuctions(auctions)
+        }
+      } catch (err) {
+        // Silently fail - auctions are optional
+        if (isMounted) {
+          setSellerAuctions([])
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingAuctions(false)
+        }
+      }
+    }
+
+    fetchSellerAuctions()
+
+    return () => {
+      isMounted = false
+    }
+  }, [profile, userId])
+
   if (loading) {
     return (
       <div className="flex min-h-[300px] items-center justify-center">
@@ -76,6 +119,71 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
 
   if (!profile) {
     return null
+  }
+
+  // Helper function để format giá
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+    }).format(price)
+  }
+
+  // Helper function để map trạng thái sang tiếng Việt
+  const getStatusBadge = (status: string) => {
+    const s = status?.toLowerCase() ?? ""
+    if (s === "active") return { label: "Đang diễn ra", variant: "default" as const }
+    if (s === "scheduled") return { label: "Sắp diễn ra", variant: "secondary" as const }
+    if (s === "paused") return { label: "Đã tạm dừng", variant: "destructive" as const }
+    if (s === "completed" || s === "ended") return { label: "Đã kết thúc", variant: "outline" as const }
+    if (s === "cancelled" || s === "canceled") return { label: "Đã hủy", variant: "outline" as const }
+    if (s === "draft") return { label: "Bản nháp", variant: "outline" as const }
+    return { label: "Không xác định", variant: "outline" as const }
+  }
+
+  // Component để render product card
+  const ProductCard = ({ auction }: { auction: SellerAuctionDto }) => {
+    const imageUrls = getImageUrls(auction.itemImages)
+    const statusInfo = getStatusBadge(auction.displayStatus)
+    return (
+      <Link href={`/auction/${auction.id}`}>
+        <Card className="group h-full overflow-hidden transition-all hover:shadow-lg hover:border-primary">
+          <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+            <Image
+              src={imageUrls[0] || "/placeholder.svg"}
+              alt={auction.itemTitle}
+              fill
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+            <Badge className="absolute right-2 top-2" variant={statusInfo.variant}>
+              {statusInfo.label}
+            </Badge>
+          </div>
+          <CardContent className="p-4">
+            <h4 className="mb-2 line-clamp-2 font-semibold text-foreground group-hover:text-primary transition-colors">
+              {auction.itemTitle}
+            </h4>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Giá hiện tại</span>
+                <span className="font-semibold text-primary">
+                  {formatPrice(auction.currentBid ?? auction.startingBid)}
+                </span>
+              </div>
+              {auction.categoryName && (
+                <div className="flex items-center gap-1">
+                  <Package className="h-3 w-3 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground">{auction.categoryName}</p>
+                </div>
+              )}
+              {auction.bidCount > 0 && (
+                <p className="text-xs text-muted-foreground">{auction.bidCount} lượt đấu giá</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+    )
   }
 
   return (
@@ -112,10 +220,6 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
                 <span>{profile.email}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4" />
-                <span>ID: {profile.id}</span>
-              </div>
-              <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
                 <span>Gia nhập: {profile.createdAt ? new Date(profile.createdAt).toLocaleDateString() : "Không rõ"}</span>
               </div>
@@ -132,24 +236,103 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Tổng giao dịch</p>
-              <p className="mt-2 text-3xl font-bold text-primary">{profile.totalSales ?? 0}</p>
+              <p className="text-sm text-muted-foreground">Điểm đánh giá</p>
+              <p className="mt-2 text-3xl font-bold text-primary">
+                {profile.reputationScore != null && profile.reputationScore !== undefined
+                  ? profile.reputationScore.toFixed(1)
+                  : "N/A"}
+              </p>
+              {profile.totalRatings != null && profile.totalRatings > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  ({profile.totalRatings} {profile.totalRatings === 1 ? "đánh giá" : "đánh giá"})
+                </p>
+              )}
             </div>
             <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Lượt mua</p>
-              <p className="mt-2 text-3xl font-bold text-primary">{profile.totalPurchases ?? 0}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Điểm uy tín</p>
-              <p className="mt-2 text-3xl font-bold text-primary">{profile.reputationScore ?? "N/A"}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Đánh giá</p>
-              <p className="mt-2 text-3xl font-bold text-primary">{profile.totalRatings ?? 0}</p>
+              <p className="text-sm text-muted-foreground">Tổng sản phẩm</p>
+              <p className="mt-2 text-3xl font-bold text-primary">
+                {loadingAuctions ? "..." : sellerAuctions.length}
+              </p>
+              {profile.roles?.includes("seller") && (
+                <p className="mt-1 text-xs text-muted-foreground">Sản phẩm đã đăng</p>
+              )}
             </div>
           </div>
+
+          {/* Seller Products Section */}
+          {profile.roles?.includes("seller") && (
+            <div className="mt-8">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold">Sản phẩm đang bán</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {loadingAuctions ? "Đang tải..." : `${sellerAuctions.length} sản phẩm`}
+                  </p>
+                </div>
+                {sellerAuctions.length > 6 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowAllProductsDialog(true)}
+                  >
+                    Xem tất cả
+                  </Button>
+                )}
+              </div>
+
+              {loadingAuctions ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : sellerAuctions.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-8 text-center">
+                  <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-sm text-muted-foreground">Chưa có sản phẩm nào</p>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {sellerAuctions.slice(0, 6).map((auction) => (
+                    <ProductCard key={auction.id} auction={auction} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Dialog hiển thị tất cả sản phẩm */}
+      <Dialog open={showAllProductsDialog} onOpenChange={setShowAllProductsDialog}>
+        <DialogContent className="max-w-[150vw] w-full max-h-[95vh] h-[95vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-8 pt-8 pb-6 border-b">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-2xl">Tất cả sản phẩm</DialogTitle>
+                <DialogDescription className="mt-2">
+                  Danh sách đầy đủ các sản phẩm của {profile.fullName || profile.email}
+                </DialogDescription>
+              </div>
+              <Badge variant="secondary" className="text-sm px-3 py-1">
+                {sellerAuctions.length} sản phẩm
+              </Badge>
+            </div>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-8 py-8">
+            {sellerAuctions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <Package className="h-16 w-16 text-muted-foreground mb-4" />
+                <p className="text-lg font-medium text-foreground mb-2">Chưa có sản phẩm nào</p>
+                <p className="text-sm text-muted-foreground">Người bán này chưa đăng sản phẩm nào</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-8">
+                {sellerAuctions.map((auction) => (
+                  <ProductCard key={auction.id} auction={auction} />
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

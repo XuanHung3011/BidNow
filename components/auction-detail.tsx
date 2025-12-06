@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Clock,
   TrendingUp,
@@ -30,13 +32,14 @@ import { AutoBidDialog } from "@/components/auto-bid-dialog"
 import {
   AuctionsAPI,
   FavoriteSellersAPI,
+  UsersAPI,
   type AuctionDetailDto,
   type FavoriteSellerResponseDto,
 } from "@/lib/api"
 import type { BidDto } from "@/lib/api/auctions"
 import { useAuth } from "@/lib/auth-context"
 import { createAuctionHubConnection, type BidPlacedPayload, type AuctionStatusUpdatedPayload } from "@/lib/realtime/auctionHub"
-import { getImageUrls } from "@/lib/api/config"
+import { getImageUrls, getImageUrl } from "@/lib/api/config"
 import { WatchlistAPI } from "@/lib/api"
 import { PaymentButton } from "@/components/payment-button"
 
@@ -70,6 +73,8 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const [buyNowLoading, setBuyNowLoading] = useState(false)
   const [buyNowMessage, setBuyNowMessage] = useState<string | null>(null)
   const [buyNowError, setBuyNowError] = useState<string | null>(null)
+  const [sellerInfo, setSellerInfo] = useState<{ email?: string; reputationScore?: number; totalProducts?: number; avatarUrl?: string } | null>(null)
+  const [loadingSellerInfo, setLoadingSellerInfo] = useState(false)
 
   const normalizedStatus = useMemo(() => auction?.status?.toLowerCase() ?? "", [auction?.status])
   const isAuctionLocked = useMemo(() => ["paused", "cancelled", "completed"].includes(normalizedStatus), [normalizedStatus])
@@ -336,6 +341,35 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     return () => { mounted = false }
   }, [auction?.sellerId, user?.id])
 
+  // Fetch seller info (email, reputationScore, totalProducts, avatarUrl)
+  useEffect(() => {
+    if (!auction?.sellerId) return
+
+    const fetchSellerInfo = async () => {
+      setLoadingSellerInfo(true)
+      try {
+        // Fetch seller user data
+        const sellerUser = await UsersAPI.getById(auction.sellerId)
+        
+        // Fetch seller auctions to count total products
+        const sellerAuctions = await AuctionsAPI.getBySeller(auction.sellerId)
+        
+        setSellerInfo({
+          email: sellerUser.email,
+          reputationScore: sellerUser.reputationScore ?? undefined,
+          totalProducts: sellerAuctions.length,
+          avatarUrl: sellerUser.avatarUrl ?? undefined,
+        })
+      } catch (error) {
+        console.error("Failed to fetch seller info:", error)
+      } finally {
+        setLoadingSellerInfo(false)
+      }
+    }
+
+    fetchSellerInfo()
+  }, [auction?.sellerId])
+
   // 3. USEEFFECT - Thêm useEffect mới để check watchlist
   useEffect(() => {
     if (!user?.id || !auctionId) return
@@ -481,6 +515,13 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const toggleFavoriteSeller = async () => {
     if (!auction?.sellerId) return
     
+    // Kiểm tra đăng nhập trước
+    if (!user?.id) {
+      setFavoriteMessage("Vui lòng đăng nhập để theo dõi người bán")
+      setTimeout(() => setFavoriteMessage(null), 3000)
+      return
+    }
+    
     setLoadingFavorite(true)
     setFavoriteMessage(null)
     
@@ -506,7 +547,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       setTimeout(() => setFavoriteMessage(null), 3000)
       
     } catch (err: any) {
-      console.error('Toggle favorite error:', err)
+      // Không log vào console, chỉ hiển thị message cho user
       setFavoriteMessage(err.message || "Không thể thực hiện thao tác. Vui lòng đăng nhập.")
       setTimeout(() => setFavoriteMessage(null), 3000)
     } finally {
@@ -612,14 +653,17 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const priceDeltaValue = auction.currentBid ? auction.currentBid - auction.startingBid : 0
   const priceDeltaPercent =
     auction.currentBid && auction.startingBid ? (priceDeltaValue / auction.startingBid) * 100 : 0
+  
+  // Lấy thông tin seller từ auction
   const seller = {
+    id: auction.sellerId,
     name: auction.sellerName || `User #${auction.sellerId}`,
-    rating: 4.8,
+    rating: auction.sellerTotalRatings && auction.sellerTotalRatings > 0 ? 4.8 : 0, // Default rating, TODO: Lấy từ API
     totalRatings: auction.sellerTotalRatings || 0,
-    totalSales: 1234,
-    joinDate: "Tháng 3, 2023",
-    responseRate: 98,
-    responseTime: "Trong vòng 2 giờ",
+    totalSales: 0, // TODO: Lấy từ API nếu có
+    joinDate: "Không rõ", // TODO: Lấy từ API nếu có
+    responseRate: 98, // TODO: Lấy từ API nếu có
+    responseTime: "Trong vòng 2 giờ", // TODO: Lấy từ API nếu có
   }
 
   return (
@@ -977,7 +1021,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
             <div className="mb-2 flex items-center gap-2">
               <MessageCircle className="h-5 w-5 text-primary" />
               <div>
-                <h3 className="font-semibold text-foreground">Bình luận phiên đấu giá</h3>
+                <h3 className="font-semibold text-foreground">Phòng Chat Đấu Giá</h3>
                 <p className="text-xs text-muted-foreground">Trao đổi ẩn danh, mọi người đều xem được.</p>
               </div>
             </div>
@@ -1054,14 +1098,63 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 </div>
               </TabsContent>
 
-              <TabsContent value="seller" className="mt-6 space-y-6">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-3xl font-bold text-primary-foreground">
-                    {seller.name[0]}
+              <TabsContent value="seller" className="mt-6 space-y-4">
+                {loadingSellerInfo ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
-                  <div className="flex-1 space-y-3">
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-4">
+                      <Avatar className="h-20 w-20">
+                        {sellerInfo?.avatarUrl ? (
+                          <AvatarImage src={getImageUrl(sellerInfo.avatarUrl)} alt={seller.name} />
+                        ) : null}
+                        <AvatarFallback className="bg-primary text-2xl font-bold text-primary-foreground">
+                          {seller.name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <h3 className="text-xl font-semibold text-foreground">{seller.name}</h3>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Tên</span>
+                          <span className="font-medium text-foreground">{seller.name}</span>
+                        </div>
+                        {sellerInfo?.email && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">Email</span>
+                            <span className="font-medium text-foreground">{sellerInfo.email}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Điểm đánh giá</span>
+                          <div className="flex items-center gap-2">
+                            <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                            <span className="font-medium text-foreground">
+                              {sellerInfo?.reputationScore != null && sellerInfo.reputationScore !== undefined
+                                ? sellerInfo.reputationScore.toFixed(1)
+                                : "N/A"}
+                            </span>
+                            {seller.totalRatings > 0 && (
+                              <span className="text-xs text-muted-foreground">
+                                ({seller.totalRatings} {seller.totalRatings === 1 ? "đánh giá" : "đánh giá"})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Tổng sản phẩm</span>
+                          <span className="font-medium text-foreground">
+                            {sellerInfo?.totalProducts ?? 0}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                     <div className="flex items-center justify-between">
-                      <h3 className="text-2xl font-semibold text-foreground">{seller.name}</h3>
                       <Button
                         size="sm"
                         variant={isFavoriteSeller ? "secondary" : "default"}
@@ -1070,8 +1163,13 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                         className={`flex items-center gap-2 ${isFavoriteSeller ? "bg-red-50 text-red-600" : ""}`}
                       >
                         {loadingFavorite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Heart className="h-4 w-4" />}
-                        {isFavoriteSeller ? "Bỏ yêu thích" : "Yêu thích"}
+                        {isFavoriteSeller ? "Bỏ yêu thích" : "Theo dõi người bán"}
                       </Button>
+                      <Link href={`/profile/${auction.sellerId}`}>
+                        <Button className="bg-primary hover:bg-primary/90">
+                          Xem trang người bán
+                        </Button>
+                      </Link>
                     </div>
                     {favoriteMessage && (
                       <div
@@ -1084,51 +1182,8 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                         {favoriteMessage}
                       </div>
                     )}
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1 rounded-lg bg-yellow-50 px-3 py-1.5">
-                        <Star className="h-5 w-5 fill-yellow-500 text-yellow-500" />
-                        <span className="text-lg font-bold text-foreground">{seller.rating.toFixed(1)}</span>
-                        <span className="text-sm text-muted-foreground">/ 5.0</span>
-                      </div>
-                      <span className="text-sm text-muted-foreground">({seller.totalRatings} đánh giá)</span>
-                    </div>
                   </div>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Card className="border-border bg-muted/50 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-full bg-primary/10 p-2">
-                        <ShoppingBag className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Tổng giao dịch</p>
-                        <p className="text-xl font-bold text-foreground">{seller.totalSales}</p>
-                      </div>
-                    </div>
-                  </Card>
-                  <Card className="border-border bg-muted/50 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-full bg-accent/10 p-2">
-                        <Award className="h-5 w-5 text-accent" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Tỷ lệ phản hồi</p>
-                        <p className="text-xl font-bold text-foreground">{seller.responseRate}%</p>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-                <div className="rounded-xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
-                  <div className="flex justify-between">
-                    <span>Tham gia từ</span>
-                    <span className="font-medium text-foreground">{seller.joinDate}</span>
-                  </div>
-                  <div className="mt-2 flex justify-between">
-                    <span>Thời gian phản hồi</span>
-                    <span className="font-medium text-foreground">{seller.responseTime}</span>
-                  </div>
-                </div>
-                <Button className="w-full bg-primary hover:bg-primary/90">Xem trang người bán</Button>
+                )}
               </TabsContent>
             </Tabs>
           </Card>

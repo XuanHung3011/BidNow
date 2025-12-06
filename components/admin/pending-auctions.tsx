@@ -10,6 +10,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -47,14 +48,93 @@ export function PendingAuctions() {
   const [selectedItem, setSelectedItem] = useState<ItemResponseDto | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
   
+  // Approve confirmation state
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false)
+  const [itemToApprove, setItemToApprove] = useState<ItemResponseDto | null>(null)
+  const [approveSignature, setApproveSignature] = useState("")
+  
   // Reject dialog state
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState("")
+  const [rejectSignature, setRejectSignature] = useState("")
   const [itemToReject, setItemToReject] = useState<number | null>(null)
+  
+  // Result dialog state
+  const [resultDialogOpen, setResultDialogOpen] = useState(false)
+  const [resultDialogTitle, setResultDialogTitle] = useState("")
+  const [resultDialogMessage, setResultDialogMessage] = useState("")
 
-  const fetchPendingItems = useCallback(async () => {
+  // Helper function để loại bỏ duplicate items
+  const removeDuplicates = useCallback((itemsData: ItemResponseDto[]): ItemResponseDto[] => {
+    // Loại bỏ duplicate items
+    // 1. Loại bỏ duplicate dựa trên ID (nếu backend trả về cùng item nhiều lần)
+    // 2. Loại bỏ duplicate dựa trên seller + title + category (nếu người bán sửa item pending tạo item mới)
+    const uniqueItemsMap = new Map<number, ItemResponseDto>()
+    const duplicateKeyMap = new Map<string, ItemResponseDto>() // Key: sellerId_title_categoryId
+    
+    itemsData.forEach((item) => {
+      // Bước 1: Loại bỏ duplicate dựa trên ID
+      const existingItem = uniqueItemsMap.get(item.id)
+      if (!existingItem) {
+        uniqueItemsMap.set(item.id, item)
+      } else {
+        // Nếu đã tồn tại, so sánh thời gian tạo để giữ item mới hơn
+        const existingTime = new Date(existingItem.createdAt || 0).getTime()
+        const currentTime = new Date(item.createdAt || 0).getTime()
+        // Nếu item hiện tại mới hơn, thay thế
+        if (currentTime > existingTime) {
+          uniqueItemsMap.set(item.id, item)
+        }
+      }
+    })
+    
+    // Bước 2: Loại bỏ duplicate dựa trên seller + title + category
+    // Chỉ áp dụng cho items có cùng seller, title, category và tạo trong vòng 5 phút
+    // (Trường hợp người bán sửa item pending tạo item mới nhưng item cũ chưa bị xóa)
+    const fiveMinutes = 5 * 60 * 1000
+    const finalItems: ItemResponseDto[] = []
+    
+    // Sắp xếp items theo thời gian tạo (mới nhất trước) để ưu tiên item mới hơn
+    const sortedItems = Array.from(uniqueItemsMap.values()).sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime()
+      const timeB = new Date(b.createdAt || 0).getTime()
+      return timeB - timeA
+    })
+    
+    sortedItems.forEach((item) => {
+      const key = `${item.sellerId || 0}_${item.title || ''}_${item.categoryId || 0}`.toLowerCase()
+      const itemTime = new Date(item.createdAt || 0).getTime()
+      
+      // Kiểm tra xem có item tương tự đã được thêm vào finalItems chưa
+      const existingDuplicate = duplicateKeyMap.get(key)
+      if (existingDuplicate) {
+        const existingTime = new Date(existingDuplicate.createdAt || 0).getTime()
+        const timeDiff = Math.abs(itemTime - existingTime)
+        
+        // Nếu cách nhau ít hơn 5 phút, coi như duplicate và bỏ qua item này (vì item mới hơn đã được thêm trước)
+        if (timeDiff >= fiveMinutes) {
+          // Nếu cách nhau hơn 5 phút, coi như 2 items khác nhau
+          duplicateKeyMap.set(key, item)
+          finalItems.push(item)
+        }
+        // Nếu trong vòng 5 phút, bỏ qua item này (item mới hơn đã được thêm vào finalItems)
+      } else {
+        // Chưa có item tương tự, thêm vào
+        duplicateKeyMap.set(key, item)
+        finalItems.push(item)
+      }
+    })
+    
+    return finalItems.length > 0 ? finalItems : Array.from(uniqueItemsMap.values())
+  }, [])
+
+  const fetchPendingItems = useCallback(async (forceRefetch = false) => {
     try {
-      setLoading(true)
+      // Khi force refetch (từ real-time update), không hiển thị loading để tránh flicker
+      if (!forceRefetch) {
+        setLoading(true)
+      }
+      
       const result = await ItemsAPI.getAllWithFilter({
         statuses: ["pending"],
         categoryId: selectedCategory || undefined,
@@ -63,21 +143,39 @@ export function PendingAuctions() {
         page: page,
         pageSize: pageSize,
       })
-      setAllItems(result.data || [])
-      setItems(result.data || [])
-      setTotalCount(result.totalCount || 0)
-      setTotalPages(result.totalPages || 0)
-    } catch (error) {
-      console.error("Error fetching pending items:", error)
+      
+      const itemsData = result.data || []
+      
+      // Loại bỏ duplicate items
+      const uniqueItems = removeDuplicates(itemsData)
+      
+      // Mỗi khi refetch, thay thế hoàn toàn danh sách cũ bằng danh sách mới đã loại bỏ duplicate
+      // Điều này đảm bảo items cũ (duplicate) sẽ bị loại bỏ ngay lập tức
+      setAllItems(uniqueItems)
+      
+      // Items hiển thị sẽ được filter bởi useEffect riêng dựa trên searchQuery
+      // Ở đây chỉ cần set items ban đầu, useEffect sẽ tự động filter lại khi allItems thay đổi
+      setItems(uniqueItems)
+      
+      // Sử dụng totalCount từ backend, nhưng điều chỉnh nếu có duplicate
+      const backendTotalCount = result.totalCount || 0
+      const duplicateCount = itemsData.length - uniqueItems.length
+      const adjustedTotalCount = Math.max(0, backendTotalCount - duplicateCount)
+      
+      setTotalCount(adjustedTotalCount)
+      setTotalPages(result.totalPages || Math.ceil(adjustedTotalCount / pageSize))
+    } catch (error: any) {
       toast({
         title: "Lỗi",
-        description: "Không thể tải danh sách sản phẩm chờ duyệt",
+        description: error?.message || "Không thể tải danh sách sản phẩm chờ duyệt",
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
+      if (!forceRefetch) {
+        setLoading(false)
+      }
     }
-  }, [selectedCategory, sortBy, sortOrder, page, pageSize, toast])
+  }, [selectedCategory, sortBy, sortOrder, page, pageSize, toast, removeDuplicates])
 
   useEffect(() => {
     fetchCategories()
@@ -92,7 +190,7 @@ export function PendingAuctions() {
       const cats = await ItemsAPI.getCategories()
       setCategories(cats)
     } catch (error) {
-      console.error("Error fetching categories:", error)
+      // Silently fail - categories are not critical
     }
   }
 
@@ -136,8 +234,14 @@ export function PendingAuctions() {
       }
     })()
 
+    // Mỗi khi có thay đổi, tự động refetch lại toàn bộ danh sách
     connection.on("AdminPendingItemsChanged", () => {
-      fetchPendingItems()
+      // Force refetch bằng cách gọi lại fetchPendingItems với flag forceRefetch = true
+      // Không cần merge hay so sánh, chỉ cần fetch lại và thay thế hoàn toàn
+      // Điều này đảm bảo item cũ (duplicate) sẽ bị loại bỏ ngay lập tức
+      if (mounted) {
+        fetchPendingItems(true)
+      }
     })
 
     return () => {
@@ -179,13 +283,13 @@ export function PendingAuctions() {
       })
       // Refresh list after approve/reject
       await fetchPendingItems()
-    } catch (error) {
-      console.error("Error approving item:", error)
+    } catch (error: any) {
       toast({
         title: "Lỗi",
-        description: "Không thể phê duyệt sản phẩm",
+        description: error?.message || "Không thể phê duyệt sản phẩm",
         variant: "destructive",
       })
+      throw error
     } finally {
       setProcessingIds((prev) => {
         const newSet = new Set(prev)
@@ -195,10 +299,60 @@ export function PendingAuctions() {
     }
   }
 
+  const handleApproveClick = (item: ItemResponseDto) => {
+    setItemToApprove(item)
+    setApproveSignature("")
+    setApproveDialogOpen(true)
+  }
+
+  const closeApproveDialog = () => {
+    setApproveDialogOpen(false)
+    setItemToApprove(null)
+    setApproveSignature("")
+  }
+
+  const handleConfirmApprove = async () => {
+    if (!itemToApprove) return
+
+    if (approveSignature.trim() !== "Admin") {
+      toast({
+        title: "Thiếu chữ ký",
+        description: 'Vui lòng nhập "Admin" vào ô chữ ký để xác nhận phê duyệt.',
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      await handleApprove(itemToApprove.id)
+      closeApproveDialog()
+      setResultDialogTitle("Phê duyệt sản phẩm thành công")
+      setResultDialogMessage(
+        `Sản phẩm "${itemToApprove.title}" đã được phê duyệt và đưa lên sàn đấu giá.`
+      )
+      setResultDialogOpen(true)
+    } catch (error: any) {
+      // Giữ dialog mở để admin thử lại
+      setResultDialogTitle("Phê duyệt sản phẩm thất bại")
+      setResultDialogMessage(
+        error?.message || "Không thể phê duyệt sản phẩm. Vui lòng thử lại sau."
+      )
+      setResultDialogOpen(true)
+    }
+  }
+
   const handleRejectClick = (itemId: number) => {
     setItemToReject(itemId)
     setRejectReason("")
+    setRejectSignature("")
     setRejectDialogOpen(true)
+  }
+
+  const closeRejectDialog = () => {
+    setRejectDialogOpen(false)
+    setRejectReason("")
+    setRejectSignature("")
+    setItemToReject(null)
   }
 
   const handleReject = async () => {
@@ -213,25 +367,33 @@ export function PendingAuctions() {
       return
     }
 
-    try {
-      setProcessingIds((prev) => new Set(prev).add(itemToReject))
-      await ItemsAPI.rejectItem(itemToReject, rejectReason)
+    if (rejectSignature.trim() !== "Admin") {
       toast({
-        title: "Thành công",
-        description: "Đã từ chối sản phẩm",
-      })
-      setRejectDialogOpen(false)
-      setRejectReason("")
-      setItemToReject(null)
-      // Refresh list after approve/reject
-      await fetchPendingItems()
-    } catch (error) {
-      console.error("Error rejecting item:", error)
-      toast({
-        title: "Lỗi",
-        description: "Không thể từ chối sản phẩm",
+        title: "Thiếu chữ ký",
+        description: 'Vui lòng nhập "Admin" vào ô chữ ký để xác nhận từ chối.',
         variant: "destructive",
       })
+      return
+    }
+
+    try {
+      setProcessingIds((prev) => new Set(prev).add(itemToReject))
+      const item = items.find((i) => i.id === itemToReject)
+      await ItemsAPI.rejectItem(itemToReject, rejectReason)
+      closeRejectDialog()
+      // Refresh list after approve/reject
+      await fetchPendingItems()
+      setResultDialogTitle("Từ chối sản phẩm thành công")
+      setResultDialogMessage(
+        `Sản phẩm "${item?.title || "N/A"}" đã bị từ chối.\nLý do: ${rejectReason.trim()}`
+      )
+      setResultDialogOpen(true)
+    } catch (error: any) {
+      setResultDialogTitle("Từ chối sản phẩm thất bại")
+      setResultDialogMessage(
+        error?.message || "Không thể từ chối sản phẩm. Vui lòng thử lại sau."
+      )
+      setResultDialogOpen(true)
     } finally {
       setProcessingIds((prev) => {
         const newSet = new Set(prev)
@@ -280,11 +442,10 @@ export function PendingAuctions() {
       setDialogOpen(true)
       const item = await ItemsAPI.getById(itemId)
       setSelectedItem(item)
-    } catch (error) {
-      console.error("Error fetching item details:", error)
+    } catch (error: any) {
       toast({
         title: "Lỗi",
-        description: "Không thể tải thông tin chi tiết sản phẩm",
+        description: error?.message || "Không thể tải thông tin chi tiết sản phẩm",
         variant: "destructive",
       })
       setDialogOpen(false)
@@ -460,7 +621,7 @@ export function PendingAuctions() {
                 <Button 
                   size="sm" 
                   className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
-                  onClick={() => handleApprove(itemId)}
+                  onClick={() => handleApproveClick(item)}
                   disabled={isProcessing}
                 >
                   {isProcessing ? (
@@ -711,21 +872,33 @@ export function PendingAuctions() {
                 Lý do từ chối là bắt buộc và sẽ được gửi đến người bán
               </p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="rejectSignature">Chữ ký Admin *</Label>
+              <Input
+                id="rejectSignature"
+                placeholder='Nhập "Admin" để xác nhận'
+                value={rejectSignature}
+                onChange={(e) => setRejectSignature(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Bạn phải nhập chính xác chữ "Admin" trước khi từ chối sản phẩm.
+              </p>
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setRejectDialogOpen(false)
-                  setRejectReason("")
-                  setItemToReject(null)
-                }}
+                onClick={closeRejectDialog}
               >
                 Hủy
               </Button>
               <Button
                 variant="destructive"
                 onClick={handleReject}
-                disabled={!rejectReason.trim() || (itemToReject !== null && processingIds.has(itemToReject))}
+                disabled={
+                  !rejectReason.trim() ||
+                  rejectSignature.trim() !== "Admin" ||
+                  (itemToReject !== null && processingIds.has(itemToReject))
+                }
               >
                 {itemToReject !== null && processingIds.has(itemToReject) ? (
                   <>
@@ -738,6 +911,74 @@ export function PendingAuctions() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Approve Confirmation Dialog */}
+      <Dialog open={approveDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          closeApproveDialog()
+        } else {
+          setApproveDialogOpen(true)
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xác nhận phê duyệt sản phẩm</DialogTitle>
+            <DialogDescription>
+              Bạn có chắc chắn muốn phê duyệt sản phẩm "{itemToApprove?.title}"? Hành động này sẽ đưa sản phẩm lên sàn đấu giá.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="approveSignature">Chữ ký Admin *</Label>
+              <Input
+                id="approveSignature"
+                placeholder='Nhập "Admin" để xác nhận'
+                value={approveSignature}
+                onChange={(e) => setApproveSignature(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Bạn phải nhập chính xác chữ "Admin" để hoàn tất phê duyệt.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={closeApproveDialog}>
+                Hủy
+              </Button>
+              <Button
+                onClick={handleConfirmApprove}
+                disabled={
+                  approveSignature.trim() !== "Admin" ||
+                  (itemToApprove !== null && processingIds.has(itemToApprove.id))
+                }
+              >
+                {itemToApprove !== null && processingIds.has(itemToApprove.id) ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Đang phê duyệt...
+                  </>
+                ) : (
+                  "Xác nhận phê duyệt"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Result Dialog */}
+      <Dialog open={resultDialogOpen} onOpenChange={setResultDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{resultDialogTitle || "Thông báo"}</DialogTitle>
+            <DialogDescription className="whitespace-pre-line">
+              {resultDialogMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setResultDialogOpen(false)}>Đóng</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
