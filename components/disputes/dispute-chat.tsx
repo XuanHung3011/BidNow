@@ -126,54 +126,111 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
         try {
           const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
           adminId = adminUser?.id ?? null
-        } catch {
-          // If can't get admin, use current user if they are admin
-          adminId = user?.currentRole === "admin" ? currentUserId : null
+          console.log("Dispute chat - Admin ID:", adminId)
+        } catch (error) {
+          console.error("Không thể lấy admin ID:", error)
+          adminId = null
         }
+      } else {
+        console.log("Dispute chat - Using resolvedBy admin ID:", adminId)
       }
 
-      // Define the 3 participants: buyer, seller, and admin
+      // Always load messages between these 3 participants, regardless of who is viewing
+      // This ensures buyer, seller, and admin all see the same messages
+      const allMessagePromises: Promise<MessageResponseDto[]>[] = []
+      
+      // 1. Messages between buyer and seller (CRITICAL: both buyer and seller need to see these)
+      console.log("Loading messages between buyer", buyerId, "and seller", sellerId)
+      allMessagePromises.push(
+        MessagesAPI.getConversation(buyerId, sellerId, null)
+      )
+      
+      // 2. Messages between buyer and admin (if admin exists)
+      if (adminId) {
+        console.log("Loading messages between buyer", buyerId, "and admin", adminId)
+        allMessagePromises.push(
+          MessagesAPI.getConversation(buyerId, adminId, null)
+        )
+      }
+      
+      // 3. Messages between seller and admin (if admin exists)
+      // CRITICAL: buyer needs to see seller-admin messages, seller needs to see buyer-admin messages
+      if (adminId) {
+        console.log("Loading messages between seller", sellerId, "and admin", adminId)
+        allMessagePromises.push(
+          MessagesAPI.getConversation(sellerId, adminId, null)
+        )
+      }
+
+      const allMessageArrays = await Promise.all(allMessagePromises)
+      console.log("Loaded message arrays:", allMessageArrays.map(arr => arr.length))
+      
+      // Flatten and deduplicate messages
+      const allMessages = allMessageArrays.flat()
+      console.log("Total messages before deduplication:", allMessages.length)
+      
+      // First deduplicate by ID
+      const uniqueById = allMessages.filter(
+        (msg, index, self) => index === self.findIndex((m) => m.id === msg.id)
+      )
+      
+      // Then deduplicate by content + senderId + timestamp (within 5 seconds)
+      // This handles the case where we send 2 messages (one to each recipient) with same content
+      const uniqueMessages = uniqueById.filter((msg, index, self) => {
+        const msgTime = msg.sentAt ? new Date(msg.sentAt).getTime() : 0
+        // Check if there's another message with same content, same sender, within 5 seconds
+        const duplicate = self.find((m, i) => {
+          if (i === index) return false
+          const mTime = m.sentAt ? new Date(m.sentAt).getTime() : 0
+          const timeDiff = Math.abs(msgTime - mTime)
+          return (
+            m.content === msg.content &&
+            m.senderId === msg.senderId &&
+            timeDiff < 5000 // Within 5 seconds
+          )
+        })
+        // Keep the first one (lower index)
+        return !duplicate || self.indexOf(duplicate) > index
+      })
+      console.log("Unique messages after deduplication:", uniqueMessages.length)
+
+      // Define the 3 participants for filtering
       const participants = [buyerId, sellerId]
       if (adminId) {
         participants.push(adminId)
       }
-      // Also include current user if they're not already in the list
-      if (!participants.includes(currentUserId)) {
-        participants.push(currentUserId)
-      }
-
-      // Load all messages between all pairs of participants
-      const allMessagePromises: Promise<MessageResponseDto[]>[] = []
-      for (let i = 0; i < participants.length; i++) {
-        for (let j = i + 1; j < participants.length; j++) {
-          allMessagePromises.push(
-            MessagesAPI.getConversation(participants[i], participants[j], null)
-          )
-        }
-      }
-
-      const allMessageArrays = await Promise.all(allMessagePromises)
-      
-      // Flatten and deduplicate messages
-      const allMessages = allMessageArrays.flat()
-      const uniqueMessages = allMessages.filter(
-        (msg, index, self) => index === self.findIndex((m) => m.id === msg.id)
-      )
+      console.log("Dispute participants:", participants, "Current user:", currentUserId)
 
       // Filter: only show messages where both sender and receiver are in the dispute participants
-      // AND messages sent after dispute was created (to avoid showing old messages)
+      // AND messages sent after dispute was created (to avoid showing old messages from other disputes)
       const disputeCreatedAt = new Date(dispute.createdAt).getTime()
       const filteredMessages = uniqueMessages.filter(msg => {
+        // Check if both sender and receiver are participants
         const isBetweenParticipants = 
           participants.includes(msg.senderId) && 
           participants.includes(msg.receiverId)
         
-        // Only show messages sent after dispute was created
+        // Only show messages sent after dispute was created (with 1 minute buffer)
         const msgTime = msg.sentAt ? new Date(msg.sentAt).getTime() : 0
-        const isAfterDisputeCreated = msgTime >= disputeCreatedAt - 60000 // Allow 1 minute before dispute creation
+        const isAfterDisputeCreated = msgTime >= disputeCreatedAt - 60000
         
-        return isBetweenParticipants && isAfterDisputeCreated
+        const shouldInclude = isBetweenParticipants && isAfterDisputeCreated
+        if (!shouldInclude) {
+          console.log("Filtered out message:", {
+            id: msg.id,
+            sender: msg.senderId,
+            receiver: msg.receiverId,
+            isBetweenParticipants,
+            isAfterDisputeCreated,
+            msgTime,
+            disputeCreatedAt
+          })
+        }
+        
+        return shouldInclude
       })
+
+      console.log("Filtered messages count:", filteredMessages.length)
 
       // Sort by time
       const sortedMessages = filteredMessages.sort((a, b) => {
@@ -182,8 +239,18 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
         return timeA - timeB
       })
 
+      console.log("Final messages to display:", sortedMessages.length)
       setMessages(sortedMessages)
+      
+      // Auto-scroll to bottom after loading messages
+      setTimeout(() => {
+        const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]')
+        if (scrollArea) {
+          scrollArea.scrollTop = scrollArea.scrollHeight
+        }
+      }, 100)
     } catch (error: any) {
+      console.error("Error loading messages:", error)
       toast({
         title: "Lỗi",
         description: error.message || "Không thể tải tin nhắn",
@@ -201,8 +268,7 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
     let started = false
 
     const handleMessageReceived = async (message: MessageResponseDto) => {
-      const activeUserId = userIdRef.current
-      if (!activeUserId || !dispute) return
+      if (!dispute) return
 
       // Get admin ID
       let adminId = dispute.resolvedBy
@@ -211,19 +277,17 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
           const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
           adminId = adminUser?.id ?? null
         } catch {
-          adminId = user?.currentRole === "admin" ? activeUserId : null
+          adminId = null
         }
       }
 
-      // Show all messages between the 3 participants (buyer, seller, admin)
+      // Define the 3 participants: buyer, seller, and admin
       const disputeParticipantIds = [dispute.buyerId, dispute.sellerId]
       if (adminId) {
         disputeParticipantIds.push(adminId)
       }
-      if (!disputeParticipantIds.includes(activeUserId)) {
-        disputeParticipantIds.push(activeUserId)
-      }
 
+      // Check if message is between any two participants
       const isRelevant = 
         disputeParticipantIds.includes(message.senderId) && 
         disputeParticipantIds.includes(message.receiverId)
@@ -235,8 +299,24 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
 
       if (!isRelevant || !isAfterDisputeCreated) return
 
+      // Add message to the list (avoid duplicates by ID and by content + sender + time)
       setMessages((prev) => {
+        // Check if message already exists by ID
         if (prev.some((m) => m.id === message.id)) return prev
+        
+        // Check if duplicate by content + sender + timestamp (within 5 seconds)
+        const msgTime = message.sentAt ? new Date(message.sentAt).getTime() : 0
+        const isDuplicate = prev.some((m) => {
+          const mTime = m.sentAt ? new Date(m.sentAt).getTime() : 0
+          const timeDiff = Math.abs(msgTime - mTime)
+          return (
+            m.content === message.content &&
+            m.senderId === message.senderId &&
+            timeDiff < 5000 // Within 5 seconds
+          )
+        })
+        if (isDuplicate) return prev
+        
         const next = [...prev, message]
         return next.sort((a, b) => {
           const timeA = a.sentAt ? new Date(a.sentAt).getTime() : 0
@@ -244,6 +324,14 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
           return timeA - timeB
         })
       })
+      
+      // Auto-scroll to bottom when new message arrives
+      setTimeout(() => {
+        const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]')
+        if (scrollArea) {
+          scrollArea.scrollTop = scrollArea.scrollHeight
+        }
+      }, 100)
     }
 
     connection.on("MessageReceived", handleMessageReceived)
@@ -282,43 +370,113 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
         try {
           const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
           adminId = adminUser?.id ?? null
-        } catch {
+          console.log("Dispute chat send - Admin ID:", adminId)
+        } catch (error) {
+          console.error("Không thể lấy admin ID khi gửi:", error)
           adminId = user?.currentRole === "admin" ? senderId : null
         }
       }
 
       // In dispute chat, all messages should be visible to all 3 participants
-      // So we send to both other participants
+      // So we send to BOTH other participants (not just one)
       const otherParticipants: number[] = []
       
-      // Always include buyer and seller
+      // CRITICAL: Always send to buyer AND seller (if sender is not one of them)
       if (senderId !== dispute.buyerId) {
         otherParticipants.push(dispute.buyerId)
+        console.log("Adding buyer", dispute.buyerId, "as recipient")
       }
       if (senderId !== dispute.sellerId) {
         otherParticipants.push(dispute.sellerId)
+        console.log("Adding seller", dispute.sellerId, "as recipient")
       }
       
-      // If sender is not admin and we have admin ID, include admin
-      if (adminId && senderId !== adminId && !otherParticipants.includes(adminId)) {
+      // CRITICAL: Always include admin (if exists and sender is not admin)
+      if (adminId && senderId !== adminId) {
         otherParticipants.push(adminId)
+        console.log("Adding admin", adminId, "as recipient")
       }
 
-      // Send message to all other participants
-      await Promise.all(
-        otherParticipants.map(receiverId =>
-          MessagesAPI.send({
-            senderId,
-            receiverId,
-            auctionId: null,
-            content: messageInput.trim(),
-          })
-        )
+      console.log("Sending message from", senderId, "to recipients:", otherParticipants)
+
+      const messageContent = messageInput.trim()
+      
+      // Send message to ALL other participants (this creates multiple message records)
+      // This ensures everyone sees the message in the group chat
+      const sendPromises = otherParticipants.map(receiverId =>
+        MessagesAPI.send({
+          senderId,
+          receiverId,
+          auctionId: null,
+          content: messageContent,
+        })
       )
 
+      const sentMessages = await Promise.all(sendPromises)
+      console.log("Messages sent successfully:", sentMessages.length)
+
+      // Optimistically add the first message to UI immediately (before reload)
+      // This prevents showing duplicate messages
+      if (sentMessages.length > 0) {
+        const firstMessage = sentMessages[0]
+        setMessages((prev) => {
+          // Check if message already exists (by content + sender + time)
+          const msgTime = firstMessage.sentAt ? new Date(firstMessage.sentAt).getTime() : Date.now()
+          const isDuplicate = prev.some((m) => {
+            const mTime = m.sentAt ? new Date(m.sentAt).getTime() : 0
+            const timeDiff = Math.abs(msgTime - mTime)
+            return (
+              m.content === firstMessage.content &&
+              m.senderId === firstMessage.senderId &&
+              timeDiff < 5000
+            )
+          })
+          if (isDuplicate) return prev
+          
+          const next = [...prev, firstMessage]
+          const sorted = next.sort((a, b) => {
+            const timeA = a.sentAt ? new Date(a.sentAt).getTime() : 0
+            const timeB = b.sentAt ? new Date(b.sentAt).getTime() : 0
+            return timeA - timeB
+          })
+          
+          // Auto-scroll to bottom after adding message
+          setTimeout(() => {
+            const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]')
+            if (scrollArea) {
+              scrollArea.scrollTop = scrollArea.scrollHeight
+            }
+          }, 50)
+          
+          return sorted
+        })
+      }
+
       setMessageInput("")
-      await loadMessages()
+      
+      // Auto-scroll to bottom after sending
+      setTimeout(() => {
+        const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]')
+        if (scrollArea) {
+          scrollArea.scrollTop = scrollArea.scrollHeight
+        }
+      }, 100)
+      
+      // Auto-scroll to bottom after sending
+      setTimeout(() => {
+        const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]')
+        if (scrollArea) {
+          scrollArea.scrollTop = scrollArea.scrollHeight
+        }
+      }, 100)
+      
+      // Don't reload immediately - let SignalR handle real-time updates
+      // Only reload if SignalR doesn't work (as fallback, after 2 seconds)
+      setTimeout(() => {
+        loadMessages()
+      }, 2000)
     } catch (error: any) {
+      console.error("Error sending message:", error)
       toast({
         title: "Lỗi",
         description: error.message || "Không thể gửi tin nhắn",

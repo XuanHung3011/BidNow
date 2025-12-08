@@ -81,12 +81,19 @@ class DisputesAPI {
     return response.json()
   }
 
-  async getByOrderId(orderId: number): Promise<DisputeDto> {
+  async getByOrderId(orderId: number): Promise<DisputeDto | null> {
     const response = await fetch(`${this.baseUrl}/order/${orderId}`, {
       headers: await getAuthHeaders(),
       credentials: "include",
     })
-    if (!response.ok) throw new Error("Failed to fetch dispute")
+    if (response.status === 404) {
+      // Dispute not found for this order
+      return null
+    }
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Failed to fetch dispute" }))
+      throw new Error(error.message || "Failed to fetch dispute")
+    }
     return response.json()
   }
 
