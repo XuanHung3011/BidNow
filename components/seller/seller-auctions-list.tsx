@@ -3,13 +3,21 @@
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { MoreVertical, Edit, Trash2, Eye, Star } from "lucide-react"
+import { MoreVertical, Edit, Trash2, Eye, Star, Loader2 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import Link from "next/link"
 import { useState, useEffect, useMemo } from "react"
 import { RatingDialog } from "@/components/rating-dialog"
 import { ItemsAPI } from "@/lib/api/items"
-import { AuctionsAPI, SellerAuctionDto } from "@/lib/api/auctions"
+import { AuctionsAPI, SellerAuctionDto, AuctionDetailDto } from "@/lib/api/auctions"
+import { RatingsAPI } from "@/lib/api/ratings"
 import { ItemResponseDto } from "@/lib/api/types"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
@@ -34,11 +42,19 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
     auctionId: number
     auctionTitle: string
     buyerName: string
+    winnerId?: number
   } | null>(null)
+  const [submittingRating, setSubmittingRating] = useState(false)
   const [draftItems, setDraftItems] = useState<ItemResponseDto[]>([])
   const [draftLoading, setDraftLoading] = useState(false)
   const [pendingItems, setPendingItems] = useState<ItemResponseDto[]>([])
   const [pendingLoading, setPendingLoading] = useState(false)
+  
+  // Auction detail dialog state
+  const [auctionDetailDialogOpen, setAuctionDetailDialogOpen] = useState(false)
+  const [selectedAuctionId, setSelectedAuctionId] = useState<number | null>(null)
+  const [auctionDetail, setAuctionDetail] = useState<AuctionDetailDto | null>(null)
+  const [loadingAuctionDetail, setLoadingAuctionDetail] = useState(false)
 
   // Load draft items when status is "draft"
   useEffect(() => {
@@ -232,13 +248,75 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
       auctionId: auction.id,
       auctionTitle: auction.itemTitle,
       buyerName: auction.winnerName || "Người mua",
+      winnerId: auction.winnerId,
     })
   }
 
-  const handleRatingSubmit = (rating: number, comment: string) => {
-    console.log("Seller rating submitted:", { rating, comment, auctionId: ratingDialog?.auctionId })
-    // TODO: Implement API call to save rating
-    setRatingDialog(null)
+  const handleRatingSubmit = async (rating: number, comment: string) => {
+    if (!ratingDialog || !user || !ratingDialog.winnerId) {
+      toast({
+        title: "Lỗi",
+        description: "Thông tin không đầy đủ để đánh giá",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setSubmittingRating(true)
+      const sellerId = parseInt(user.id)
+      await RatingsAPI.create({
+        auctionId: ratingDialog.auctionId,
+        raterId: sellerId,
+        ratedId: ratingDialog.winnerId,
+        rating: rating,
+        comment: comment || undefined,
+      })
+
+      toast({
+        title: "Thành công",
+        description: "Đã gửi đánh giá thành công",
+      })
+
+      // Refresh auctions list to update hasRated status
+      if (status === "completed") {
+        const sellerId = parseInt(user.id)
+        const data = await AuctionsAPI.getBySeller(sellerId)
+        setAuctions(data)
+      }
+
+      setRatingDialog(null)
+    } catch (error: any) {
+      console.error("Error submitting rating:", error)
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể gửi đánh giá",
+        variant: "destructive"
+      })
+    } finally {
+      setSubmittingRating(false)
+    }
+  }
+
+  const handleViewAuction = async (auctionId: number) => {
+    setSelectedAuctionId(auctionId)
+    setAuctionDetailDialogOpen(true)
+    setLoadingAuctionDetail(true)
+    setAuctionDetail(null)
+    
+    try {
+      const detail = await AuctionsAPI.getDetail(auctionId)
+      setAuctionDetail(detail)
+    } catch (error: any) {
+      console.error("Error fetching auction detail:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải thông tin chi tiết phiên đấu giá",
+        variant: "destructive"
+      })
+    } finally {
+      setLoadingAuctionDetail(false)
+    }
   }
 
   const getStatusLabel = (displayStatus: string) => {
@@ -534,7 +612,7 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
                         ? "Bắt đầu:"
                         : "Ngày bán:"}{" "}
                       <span className="font-semibold text-foreground">
-                        {status === "active" || status === "scheduled" ? formatDate(auction.endTime) : formatDate(auction.endTime)}
+                        {status === "active" || status === "scheduled" ? formatDate(auction.startTime) : formatDate(auction.endTime)}
                       </span>
                     </span>
                   </div>
@@ -559,13 +637,15 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
                     Đã đánh giá
                   </Badge>
                 )}
-                <Link href={`/auction/${auction.id}`}>
-                  <Button variant="outline" size="sm">
-                    <Eye className="mr-2 h-4 w-4" />
-                    Xem
-                  </Button>
-                </Link>
-                <DropdownMenu>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handleViewAuction(auction.id)}
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  Xem
+                </Button>
+                {/* <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm">
                       <MoreVertical className="h-4 w-4" />
@@ -581,23 +661,263 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
                       Xóa
                     </DropdownMenuItem>
                   </DropdownMenuContent>
-                </DropdownMenu>
+                </DropdownMenu> */}
               </div>
             </div>
           </Card>
         ))}
       </div>
 
-      {ratingDialog && (
+      {ratingDialog && user && (
         <RatingDialog
           open={ratingDialog.open}
           onOpenChange={(open) => setRatingDialog(open ? ratingDialog : null)}
           targetName={ratingDialog.buyerName}
           targetType="buyer"
           auctionTitle={ratingDialog.auctionTitle}
+          auctionId={ratingDialog.auctionId}
+          raterId={parseInt(user.id)}
+          ratedId={ratingDialog.winnerId || 0}
           onSubmit={handleRatingSubmit}
+          submitting={submittingRating}
         />
       )}
+
+      {/* Auction Detail Dialog */}
+      <Dialog open={auctionDetailDialogOpen} onOpenChange={setAuctionDetailDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Chi tiết phiên đấu giá</DialogTitle>
+            <DialogDescription>
+              Thông tin chi tiết về phiên đấu giá
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingAuctionDetail ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : auctionDetail ? (
+            <div className="space-y-6">
+              {/* Basic Information Table */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 text-foreground">Thông tin cơ bản</h3>
+                <div className="rounded-lg border border-border bg-card">
+                  <table className="w-full">
+                    <tbody className="divide-y divide-border">
+                      {/* <tr>
+                        <td className="px-4 py-3 text-sm font-medium text-muted-foreground w-1/3">ID phiên đấu giá</td>
+                        <td className="px-4 py-3 text-sm text-foreground">{auctionDetail.id}</td>
+                      </tr> */}
+                      <tr>
+                        <td className="px-4 py-3 text-sm font-medium text-muted-foreground">Tên sản phẩm</td>
+                        <td className="px-4 py-3 text-sm text-foreground font-semibold">{auctionDetail.itemTitle}</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 text-sm font-medium text-muted-foreground">Danh mục</td>
+                        <td className="px-4 py-3 text-sm text-foreground">{auctionDetail.categoryName || "N/A"}</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 text-sm font-medium text-muted-foreground">Trạng thái</td>
+                        <td className="px-4 py-3 text-sm">
+                          <Badge variant={
+                            auctionDetail.status?.toLowerCase() === "active" ? "default" :
+                            auctionDetail.status?.toLowerCase() === "completed" ? "secondary" :
+                            auctionDetail.status?.toLowerCase() === "paused" ? "destructive" :
+                            "outline"
+                          }>
+                            {auctionDetail.status || "N/A"}
+                          </Badge>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Price Information Table */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 text-foreground">Thông tin giá</h3>
+                <div className="rounded-lg border border-border bg-card">
+                  <table className="w-full">
+                    <tbody className="divide-y divide-border">
+                      <tr>
+                        <td className="px-4 py-3 text-sm font-medium text-muted-foreground w-1/3">Giá khởi điểm</td>
+                        <td className="px-4 py-3 text-sm text-foreground font-semibold">
+                          {formatCurrency(auctionDetail.startingBid)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 text-sm font-medium text-muted-foreground">Giá hiện tại</td>
+                        <td className="px-4 py-3 text-sm text-foreground font-semibold text-primary">
+                          {auctionDetail.currentBid ? formatCurrency(auctionDetail.currentBid) : formatCurrency(auctionDetail.startingBid)}
+                        </td>
+                      </tr>
+                      {auctionDetail.buyNowPrice && (
+                        <tr>
+                          <td className="px-4 py-3 text-sm font-medium text-muted-foreground">Giá mua ngay</td>
+                          <td className="px-4 py-3 text-sm text-foreground font-semibold">
+                            {formatCurrency(auctionDetail.buyNowPrice)}
+                          </td>
+                        </tr>
+                      )}
+                      <tr>
+                        <td className="px-4 py-3 text-sm font-medium text-muted-foreground">Số lượt đấu giá</td>
+                        <td className="px-4 py-3 text-sm text-foreground">{auctionDetail.bidCount || 0}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Time Information Table */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 text-foreground">Thông tin thời gian</h3>
+                <div className="rounded-lg border border-border bg-card">
+                  <table className="w-full">
+                    <tbody className="divide-y divide-border">
+                      <tr>
+                        <td className="px-4 py-3 text-sm font-medium text-muted-foreground w-1/3">Thời gian bắt đầu</td>
+                        <td className="px-4 py-3 text-sm text-foreground">
+                          {new Date(auctionDetail.startTime).toLocaleString("vi-VN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 text-sm font-medium text-muted-foreground">Thời gian kết thúc</td>
+                        <td className="px-4 py-3 text-sm text-foreground">
+                          {new Date(auctionDetail.endTime).toLocaleString("vi-VN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </td>
+                      </tr>
+                      {auctionDetail.pausedAt && (
+                        <tr>
+                          <td className="px-4 py-3 text-sm font-medium text-muted-foreground">Thời gian tạm dừng</td>
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            {new Date(auctionDetail.pausedAt).toLocaleString("vi-VN", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Winner Information (if completed) */}
+              {auctionDetail.status?.toLowerCase() === "completed" && auctionDetail.winnerName && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4 text-foreground">Thông tin người thắng</h3>
+                  <div className="rounded-lg border border-border bg-card">
+                    <table className="w-full">
+                      <tbody className="divide-y divide-border">
+                        <tr>
+                          <td className="px-4 py-3 text-sm font-medium text-muted-foreground w-1/3">Người thắng</td>
+                          <td className="px-4 py-3 text-sm text-foreground font-semibold">{auctionDetail.winnerName}</td>
+                        </tr>
+                        {auctionDetail.winnerId && (
+                          <tr>
+                            <td className="px-4 py-3 text-sm font-medium text-muted-foreground">ID người thắng</td>
+                            <td className="px-4 py-3 text-sm text-foreground">{auctionDetail.winnerId}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Item Description */}
+              {auctionDetail.itemDescription && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4 text-foreground">Mô tả từ người bán</h3>
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <p className="text-sm text-foreground whitespace-pre-wrap">{auctionDetail.itemDescription}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Item Specifics */}
+              {auctionDetail.itemSpecifics && (() => {
+                try {
+                  const parsed = JSON.parse(auctionDetail.itemSpecifics)
+                  if (typeof parsed === 'object' && parsed !== null) {
+                    const entries = Object.entries(parsed)
+                    if (entries.length > 0) {
+                      return (
+                        <div>
+                          <h3 className="text-lg font-semibold mb-4 text-foreground">Đặc tính thông số sản phẩm</h3>
+                          <div className="rounded-lg border border-border bg-card">
+                            <table className="w-full">
+                              <tbody className="divide-y divide-border">
+                                {entries.map(([key, value], index) => (
+                                  <tr key={index}>
+                                    <td className="px-4 py-3 text-sm font-medium text-muted-foreground w-1/3">{key}</td>
+                                    <td className="px-4 py-3 text-sm text-foreground">{String(value)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )
+                    }
+                  }
+                } catch {
+                  // Fallback to plain text if not valid JSON
+                  return (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 text-foreground">Đặc tính thông số sản phẩm</h3>
+                      <div className="rounded-lg border border-border bg-card p-4">
+                        <pre className="whitespace-pre-wrap text-sm text-foreground font-normal">
+                          {auctionDetail.itemSpecifics}
+                        </pre>
+                      </div>
+                    </div>
+                  )
+                }
+                return null
+              })()}
+
+              {/* Item Images */}
+              {auctionDetail.itemImages && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4 text-foreground">Hình ảnh sản phẩm</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {getImageUrls(auctionDetail.itemImages).map((imgUrl, idx) => (
+                      <img
+                        key={idx}
+                        src={imgUrl}
+                        alt={`${auctionDetail.itemTitle} - ${idx + 1}`}
+                        className="aspect-square rounded-lg object-cover w-full border border-border"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <p>Không thể tải thông tin chi tiết</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
