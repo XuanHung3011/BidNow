@@ -73,7 +73,8 @@ export function Header() {
     
     try {
       setLoadingNotifications(true)
-      const data = await NotificationsAPI.getUnread(parseInt(user.id), 1, 10)
+      // Fetch all notifications (both read and unread) instead of only unread
+      const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 10)
       setNotifications(data)
     } catch (error) {
       console.error("Error fetching notifications:", error)

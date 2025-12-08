@@ -4,9 +4,11 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Package, Truck, CheckCircle2, AlertCircle } from "lucide-react"
+import { Loader2, Package, Truck, CheckCircle2, AlertCircle, MessageSquare } from "lucide-react"
 import { PaymentsAPI, type OrderDto } from "@/lib/api/payments"
 import { ShippingFormDialog } from "./shipping-form-dialog"
+import { useRouter } from "next/navigation"
+import { disputesAPI } from "@/lib/api/disputes"
 
 interface SellerOrdersListProps {
   sellerId: number
@@ -18,6 +20,7 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
   const [error, setError] = useState<string | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<OrderDto | null>(null)
   const [showShippingDialog, setShowShippingDialog] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
     loadOrders()
@@ -102,6 +105,43 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const handleOpenDisputeChat = async (orderId: number) => {
+    try {
+      // Get dispute by orderId
+      const dispute = await disputesAPI.getByOrderId(orderId)
+      if (dispute && dispute.id) {
+        router.push(`/messages?disputeId=${dispute.id}`)
+      } else {
+        // If no dispute found, show helpful message
+        const shouldReload = confirm(
+          "Không tìm thấy khiếu nại cho đơn hàng này.\n\n" +
+          "Có thể buyer chưa tạo khiếu nại hoặc khiếu nại đang được xử lý.\n\n" +
+          "Bạn có muốn làm mới trang để kiểm tra lại không?"
+        )
+        if (shouldReload) {
+          loadOrders()
+        }
+      }
+    } catch (error: any) {
+      console.error("Error opening dispute chat:", error)
+      const errorMessage = error.message || "Lỗi không xác định"
+      if (errorMessage.includes("Unauthorized") || errorMessage.includes("Forbid")) {
+        alert("Bạn không có quyền truy cập khiếu nại này")
+      } else if (errorMessage.includes("404") || errorMessage.includes("not found")) {
+        const shouldReload = confirm(
+          "Không tìm thấy khiếu nại cho đơn hàng này.\n\n" +
+          "Có thể buyer chưa tạo khiếu nại hoặc khiếu nại đang được xử lý.\n\n" +
+          "Bạn có muốn làm mới trang để kiểm tra lại không?"
+        )
+        if (shouldReload) {
+          loadOrders()
+        }
+      } else {
+        alert("Không thể mở chat khiếu nại: " + errorMessage)
+      }
+    }
   }
 
 
@@ -247,9 +287,24 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
           <div className="space-y-4">
             {otherOrders.map((order) => (
               <Card key={order.id} className="p-6">
-                <div className="flex items-start gap-2 flex-wrap">
-                  <h3 className="font-semibold text-foreground">Đơn hàng #{order.id}</h3>
-                  {getStatusBadge(order)}
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-start gap-2 flex-wrap">
+                      <h3 className="font-semibold text-foreground">Đơn hàng #{order.id}</h3>
+                      {getStatusBadge(order)}
+                      {getPaymentStatusBadge(order)}
+                    </div>
+                  </div>
+                  {order.orderStatus === 'dispute' && (
+                    <Button
+                      onClick={() => handleOpenDisputeChat(order.id)}
+                      variant="outline"
+                      className="bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
+                    >
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      Mở chat khiếu nại
+                    </Button>
+                  )}
                 </div>
               </Card>
             ))}

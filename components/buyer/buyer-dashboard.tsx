@@ -9,9 +9,24 @@ import { BiddingHistory } from "./bidding-history"
 import { FavoriteSellersList } from "./FavoriteSellersList"
 import { BuyerOrdersList } from "./buyer-orders-list"
 import { useAuth } from "@/lib/auth-context"
+import { useSearchParams, useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
 
 export function BuyerDashboard() {
   const { user } = useAuth()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<string>("active")
+
+  // Update active tab when URL query param changes
+  useEffect(() => {
+    const tabParam = searchParams.get("tab")
+    if (tabParam && ["active", "won", "orders", "watchlist", "history", "favorites"].includes(tabParam)) {
+      setActiveTab(tabParam)
+    } else {
+      setActiveTab("active")
+    }
+  }, [searchParams])
 
   // Guard clause - don't render if no user
   if (!user) {
@@ -26,6 +41,19 @@ export function BuyerDashboard() {
 
   const userId = parseInt(user.id)
 
+  const handleTabChange = (value: string) => {
+    setActiveTab(value)
+    // Update URL without navigation
+    const params = new URLSearchParams(searchParams.toString())
+    if (value === "active") {
+      params.delete("tab")
+    } else {
+      params.set("tab", value)
+    }
+    const newQuery = params.toString()
+    router.replace(`/buyer${newQuery ? `?${newQuery}` : ""}`, { scroll: false })
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -35,7 +63,7 @@ export function BuyerDashboard() {
 
       <BuyerStats />
 
-      <Tabs defaultValue="active" className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-6 lg:w-auto">
           <TabsTrigger value="active">Đang đấu giá</TabsTrigger>
           <TabsTrigger value="won">Đã thắng</TabsTrigger>
