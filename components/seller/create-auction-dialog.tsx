@@ -431,29 +431,58 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
       // Add newly uploaded images
       imagesToUpload = [...imagesToUpload, ...newItemImages]
 
+      // Nếu đang sửa item pending, xóa item cũ TRƯỚC khi tạo item mới
+      // Điều này đảm bảo không có thời điểm nào cả 2 items cùng tồn tại
+      let oldItemId: number | null = null
+      if (draftItem?.id && draftItem.status === "pending") {
+        try {
+          oldItemId = draftItem.id
+          await ItemsAPI.deleteItem(draftItem.id)
+          // Đợi một chút để đảm bảo backend xử lý xong việc xóa
+          await new Promise(resolve => setTimeout(resolve, 100))
+        } catch (deleteError: any) {
+          console.error("Error deleting old pending item:", deleteError)
+          toast({
+            title: "Cảnh báo",
+            description: `Không thể xóa sản phẩm cũ: ${deleteError.message || "Lỗi không xác định"}`,
+            variant: "destructive"
+          })
+          // Vẫn tiếp tục tạo item mới, nhưng cảnh báo người dùng
+        }
+      }
+
+      // Tạo item mới
       await ItemsAPI.createItem(itemData, imagesToUpload.length > 0 ? imagesToUpload : undefined)
       
-      // If creating from a draft or pending item, delete the old item
-      if (draftItem?.id) {
+      // Nếu đang sửa draft item (không phải pending), xóa draft sau khi tạo thành công
+      if (draftItem?.id && draftItem.status !== "pending" && draftItem.id !== oldItemId) {
         try {
           await ItemsAPI.deleteItem(draftItem.id)
           toast({
             title: "Thành công",
-            description: draftItem.status === "pending" 
-              ? "Sản phẩm cũ đã được cập nhật." 
-              : "Bản nháp cũ đã được xóa.",
+            description: "Bản nháp cũ đã được xóa.",
           })
           // Notify parent to refresh draft/pending list
           if (onDraftDeleted) {
             onDraftDeleted()
           }
         } catch (deleteError: any) {
-          console.error("Error deleting old item:", deleteError)
+          console.error("Error deleting old draft item:", deleteError)
           toast({
             title: "Cảnh báo",
-            description: `Không thể xóa ${draftItem.status === "pending" ? "sản phẩm" : "bản nháp"} cũ: ${deleteError.message || "Lỗi không xác định"}`,
+            description: `Không thể xóa bản nháp cũ: ${deleteError.message || "Lỗi không xác định"}`,
             variant: "destructive"
           })
+        }
+      } else if (draftItem?.status === "pending") {
+        // Nếu đã xóa item pending cũ thành công, hiển thị thông báo
+        toast({
+          title: "Thành công",
+          description: "Sản phẩm đã được cập nhật.",
+        })
+        // Notify parent to refresh draft/pending list
+        if (onDraftDeleted) {
+          onDraftDeleted()
         }
       }
 
