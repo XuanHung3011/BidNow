@@ -508,10 +508,14 @@ export function Header() {
                       <p className="text-sm font-medium leading-none">{user.name}</p>
                       <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
                       <div className="flex items-center gap-2">
-                        <p className="text-xs leading-none text-primary capitalize">{user.currentRole}</p>
+                        <p className="text-xs leading-none text-primary">
+                          {user.currentRole === "admin" && "Quản trị viên"}
+                          {user.currentRole === "seller" && "Người bán"}
+                          {user.currentRole === "buyer" && "Người mua"}
+                        </p>
                         {hasMultipleRoles && (
                           <Badge variant="secondary" className="text-xs px-1 py-0">
-                            {user.roles.length} roles
+                            {user.roles.length} vai trò
                           </Badge>
                         )}
                       </div>
