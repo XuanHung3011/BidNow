@@ -73,7 +73,8 @@ export function Header() {
     
     try {
       setLoadingNotifications(true)
-      const data = await NotificationsAPI.getUnread(parseInt(user.id), 1, 10)
+      // Fetch all notifications (both read and unread) instead of only unread
+      const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 10)
       setNotifications(data)
     } catch (error) {
       console.error("Error fetching notifications:", error)
@@ -296,13 +297,14 @@ export function Header() {
       const params = new URLSearchParams(searchParams.toString())
       params.delete("notificationId")
       const newQuery = params.toString()
-      router.replace(`${pathname}${newQuery ? `?${newQuery}` : ""}`, { scroll: false })
+      router.replace(`${pathname}${newQuery ? "?" + newQuery : ""}`, { scroll: false })
     }
   }, [handleMarkAsRead, pathname, router, searchParams, user])
 
   const parseNotificationDate = (value: string) => {
     if (!value) return new Date()
-    const hasTimezoneInfo = /([zZ])|([+\-]\d{2}:?\d{2}$)/.test(value)
+    const timezonePattern = /([zZ])|([+\-]\d{2}:?\d{2}$)/
+    const hasTimezoneInfo = timezonePattern.test(value)
     const normalizedValue = hasTimezoneInfo ? value : `${value}Z`
 
     const parsedUtc = new Date(normalizedValue)

@@ -59,13 +59,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      // For non-admin roles, allow navigating to public pages
-      const isPublicPath = publicPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
-      if (isPublicPath) {
-        return
-      }
-
       if (user.currentRole === "seller") {
+        // Seller is restricted to /seller, /profile, /settings, /messages only (no homepage/public pages)
+        const isPublicPath = publicPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+        if (isPublicPath) {
+          router.push("/seller")
+          return
+        }
+        
         if (
           !pathname.startsWith("/seller") &&
           !pathname.startsWith("/profile") &&
@@ -75,7 +76,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ) {
           router.push("/seller")
         }
-      } else if (user.currentRole === "buyer") {
+        return
+      }
+
+      // For buyer role, allow navigating to public pages
+      const isPublicPath = publicPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+      if (isPublicPath) {
+        return
+      }
+
+      if (user.currentRole === "buyer") {
         if (
           !pathname.startsWith("/buyer") &&
           !pathname.startsWith("/messages") &&

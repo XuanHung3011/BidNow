@@ -157,8 +157,6 @@ export interface AuctionFilterParams {
   pageSize?: number
 }
 
-
-
 export const AuctionsAPI = {
   // Get all auctions with pagination, search, and filtering (Public endpoint)
   async getAll(params?: AuctionFilterParams): Promise<PaginatedResult<AuctionListItemDto>> {

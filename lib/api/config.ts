@@ -172,6 +172,11 @@ export const API_ENDPOINTS = {
     LIST: (auctionId: number) => `/api/AuctionMessages/${auctionId}`,
     CREATE: "/api/AuctionMessages",
   },
+  RATINGS: {
+    CREATE: "/api/Ratings",
+    GET_FOR_USER: (userId: number) => `/api/Ratings/user/${userId}`,
+    GET_FOR_AUCTION: (auctionId: number) => `/api/Ratings/auction/${auctionId}`,
+  },
   PAYMENT: {
     CREATE_LINK: "/api/Payment/create-link",
     GET_ORDER_BY_AUCTION: (auctionId: number) => `/api/Payment/auction/${auctionId}/order`,

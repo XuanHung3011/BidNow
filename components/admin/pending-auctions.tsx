@@ -51,8 +51,89 @@ export function PendingAuctions() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState("")
   const [itemToReject, setItemToReject] = useState<number | null>(null)
+  
+  // Approve confirmation dialog state
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false)
+  const [itemToApprove, setItemToApprove] = useState<number | null>(null)
 
-  const fetchPendingItems = useCallback(async () => {
+  // Helper function để loại bỏ duplicate items
+  const removeDuplicates = useCallback((itemsData: ItemResponseDto[]): ItemResponseDto[] => {
+    if (!itemsData || itemsData.length === 0) return []
+    
+    // Loại bỏ duplicate items
+    // 1. Loại bỏ duplicate dựa trên ID (nếu backend trả về cùng item nhiều lần)
+    // 2. Loại bỏ duplicate dựa trên seller + title + category (nếu người bán sửa item pending tạo item mới)
+    const uniqueItemsMap = new Map<number, ItemResponseDto>()
+    
+    // Bước 1: Loại bỏ duplicate dựa trên ID
+    itemsData.forEach((item) => {
+      const existingItem = uniqueItemsMap.get(item.id)
+      if (!existingItem) {
+        uniqueItemsMap.set(item.id, item)
+      } else {
+        // Nếu đã tồn tại, so sánh thời gian tạo để giữ item mới hơn
+        const existingTime = new Date(existingItem.createdAt || 0).getTime()
+        const currentTime = new Date(item.createdAt || 0).getTime()
+        // Nếu item hiện tại mới hơn, thay thế
+        if (currentTime > existingTime) {
+          uniqueItemsMap.set(item.id, item)
+        }
+      }
+    })
+    
+    // Bước 2: Loại bỏ duplicate dựa trên seller + title + category
+    // Chỉ áp dụng cho items có cùng seller, title, category và tạo trong vòng 10 phút
+    // (Trường hợp người bán sửa item pending tạo item mới nhưng item cũ chưa bị xóa)
+    const tenMinutes = 10 * 60 * 1000 // Tăng lên 10 phút để đảm bảo bắt được duplicate
+    const finalItems: ItemResponseDto[] = []
+    const duplicateKeyMap = new Map<string, ItemResponseDto>() // Key: sellerId_title_categoryId
+    
+    // Sắp xếp items theo thời gian tạo (mới nhất trước) để ưu tiên item mới hơn
+    const sortedItems = Array.from(uniqueItemsMap.values()).sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime()
+      const timeB = new Date(b.createdAt || 0).getTime()
+      return timeB - timeA // Mới nhất trước
+    })
+    
+    sortedItems.forEach((item) => {
+      const key = `${item.sellerId || 0}_${(item.title || '').trim()}_${item.categoryId || 0}`.toLowerCase()
+      const itemTime = new Date(item.createdAt || 0).getTime()
+      
+      // Kiểm tra xem có item tương tự đã được thêm vào finalItems chưa
+      const existingDuplicate = duplicateKeyMap.get(key)
+      if (existingDuplicate) {
+        const existingTime = new Date(existingDuplicate.createdAt || 0).getTime()
+        const timeDiff = Math.abs(itemTime - existingTime)
+        
+        // Nếu cách nhau ít hơn 10 phút, coi như duplicate
+        if (timeDiff < tenMinutes) {
+          // So sánh thời gian tạo để giữ item mới hơn
+          if (itemTime > existingTime) {
+            // Item hiện tại mới hơn, thay thế item cũ trong finalItems
+            const index = finalItems.findIndex(i => i.id === existingDuplicate.id)
+            if (index >= 0) {
+              finalItems[index] = item
+            }
+            duplicateKeyMap.set(key, item)
+          }
+          // Nếu item hiện tại cũ hơn, bỏ qua
+          return
+        } else {
+          // Nếu cách nhau hơn 10 phút, coi như 2 items khác nhau
+          duplicateKeyMap.set(key, item)
+          finalItems.push(item)
+        }
+      } else {
+        // Chưa có item tương tự, thêm vào
+        duplicateKeyMap.set(key, item)
+        finalItems.push(item)
+      }
+    })
+    
+    return finalItems.length > 0 ? finalItems : Array.from(uniqueItemsMap.values())
+  }, [])
+
+  const fetchPendingItems = useCallback(async (forceRefetch = false) => {
     try {
       setLoading(true)
       const result = await ItemsAPI.getAllWithFilter({
@@ -169,14 +250,23 @@ export function PendingAuctions() {
     }
   }, [fetchPendingItems])
 
-  const handleApprove = async (itemId: number) => {
+  const handleApproveClick = (itemId: number) => {
+    setItemToApprove(itemId)
+    setApproveDialogOpen(true)
+  }
+
+  const handleConfirmApprove = async () => {
+    if (!itemToApprove) return
+    
     try {
-      setProcessingIds((prev) => new Set(prev).add(itemId))
-      await ItemsAPI.approveItem(itemId)
+      setProcessingIds((prev) => new Set(prev).add(itemToApprove))
+      await ItemsAPI.approveItem(itemToApprove)
       toast({
         title: "Thành công",
         description: "Đã phê duyệt sản phẩm",
       })
+      setApproveDialogOpen(false)
+      setItemToApprove(null)
       // Refresh list after approve/reject
       await fetchPendingItems()
     } catch (error) {
@@ -189,7 +279,7 @@ export function PendingAuctions() {
     } finally {
       setProcessingIds((prev) => {
         const newSet = new Set(prev)
-        newSet.delete(itemId)
+        newSet.delete(itemToApprove)
         return newSet
       })
     }
@@ -460,7 +550,7 @@ export function PendingAuctions() {
                 <Button 
                   size="sm" 
                   className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
-                  onClick={() => handleApprove(itemId)}
+                  onClick={() => handleApproveClick(itemId)}
                   disabled={isProcessing}
                 >
                   {isProcessing ? (
@@ -684,6 +774,48 @@ export function PendingAuctions() {
               </div>
             </>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Approve Confirmation Dialog */}
+      <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xác nhận phê duyệt sản phẩm</DialogTitle>
+            <DialogDescription>
+              <div className="space-y-2 mt-2">
+                <div>Bạn có chắc chắn muốn phê duyệt sản phẩm này?</div>
+                <div className="text-sm text-muted-foreground">
+                  Sản phẩm sẽ được chuyển sang trạng thái "Đã phê duyệt" và người bán có thể sử dụng để tạo phiên đấu giá.
+                </div>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setApproveDialogOpen(false)
+                setItemToApprove(null)
+              }}
+            >
+              Hủy
+            </Button>
+            <Button
+              onClick={handleConfirmApprove}
+              disabled={itemToApprove !== null && processingIds.has(itemToApprove)}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {itemToApprove !== null && processingIds.has(itemToApprove) ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Đang xử lý...
+                </>
+              ) : (
+                "Xác nhận"
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

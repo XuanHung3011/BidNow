@@ -18,13 +18,11 @@ export function TopSearchBar() {
   // Only show on home page, auctions page, and categories page
   const shouldShow = pathname === "/" || pathname === "/auctions" || pathname.startsWith("/categories")
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!query.trim()) return
-    
-    // Just navigate - let AllAuctions handle the search logging
-    router.push(`/auctions?q=${encodeURIComponent(query.trim())}`)
-  }
+const handleSubmit = (e: React.FormEvent) => {
+  e.preventDefault()
+  if (!query.trim()) return
+  router.push(`/search?q=${encodeURIComponent(query.trim())}`)
+}
 
   if (isAdmin || !shouldShow) return null
 
@@ -36,7 +34,7 @@ export function TopSearchBar() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tìm kiếm sản phẩm, thương hiệu, từ khóa..."
+            placeholder="Tìm kiếm sản phẩm, người bán, từ khóa..."
             className="h-11 pl-10 pr-28"
           />
           <Button type="submit" className="absolute right-1 top-1/2 -translate-y-1/2 h-9 px-4">

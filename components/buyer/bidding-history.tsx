@@ -5,19 +5,33 @@ import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { TrendingUp, TrendingDown, Trophy, X, Loader2 } from "lucide-react"
-import { AuctionsAPI, type BiddingHistoryDto } from "@/lib/api/auctions"
+import { TrendingUp, TrendingDown, Trophy, X, Loader2, Star } from "lucide-react"
+import { AuctionsAPI, type BiddingHistoryDto, AuctionDetailDto } from "@/lib/api/auctions"
+import { RatingsAPI } from "@/lib/api/ratings"
 import { useAuth } from "@/lib/auth-context"
+import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDateTime } from "@/lib/utils"
+import { RatingDialog } from "@/components/rating-dialog"
 import Link from "next/link"
 
 export function BiddingHistory() {
   const { user } = useAuth()
+  const { toast } = useToast()
   const [history, setHistory] = useState<BiddingHistoryDto[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const pageSize = 10
+  
+  // Rating dialog state
+  const [ratingDialog, setRatingDialog] = useState<{
+    open: boolean
+    auctionId: number
+    auctionTitle: string
+    sellerName: string
+    sellerId?: number
+  } | null>(null)
+  const [submittingRating, setSubmittingRating] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -83,6 +97,69 @@ export function BiddingHistory() {
         : "/placeholder.svg"
     } catch {
       return "/placeholder.svg"
+    }
+  }
+
+  const handleRateClick = async (auctionId: number, itemTitle: string) => {
+    try {
+      // Fetch auction detail to get seller info
+      const auctionDetail = await AuctionsAPI.getDetail(auctionId)
+      setRatingDialog({
+        open: true,
+        auctionId: auctionId,
+        auctionTitle: itemTitle,
+        sellerName: auctionDetail.sellerName || "Người bán",
+        sellerId: auctionDetail.sellerId,
+      })
+    } catch (error: any) {
+      console.error("Error fetching auction detail:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải thông tin phiên đấu giá",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleRatingSubmit = async (rating: number, comment: string) => {
+    if (!ratingDialog || !user || !ratingDialog.sellerId) {
+      toast({
+        title: "Lỗi",
+        description: "Thông tin không đầy đủ để đánh giá",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setSubmittingRating(true)
+      const buyerId = parseInt(user.id)
+      await RatingsAPI.create({
+        auctionId: ratingDialog.auctionId,
+        raterId: buyerId,
+        ratedId: ratingDialog.sellerId,
+        rating: rating,
+        comment: comment || undefined,
+      })
+
+      toast({
+        title: "Thành công",
+        description: "Đã gửi đánh giá thành công",
+      })
+
+      // Refresh history to update hasRated status
+      await loadHistory()
+
+      setRatingDialog(null)
+    } catch (error: any) {
+      console.error("Error submitting rating:", error)
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể gửi đánh giá",
+        variant: "destructive"
+      })
+    } finally {
+      setSubmittingRating(false)
     }
   }
 
@@ -160,13 +237,23 @@ export function BiddingHistory() {
                   )}
                 </div>
               </div>
-                            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                {item.status === "won" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-yellow-500 text-yellow-600 hover:bg-yellow-50 bg-transparent"
+                    onClick={() => handleRateClick(item.auctionId, item.itemTitle)}
+                  >
+                    <Star className="mr-2 h-4 w-4" />
+                    Đánh giá người bán
+                  </Button>
+                )}
                 <Link href={`/auction/${item.auctionId}`}>
                   <Button variant="outline" size="sm">
                     Xem chi tiết
                   </Button>
                 </Link>
-                
               </div>
             </div>
           </Card>
@@ -197,6 +284,21 @@ export function BiddingHistory() {
             Sau
           </Button>
         </div>
+      )}
+
+      {ratingDialog && user && (
+        <RatingDialog
+          open={ratingDialog.open}
+          onOpenChange={(open) => setRatingDialog(open ? ratingDialog : null)}
+          targetName={ratingDialog.sellerName}
+          targetType="seller"
+          auctionTitle={ratingDialog.auctionTitle}
+          auctionId={ratingDialog.auctionId}
+          raterId={parseInt(user.id)}
+          ratedId={ratingDialog.sellerId || 0}
+          onSubmit={handleRatingSubmit}
+          submitting={submittingRating}
+        />
       )}
     </div>
   )

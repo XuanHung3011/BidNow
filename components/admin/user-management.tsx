@@ -7,6 +7,16 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Search, MoreVertical, Ban, Shield, Mail, Edit, Key, UserPlus, Users } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { UsersAPI, UserResponse, UserCreateDto, UserUpdateDto, ChangePasswordDto } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { CreateUserDialog } from "./create-user-dialog"
@@ -21,7 +31,13 @@ export function UserManagement() {
   const [page, setPage] = useState(1)
   const [pageSize] = useState(10)
   const [selectedUser, setSelectedUser] = useState<UserResponse | null>(null)
-  
+
+  const [confirmAction, setConfirmAction] = useState<{
+    type: "toggleActive"
+    user: UserResponse
+  } | null>(null)
+  const [isProcessingAction, setIsProcessingAction] = useState(false)
+
   // Dialog states
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -45,7 +61,6 @@ export function UserManagement() {
       
       setUsers(data)
     } catch (error: any) {
-      console.error("Error fetching users:", error)
       toast({
         title: "Lỗi",
         description: error.message || "Không thể tải danh sách người dùng",
@@ -64,21 +79,31 @@ export function UserManagement() {
     return () => clearTimeout(timeoutId)
   }, [page, searchTerm])
 
-  const handleCreateUser = async (userData: UserCreateDto) => {
+  const handleCreateUser = async (userData: UserCreateDto): Promise<UserResponse> => {
     try {
-      await UsersAPI.create(userData)
+      const createdUser = await UsersAPI.create(userData)
       toast({
         title: "Thành công",
         description: "Tạo người dùng thành công",
       })
       fetchUsers()
+      return createdUser
     } catch (error: any) {
+      let message = error?.message || "Không thể tạo người dùng"
+
+      // Map thông báo lỗi email trùng sang tiếng Việt rõ ràng
+      if (message.toLowerCase().includes("email") && message.toLowerCase().includes("already exists")) {
+        message = "Email đã tồn tại"
+      }
+
       toast({
         title: "Lỗi",
-        description: error.message || "Không thể tạo người dùng",
+        description: message,
         variant: "destructive",
       })
-      throw error
+
+      // Ném lại lỗi với message đã xử lý để CreateUserDialog hiển thị bên dưới ô email
+      throw new Error(message)
     }
   }
 
@@ -209,7 +234,7 @@ export function UserManagement() {
         <h2 className="text-2xl font-bold">Quản lý người dùng</h2>
         <Button onClick={() => setCreateDialogOpen(true)}>
           <UserPlus className="mr-2 h-4 w-4" />
-          Tạo người dùng
+          Thêm người dùng mới
         </Button>
       </div>
 
@@ -265,12 +290,12 @@ export function UserManagement() {
                         {user.createdAt && (
                           <span>Tham gia: {new Date(user.createdAt).toLocaleDateString("vi-VN")}</span>
                         )}
-                        {user.reputationScore !== null && user.reputationScore !== undefined && (
+                        {/* {user.reputationScore !== null && user.reputationScore !== undefined && (
                           <span>Đánh giá: {user.reputationScore.toFixed(1)}/5.0</span>
-                        )}
-                        {user.totalRatings && <span>Lượt đánh giá: {user.totalRatings}</span>}
+                        )} */}
+                        {/* {user.totalRatings && <span>Lượt đánh giá: {user.totalRatings}</span>}
                         {user.totalSales && <span>Đã bán: {user.totalSales}</span>}
-                        {user.totalPurchases && <span>Đã mua: {user.totalPurchases}</span>}
+                        {user.totalPurchases && <span>Đã mua: {user.totalPurchases}</span>} */}
                   </div>
                 </div>
               </div>
@@ -311,11 +336,7 @@ export function UserManagement() {
                   </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => {
-                          if (user.isActive) {
-                            handleDeactivateUser(user.id)
-                          } else {
-                            handleActivateUser(user.id)
-                          }
+                          setConfirmAction({ type: "toggleActive", user })
                         }}
                       >
                         <Ban className="mr-2 h-4 w-4" />
@@ -379,6 +400,60 @@ export function UserManagement() {
           />
         </>
       )}
+
+      {/* Confirmation dialog chỉ cho kích hoạt / vô hiệu hóa */}
+      <AlertDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => {
+          if (!isProcessingAction) {
+            setConfirmAction(open ? confirmAction : null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction?.user.isActive ? "Xác nhận vô hiệu hóa người dùng" : "Xác nhận kích hoạt người dùng"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction &&
+                (confirmAction.user.isActive
+                  ? `Bạn có chắc chắn muốn vô hiệu hóa người dùng "${confirmAction.user.fullName}"?`
+                  : `Bạn có chắc chắn muốn kích hoạt người dùng "${confirmAction.user.fullName}"?`)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={isProcessingAction}
+              onClick={() => {
+                if (!isProcessingAction) setConfirmAction(null)
+              }}
+            >
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isProcessingAction || !confirmAction}
+              onClick={async () => {
+                if (!confirmAction) return
+
+                setIsProcessingAction(true)
+                try {
+                  if (confirmAction.user.isActive) {
+                    await handleDeactivateUser(confirmAction.user.id)
+                  } else {
+                    await handleActivateUser(confirmAction.user.id)
+                  }
+                } finally {
+                  setIsProcessingAction(false)
+                  setConfirmAction(null)
+                }
+              }}
+            >
+              {isProcessingAction ? "Đang xử lý..." : "Xác nhận"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
