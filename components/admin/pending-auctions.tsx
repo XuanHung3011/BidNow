@@ -707,10 +707,10 @@ export function PendingAuctions() {
             <DialogTitle>Xác nhận phê duyệt sản phẩm</DialogTitle>
             <DialogDescription>
               <div className="space-y-2 mt-2">
-                <p>Bạn có chắc chắn muốn phê duyệt sản phẩm này?</p>
-                <p className="text-sm text-muted-foreground">
+                <div>Bạn có chắc chắn muốn phê duyệt sản phẩm này?</div>
+                <div className="text-sm text-muted-foreground">
                   Sản phẩm sẽ được chuyển sang trạng thái "Đã phê duyệt" và người bán có thể sử dụng để tạo phiên đấu giá.
-                </p>
+                </div>
               </div>
             </DialogDescription>
           </DialogHeader>
