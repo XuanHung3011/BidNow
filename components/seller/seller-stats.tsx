@@ -37,13 +37,13 @@ export function SellerStats() {
 
   const formatCurrency = (amount: number) => {
     if (amount >= 1_000_000_000) {
-      return `₫${(amount / 1_000_000_000).toFixed(1)}B`
+      return `${(amount / 1_000_000_000).toFixed(1)} tỷ VNĐ`
     } else if (amount >= 1_000_000) {
-      return `₫${(amount / 1_000_000).toFixed(1)}M`
+      return `${(amount / 1_000_000).toFixed(1)} triệu VNĐ`
     } else if (amount >= 1_000) {
-      return `₫${(amount / 1_000).toFixed(1)}K`
+      return `${(amount / 1_000).toFixed(0)} nghìn VNĐ`
     }
-    return `₫${amount.toLocaleString("vi-VN")}`
+    return `${amount.toLocaleString("vi-VN")} VNĐ`
   }
 
   const formatPercent = (percent: number) => {

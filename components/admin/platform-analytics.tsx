@@ -12,16 +12,17 @@ function formatNumber(num: number): string {
   return new Intl.NumberFormat("vi-VN").format(num)
 }
 
-function formatCurrency(amount: number): string {
-  if (amount >= 1_000_000_000) {
-    return `₫${(amount / 1_000_000_000).toFixed(1)}B`
-  } else if (amount >= 1_000_000) {
-    return `₫${(amount / 1_000_000).toFixed(1)}M`
-  } else if (amount >= 1_000) {
-    return `₫${(amount / 1_000).toFixed(1)}K`
+  const formatCurrency = (amount: number) => {
+    if (amount >= 1_000_000_000) {
+      return `${(amount / 1_000_000_000).toFixed(1)} tỷ VNĐ`
+    } else if (amount >= 1_000_000) {
+      return `${(amount / 1_000_000).toFixed(1)} triệu VNĐ`
+    } else if (amount >= 1_000) {
+      return `${(amount / 1_000).toFixed(0)} nghìn VNĐ`
+    }
+    return `${amount.toLocaleString("vi-VN")} VNĐ`
   }
-  return `₫${formatNumber(amount)}`
-}
+
 
 export function PlatformAnalytics() {
   const [analytics, setAnalytics] = useState<PlatformAnalyticsDto | null>(null)
