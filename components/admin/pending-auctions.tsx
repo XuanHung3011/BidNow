@@ -400,7 +400,7 @@ export function PendingAuctions() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Tìm kiếm theo tên sản phẩm, người bán, danh mục..."
+              placeholder="Tìm kiếm theo tên sản phẩm..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
