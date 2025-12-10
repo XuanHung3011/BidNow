@@ -782,12 +782,12 @@ export function PendingAuctions() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Xác nhận phê duyệt sản phẩm</DialogTitle>
-            <DialogDescription>
+            <DialogDescription asChild>
               <div className="space-y-2 mt-2">
-                <div>Bạn có chắc chắn muốn phê duyệt sản phẩm này?</div>
-                <div className="text-sm text-muted-foreground">
+                <p>Bạn có chắc chắn muốn phê duyệt sản phẩm này?</p>
+                <p className="text-sm text-muted-foreground">
                   Sản phẩm sẽ được chuyển sang trạng thái "Đã phê duyệt" và người bán có thể sử dụng để tạo phiên đấu giá.
-                </div>
+                </p>
               </div>
             </DialogDescription>
           </DialogHeader>

@@ -16,6 +16,8 @@ export type BidPlacedPayload = {
 export type AuctionStatusUpdatedPayload = {
   auctionId: number
   status: string
+  winnerId?: number | null
+  finalPrice?: number | null
   timestamp: string
 }
 

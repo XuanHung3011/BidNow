@@ -349,7 +349,9 @@ export function Header() {
   }
 
   const isRestrictedRole = user?.currentRole === "admin"
-  const hasMultipleRoles = user?.roles && user.roles.length > 1
+  const isStaffOrSupport = user?.currentRole === "staff" || user?.currentRole === "support"
+  // Staff and support should not see role switching, only buyer/seller/admin with multiple roles
+  const hasMultipleRoles = user?.roles && user.roles.length > 1 && !isStaffOrSupport
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -523,19 +525,21 @@ export function Header() {
                   {hasMultipleRoles && (
                     <>
                       <DropdownMenuLabel className="text-xs text-muted-foreground">Chuyển đổi vai trò</DropdownMenuLabel>
-                      {user.roles.map((role) => (
-                        <DropdownMenuItem
-                          key={role}
-                          onClick={() => switchRole(role)}
-                          className={user.currentRole === role ? "bg-primary/10" : ""}
-                        >
-                          <ArrowUpDown className="mr-2 h-4 w-4" />
-                          {role === "admin" && "Quản trị viên"}
-                          {role === "seller" && "Người bán"}
-                          {role === "buyer" && "Người mua"}
-                          {user.currentRole === role && " (Hiện tại)"}
-                        </DropdownMenuItem>
-                      ))}
+                      {user.roles
+                        .filter((role) => role !== "staff" && role !== "support") // Don't show staff/support in role switching
+                        .map((role) => (
+                          <DropdownMenuItem
+                            key={role}
+                            onClick={() => switchRole(role)}
+                            className={user.currentRole === role ? "bg-primary/10" : ""}
+                          >
+                            <ArrowUpDown className="mr-2 h-4 w-4" />
+                            {role === "admin" && "Quản trị viên"}
+                            {role === "seller" && "Người bán"}
+                            {role === "buyer" && "Người mua"}
+                            {user.currentRole === role && " (Hiện tại)"}
+                          </DropdownMenuItem>
+                        ))}
                       <DropdownMenuSeparator />
                     </>
                   )}

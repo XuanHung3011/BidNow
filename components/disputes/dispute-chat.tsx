@@ -373,7 +373,7 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
           console.log("Dispute chat send - Admin ID:", adminId)
         } catch (error) {
           console.error("Không thể lấy admin ID khi gửi:", error)
-          adminId = user?.currentRole === "admin" ? senderId : null
+          adminId = (user?.currentRole === "admin" || user?.currentRole === "staff" || user?.currentRole === "support") ? senderId : null
         }
       }
 
@@ -520,7 +520,7 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
     )
   }
 
-  const isAdmin = user?.currentRole === "admin"
+  const isAdmin = user?.currentRole === "admin" || user?.currentRole === "staff" || user?.currentRole === "support"
   const isBuyer = user?.id && Number(user.id) === dispute.buyerId
   const isSeller = user?.id && Number(user.id) === dispute.sellerId
 

@@ -22,15 +22,24 @@ import { useToast } from "@/hooks/use-toast"
 import { CreateUserDialog } from "./create-user-dialog"
 import { EditUserDialog } from "./edit-user-dialog"
 import { ChangePasswordDialog } from "./change-password-dialog"
+import { ResetPasswordDialog } from "./reset-password-dialog"
 import { UserRoleDialog } from "./user-role-dialog"
 
-export function UserManagement() {
+interface UserManagementProps {
+  userRole?: string
+}
+
+export function UserManagement({ userRole }: UserManagementProps) {
   const [users, setUsers] = useState<UserResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [page, setPage] = useState(1)
   const [pageSize] = useState(10)
   const [selectedUser, setSelectedUser] = useState<UserResponse | null>(null)
+  
+  const isAdmin = userRole === "admin"
+  const isStaff = userRole === "staff"
+  const isSupport = userRole === "support"
 
   const [confirmAction, setConfirmAction] = useState<{
     type: "toggleActive"
@@ -42,6 +51,7 @@ export function UserManagement() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
+  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false)
   const [roleDialogOpen, setRoleDialogOpen] = useState(false)
 
   const { toast } = useToast()
@@ -79,12 +89,39 @@ export function UserManagement() {
     return () => clearTimeout(timeoutId)
   }, [page, searchTerm])
 
-  const handleCreateUser = async (userData: UserCreateDto): Promise<UserResponse> => {
+  const handleCreateUser = async (userData: UserCreateDto, role?: string): Promise<UserResponse> => {
     try {
       const createdUser = await UsersAPI.create(userData)
+      
+      // Add role if specified (staff or support)
+      if (role && (role === "staff" || role === "support") && createdUser?.id) {
+        try {
+          console.log("Adding role", role, "to user", createdUser.id)
+          await UsersAPI.addRole(createdUser.id, role)
+          console.log("Role added successfully")
+          
+          // Remove buyer role since staff/support should only have their specific role
+          try {
+            await UsersAPI.removeRole(createdUser.id, "buyer")
+            console.log("Buyer role removed successfully")
+          } catch (removeError: any) {
+            console.warn("Failed to remove buyer role:", removeError)
+            // Don't show error to user, just log it
+          }
+        } catch (roleError: any) {
+          // Log error but don't fail the entire operation
+          console.error("Failed to add role:", roleError)
+          toast({
+            title: "Cảnh báo",
+            description: `Tạo người dùng thành công nhưng không thể thêm vai trò ${role}: ${roleError?.message || "Lỗi không xác định"}`,
+            variant: "destructive",
+          })
+        }
+      }
+      
       toast({
         title: "Thành công",
-        description: "Tạo người dùng thành công",
+        description: role ? `Tạo người dùng với vai trò ${role} thành công` : "Tạo người dùng thành công",
       })
       fetchUsers()
       return createdUser
@@ -137,6 +174,23 @@ export function UserManagement() {
       toast({
         title: "Lỗi",
         description: error.message || "Không thể đổi mật khẩu",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  const handleResetPassword = async (userId: number, newPassword: string) => {
+    try {
+      await UsersAPI.resetPassword(userId, newPassword)
+      toast({
+        title: "Thành công",
+        description: "Đặt lại mật khẩu thành công",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể đặt lại mật khẩu",
         variant: "destructive",
       })
       throw error
@@ -232,10 +286,12 @@ export function UserManagement() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Quản lý người dùng</h2>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <UserPlus className="mr-2 h-4 w-4" />
-          Thêm người dùng mới
-        </Button>
+        {isAdmin && (
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Thêm người dùng mới
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
@@ -307,41 +363,75 @@ export function UserManagement() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setSelectedUser(user)
-                          setEditDialogOpen(true)
-                        }}
-                      >
-                        <Edit className="mr-2 h-4 w-4" />
-                        Chỉnh sửa
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setSelectedUser(user)
-                          setPasswordDialogOpen(true)
-                        }}
-                      >
-                        <Key className="mr-2 h-4 w-4" />
-                        Đổi mật khẩu
-                  </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setSelectedUser(user)
-                          setRoleDialogOpen(true)
-                        }}
-                      >
-                    <Shield className="mr-2 h-4 w-4" />
-                        Quản lý vai trò
-                  </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setConfirmAction({ type: "toggleActive", user })
-                        }}
-                      >
-                        <Ban className="mr-2 h-4 w-4" />
-                        {user.isActive ? "Vô hiệu hóa" : "Kích hoạt"}
-                      </DropdownMenuItem>
+                      {/* Support: Edit, Change Password, Reset Password */}
+                      {(isAdmin || isSupport) && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setSelectedUser(user)
+                            setEditDialogOpen(true)
+                          }}
+                        >
+                          <Edit className="mr-2 h-4 w-4" />
+                          Chỉnh sửa
+                        </DropdownMenuItem>
+                      )}
+                      {(isAdmin || isSupport) && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setSelectedUser(user)
+                            setPasswordDialogOpen(true)
+                          }}
+                        >
+                          <Key className="mr-2 h-4 w-4" />
+                          Đổi mật khẩu
+                        </DropdownMenuItem>
+                      )}
+                      {/* Support: Reset Password (no current password required) */}
+                      {isSupport && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setSelectedUser(user)
+                            setResetPasswordDialogOpen(true)
+                          }}
+                        >
+                          <Key className="mr-2 h-4 w-4" />
+                          Cấp lại mật khẩu
+                        </DropdownMenuItem>
+                      )}
+                      {/* Admin only: Role Management */}
+                      {isAdmin && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setSelectedUser(user)
+                            setRoleDialogOpen(true)
+                          }}
+                        >
+                          <Shield className="mr-2 h-4 w-4" />
+                          Quản lý vai trò
+                        </DropdownMenuItem>
+                      )}
+                      {/* Staff/Admin: Activate/Deactivate (only for buyer/seller) */}
+                      {(isAdmin || isStaff) && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            // Only allow activate/deactivate for buyer/seller
+                            const isBuyerOrSeller = user.roles.some(r => r === "buyer" || r === "seller")
+                            const isAdminStaffSupport = user.roles.some(r => r === "admin" || r === "staff" || r === "support")
+                            if (isBuyerOrSeller && !isAdminStaffSupport) {
+                              setConfirmAction({ type: "toggleActive", user })
+                            } else {
+                              toast({
+                                title: "Không thể thực hiện",
+                                description: "Chỉ có thể vô hiệu hóa/kích hoạt người dùng buyer hoặc seller",
+                                variant: "destructive",
+                              })
+                            }
+                          }}
+                        >
+                          <Ban className="mr-2 h-4 w-4" />
+                          {user.isActive ? "Vô hiệu hóa" : "Kích hoạt"}
+                        </DropdownMenuItem>
+                      )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -389,6 +479,14 @@ export function UserManagement() {
             onOpenChange={setPasswordDialogOpen}
             userId={selectedUser.id}
             onSubmit={handleChangePassword}
+          />
+
+          <ResetPasswordDialog
+            open={resetPasswordDialogOpen}
+            onOpenChange={setResetPasswordDialogOpen}
+            userId={selectedUser.id}
+            userName={selectedUser.fullName}
+            onSubmit={handleResetPassword}
           />
 
           <UserRoleDialog

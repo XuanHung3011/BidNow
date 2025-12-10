@@ -111,14 +111,19 @@ export function MessagesView() {
     const disputeIdParam = searchParams?.get("disputeId")
     if (disputeIdParam) {
       const id = parseInt(disputeIdParam, 10)
-      if (!isNaN(id)) {
+      if (!isNaN(id) && id !== disputeId) {
         setDisputeId(id)
         disputeIdRef.current = id
       }
     } else {
-      disputeIdRef.current = null
+      // Only clear if we're not already showing a dispute chat
+      if (disputeId !== null) {
+        setDisputeId(null)
+        setDisputeInfo(null)
+        disputeIdRef.current = null
+      }
     }
-  }, [searchParams])
+  }, [searchParams, disputeId])
 
   // Load dispute info when disputeId is set
   useEffect(() => {
@@ -133,8 +138,8 @@ export function MessagesView() {
       setDisputeInfo(data)
       // Auto-select conversations with buyer and seller
       if (data && userIdRef.current) {
-        // For admin, show both conversations
-        if (user?.currentRole === "admin") {
+        // For admin/staff/support, show both conversations
+        if (user?.currentRole === "admin" || user?.currentRole === "staff" || user?.currentRole === "support") {
           // Select buyer conversation first
           setSelectedConversation(data.buyerId)
         } else {
@@ -318,7 +323,7 @@ export function MessagesView() {
       let disputes: DisputeDto[] = []
       
       // Load disputes based on user role
-      if (user.currentRole === "admin") {
+      if (user.currentRole === "admin" || user.currentRole === "staff" || user.currentRole === "support") {
         disputes = await disputesAPI.getAll()
       } else if (user.currentRole === "buyer") {
         disputes = await disputesAPI.getByBuyerId(userId)
@@ -1347,7 +1352,8 @@ export function MessagesView() {
                 onClick={() => {
                   setDisputeId(null)
                   setDisputeInfo(null)
-                  router.push('/messages')
+                  disputeIdRef.current = null
+                  router.replace('/messages')
                 }}
               >
                 ← Quay lại danh sách chat
@@ -1378,7 +1384,7 @@ export function MessagesView() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Tin nhắn</h1>
         <p className="text-muted-foreground">
-          {user?.currentRole === "admin"
+          {user?.currentRole === "admin" || user?.currentRole === "staff" || user?.currentRole === "support"
             ? "Quản lý trao đổi với người dùng"
             : `Trò chuyện với ${user?.currentRole === "buyer" ? "mọi người" : "mọi người"}`}
         </p>

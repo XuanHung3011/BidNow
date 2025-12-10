@@ -243,12 +243,22 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       })
     })
 
-    // Listen for auction status updates (pause/resume)
+    // Listen for auction status updates (pause/resume/completed)
     connection.on("AuctionStatusUpdated", async (payload: AuctionStatusUpdatedPayload) => {
       if (!isMounted) return
       if (payload.auctionId !== Number(auctionId)) return
       
-      // Refresh auction data khi status thay đổi
+      // If auction is completed, update winnerId immediately from payload
+      if (payload.status === "completed" && payload.winnerId) {
+        setAuction(prev => prev ? {
+          ...prev,
+          status: "completed",
+          winnerId: payload.winnerId,
+          currentBid: payload.finalPrice ?? prev.currentBid
+        } : null)
+      }
+      
+      // Refresh auction data khi status thay đổi để đảm bảo có đầy đủ thông tin
       try {
         const data = await AuctionsAPI.getDetail(Number(auctionId))
         if (!isMounted) return

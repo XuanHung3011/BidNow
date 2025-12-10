@@ -2,17 +2,20 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { AuthAPI } from "@/lib/api"
+import { AuthAPI, UsersAPI } from "@/lib/api"
 
-export type UserRole = "guest" | "buyer" | "seller" | "admin"
+export type UserRole = "guest" | "buyer" | "seller" | "admin" | "staff" | "support"
 
 export interface User {
   id: string
   email: string
   name: string
+  fullName?: string // Alias for name, for compatibility
+  phone?: string
   roles: UserRole[] // Changed from single role to array of roles
   currentRole: UserRole // Current active role
   avatar?: string
+  avatarUrl?: string // Alias for avatar, for compatibility
   rating?: number
   totalRatings?: number
 }
@@ -23,6 +26,7 @@ interface AuthContextType {
   register: (email: string, password: string, name: string) => Promise<{ ok: boolean; verifyToken?: string; reason?: string }>
   switchRole: (role: UserRole) => void
   addRole: (role: UserRole) => void
+  refreshUser: () => Promise<void>
   logout: () => void
   isLoading: boolean
 }
@@ -51,8 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const allowedPaths = ["/login", "/register"]
       const publicPaths = ["/", "/about", "/contact", "/auctions", "/auction", "/categories", "/search"]
 
-      if (user.currentRole === "admin") {
-        // Admin is restricted to /admin and /messages only (no homepage/public pages)
+      if (user.currentRole === "admin" || user.currentRole === "staff" || user.currentRole === "support") {
+        // Admin/Staff/Support are restricted to /admin and /messages only (no homepage/public pages)
         if (!pathname.startsWith("/admin") && !pathname.startsWith("/messages") && !allowedPaths.includes(pathname)) {
           router.push("/admin")
         }
@@ -113,9 +117,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: String(userData.id),
         email: userData.email,
         name: userData.fullName,
-        roles: (userData.roles ?? []).includes("admin") ? (["admin"] as UserRole[]) : (["buyer"] as UserRole[]),
-        currentRole: ((userData.roles ?? []).includes("admin") ? "admin" : "buyer") as UserRole,
+        fullName: userData.fullName,
+        phone: userData.phone ?? undefined,
+        roles: (userData.roles ?? []) as UserRole[],
+        currentRole: ((userData.roles ?? []).includes("admin") ? "admin" : 
+                     (userData.roles ?? []).includes("staff") ? "staff" :
+                     (userData.roles ?? []).includes("support") ? "support" :
+                     (userData.roles ?? []).includes("seller") ? "seller" : "buyer") as UserRole,
         avatar: userData.avatarUrl ?? undefined,
+        avatarUrl: userData.avatarUrl ?? undefined,
         rating: userData.reputationScore ?? undefined,
         totalRatings: userData.totalRatings ?? undefined,
       }
@@ -163,13 +173,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const refreshUser = async () => {
+    if (!user?.id) return
+    
+    try {
+      const userData = await UsersAPI.getById(Number(user.id))
+      const mapped: User = {
+        id: String(userData.id),
+        email: userData.email,
+        name: userData.fullName,
+        fullName: userData.fullName,
+        phone: userData.phone ?? undefined,
+        roles: user.roles, // Keep existing roles
+        currentRole: user.currentRole, // Keep current role
+        avatar: userData.avatarUrl ?? undefined,
+        avatarUrl: userData.avatarUrl ?? undefined,
+        rating: userData.reputationScore ?? undefined,
+        totalRatings: userData.totalRatings ?? undefined,
+      }
+      setUser(mapped)
+      localStorage.setItem("bidnow_user", JSON.stringify(mapped))
+    } catch (error) {
+      console.error("Error refreshing user:", error)
+    }
+  }
+
   const logout = () => {
     setUser(null)
     localStorage.removeItem("bidnow_user")
     router.push("/")
   }
 
-  return <AuthContext.Provider value={{ user, login, register, switchRole, addRole, logout, isLoading }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, login, register, switchRole, addRole, refreshUser, logout, isLoading }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

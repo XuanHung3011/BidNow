@@ -16,13 +16,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { UserCreateDto } from "@/lib/api/types"
+import { UserCreateDto, UserResponse } from "@/lib/api/types"
 import { Upload, X } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface CreateUserDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (userData: UserCreateDto) => Promise<UserResponse>
+  onSubmit: (userData: UserCreateDto, role?: string) => Promise<UserResponse>
 }
 
 export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDialogProps) {
@@ -38,6 +39,7 @@ export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDia
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [selectedRole, setSelectedRole] = useState<string>("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const validateForm = (): boolean => {
@@ -151,7 +153,9 @@ if (!formData.phone) {
         avatarUrl: undefined, // Don't send avatarUrl in create
       }
 
-      const createdUser = await onSubmit(userData)
+      // Convert "none" back to empty string for role
+      const roleToAdd = selectedRole === "none" ? undefined : selectedRole
+      const createdUser = await onSubmit(userData, roleToAdd)
       
       // Upload avatar file if selected (after user is created)
       if (avatarFile && createdUser?.id) {
@@ -171,6 +175,7 @@ if (!formData.phone) {
         phone: "",
         avatarUrl: "",
       })
+      setSelectedRole("")
       setAvatarFile(null)
       if (avatarPreview) {
         URL.revokeObjectURL(avatarPreview)
@@ -214,6 +219,7 @@ if (!formData.phone) {
         phone: "",
         avatarUrl: "",
       })
+      setSelectedRole("")
       setAvatarFile(null)
       if (avatarPreview) {
         URL.revokeObjectURL(avatarPreview)
@@ -288,6 +294,27 @@ if (!formData.phone) {
               disabled={isLoading}
             />
             {errors.phone && <p className="text-sm text-destructive">{errors.phone}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="role">Vai trò (tùy chọn)</Label>
+            <Select 
+              value={selectedRole || undefined} 
+              onValueChange={(value) => setSelectedRole(value === "none" ? "" : value)} 
+              disabled={isLoading}
+            >
+              <SelectTrigger id="role">
+                <SelectValue placeholder="Chọn vai trò (mặc định: buyer)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Không có (mặc định: buyer)</SelectItem>
+                <SelectItem value="staff">Staff</SelectItem>
+                <SelectItem value="support">Support</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Chọn vai trò cho tài khoản. Nếu không chọn, tài khoản sẽ có vai trò buyer mặc định.
+            </p>
           </div>
 
           <div className="space-y-2">

@@ -3,7 +3,7 @@ import { MessagesView } from "@/components/messages/messages-view"
 
 export default function MessagesPage() {
   return (
-    <ProtectedRoute allowedRoles={["buyer", "seller", "admin"]}>
+    <ProtectedRoute allowedRoles={["buyer", "seller", "admin", "staff", "support"]}>
       <div className="container mx-auto px-4 py-8">
         <MessagesView />
       </div>
