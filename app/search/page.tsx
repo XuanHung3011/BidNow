@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Footer } from "@/components/footer"
 import { Input } from "@/components/ui/input"
@@ -17,10 +17,12 @@ import { UsersAPI } from "@/lib/api/users"
 import type { ItemResponseDto, UserResponse, CategoryDto } from "@/lib/api/types"
 import { getImageUrls } from "@/lib/api/config"
 import Link from "next/link"
+import { useAuth } from "@/lib/auth-context"
 
 export default function SearchPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { user } = useAuth()
   const [query, setQuery] = useState(searchParams.get("q") || "")
   const [category, setCategory] = useState(searchParams.get("category") || "all")
   const [sortBy, setSortBy] = useState("ending-soon")
@@ -34,6 +36,7 @@ export default function SearchPage() {
   const [loadingSellers, setLoadingSellers] = useState(false)
   const [auctionError, setAuctionError] = useState<string | null>(null)
   const [sellerError, setSellerError] = useState<string | null>(null)
+  const lastLoggedSearch = useRef<string>("") // tránh log trùng khi StrictMode render 2 lần
 
   // Fetch categories
   useEffect(() => {
@@ -64,6 +67,18 @@ export default function SearchPage() {
   }, [searchParams])
 
   const performSearch = async (searchQuery: string, searchCategory: string) => {
+    // Log search keyword for signed-in users (backend records via /home/search/paged)
+    const userId = user?.id ? Number(user.id) : undefined
+    if (userId) {
+      const trimmed = searchQuery.trim()
+      const logKey = `${userId}|${trimmed}`
+      if (trimmed && lastLoggedSearch.current !== logKey) {
+        lastLoggedSearch.current = logKey
+        // Fire and forget to avoid blocking UI; small page size to minimize payload
+        ItemsAPI.searchPaged(trimmed, 1, 1, userId).catch(() => {})
+      }
+    }
+
     // Search auctions
     setLoadingAuctions(true)
     setAuctionError(null)

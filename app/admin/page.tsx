@@ -7,7 +7,7 @@ import { Suspense } from "react"
 
 export default function AdminPage() {
   return (
-    <ProtectedRoute allowedRoles={["admin"]}>
+    <ProtectedRoute allowedRoles={["admin", "staff", "support"]}>
       <div className="min-h-screen">
         <main className="container mx-auto px-4 py-8">
           <Suspense fallback={<div>Loading...</div>}>

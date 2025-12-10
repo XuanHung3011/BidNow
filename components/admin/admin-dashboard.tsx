@@ -11,103 +11,156 @@ import { CategoryManagement } from "./category-management"
 import { AdminMessaging } from "./admin-messaging"
 import { useState, useEffect } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
 
 export function AdminDashboard() {
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState("auctions")
   const searchParams = useSearchParams()
   const router = useRouter()
+  
+  // Determine available tabs based on role
+  const isAdmin = user?.currentRole === "admin"
+  const isStaff = user?.currentRole === "staff"
+  const isSupport = user?.currentRole === "support"
+  
+  // Staff tabs: auctions, pending, categories, users, disputes
+  const staffTabs = ["auctions", "pending", "categories", "users", "disputes"]
+  // Support tabs: disputes, users
+  const supportTabs = ["disputes", "users"]
+  // Admin tabs: all
+  const adminTabs = ["auctions", "pending", "users", "disputes", "categories", "analytics"]
+  
+  const availableTabs = isAdmin ? adminTabs : isStaff ? staffTabs : isSupport ? supportTabs : []
+  
+  // Set default tab based on role
+  useEffect(() => {
+    if (user && activeTab && !availableTabs.includes(activeTab)) {
+      setActiveTab(availableTabs[0] || "auctions")
+    }
+  }, [user, availableTabs, activeTab])
 
   // Check if tab query param is present
   useEffect(() => {
     const tabParam = searchParams.get("tab")
-    if (tabParam) {
-      // Validate tab value
-      const validTabs = ["auctions", "pending", "users", "disputes", "categories", "analytics"]
-      if (validTabs.includes(tabParam)) {
-        setActiveTab(tabParam)
-        // Remove query param from URL
-        const params = new URLSearchParams(searchParams.toString())
-        params.delete("tab")
-        const newQuery = params.toString()
-        router.replace(`/admin${newQuery ? `?${newQuery}` : ""}`, { scroll: false })
-      }
+    if (tabParam && availableTabs.includes(tabParam)) {
+      setActiveTab(tabParam)
+      // Remove query param from URL
+      const params = new URLSearchParams(searchParams.toString())
+      params.delete("tab")
+      const newQuery = params.toString()
+      router.replace(`/admin${newQuery ? `?${newQuery}` : ""}`, { scroll: false })
     }
-  }, [searchParams, router])
+  }, [searchParams, router, availableTabs])
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Tổng quan hệ thống</h1>
-        <p className="text-muted-foreground">Quản lý nền tảng và giám sát hoạt động</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Tổng quan hệ thống</h1>
+            <p className="text-muted-foreground">Quản lý nền tảng và giám sát hoạt động</p>
+          </div>
+          {user && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Vai trò:</span>
+              <span className="px-3 py-1 rounded-full text-sm font-medium bg-primary/10 text-primary">
+                {isAdmin ? "Quản trị viên" : isStaff ? "Nhân viên" : isSupport ? "Hỗ trợ" : user.currentRole}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
-      <AdminStats />
+      {isAdmin && <AdminStats />}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-6 lg:w-auto">
-          <TabsTrigger
-            value="auctions"
-            className="data-[state=active]:bg-primary data-[state=active]:text-white"
-          >
-            Sản phẩm
-          </TabsTrigger>
-          <TabsTrigger
-            value="pending"
-            className="data-[state=active]:bg-primary data-[state=active]:text-white"
-          >
-            Chờ duyệt
-          </TabsTrigger>
-          <TabsTrigger
-            value="users"
-            className="data-[state=active]:bg-primary data-[state=active]:text-white"
-          >
-            Người dùng
-          </TabsTrigger>
-          <TabsTrigger
-            value="disputes"
-            className="data-[state=active]:bg-primary data-[state=active]:text-white"
-          >
-            Khiếu nại
-          </TabsTrigger>
-          <TabsTrigger
-            value="categories"
-            className="data-[state=active]:bg-primary data-[state=active]:text-white"
-          >
-            Danh mục
-          </TabsTrigger>
-          <TabsTrigger
-            value="analytics"
-            className="data-[state=active]:bg-primary data-[state=active]:text-white"
-          >
-            Phân tích
-          </TabsTrigger>
+        <TabsList className="grid w-full lg:w-auto" style={{ gridTemplateColumns: `repeat(${availableTabs.length}, minmax(0, 1fr))` }}>
+          {availableTabs.includes("auctions") && (
+            <TabsTrigger
+              value="auctions"
+              className="data-[state=active]:bg-primary data-[state=active]:text-white"
+            >
+              Sản phẩm
+            </TabsTrigger>
+          )}
+          {availableTabs.includes("pending") && (
+            <TabsTrigger
+              value="pending"
+              className="data-[state=active]:bg-primary data-[state=active]:text-white"
+            >
+              Chờ duyệt
+            </TabsTrigger>
+          )}
+          {availableTabs.includes("users") && (
+            <TabsTrigger
+              value="users"
+              className="data-[state=active]:bg-primary data-[state=active]:text-white"
+            >
+              Người dùng
+            </TabsTrigger>
+          )}
+          {availableTabs.includes("disputes") && (
+            <TabsTrigger
+              value="disputes"
+              className="data-[state=active]:bg-primary data-[state=active]:text-white"
+            >
+              Khiếu nại
+            </TabsTrigger>
+          )}
+          {availableTabs.includes("categories") && (
+            <TabsTrigger
+              value="categories"
+              className="data-[state=active]:bg-primary data-[state=active]:text-white"
+            >
+              Danh mục
+            </TabsTrigger>
+          )}
+          {availableTabs.includes("analytics") && (
+            <TabsTrigger
+              value="analytics"
+              className="data-[state=active]:bg-primary data-[state=active]:text-white"
+            >
+              Phân tích
+            </TabsTrigger>
+          )}
         </TabsList>
 
-        <TabsContent value="auctions" className="mt-6">
-          <AllAuctionsManagement />
-        </TabsContent>
+        {availableTabs.includes("auctions") && (
+          <TabsContent value="auctions" className="mt-6">
+            <AllAuctionsManagement />
+          </TabsContent>
+        )}
 
-        <TabsContent value="pending" className="mt-6">
-          <PendingAuctions />
-        </TabsContent>
+        {availableTabs.includes("pending") && (
+          <TabsContent value="pending" className="mt-6">
+            <PendingAuctions />
+          </TabsContent>
+        )}
 
-        <TabsContent value="users" className="mt-6">
-          <UserManagement />
-        </TabsContent>
+        {availableTabs.includes("users") && (
+          <TabsContent value="users" className="mt-6">
+            <UserManagement userRole={user?.currentRole} />
+          </TabsContent>
+        )}
 
-        <TabsContent value="disputes" className="mt-6">
-          <DisputeManagement />
-        </TabsContent>
+        {availableTabs.includes("disputes") && (
+          <TabsContent value="disputes" className="mt-6">
+            <DisputeManagement />
+          </TabsContent>
+        )}
 
-        <TabsContent value="categories" className="mt-6">
-          <CategoryManagement />
-        </TabsContent>
+        {availableTabs.includes("categories") && (
+          <TabsContent value="categories" className="mt-6">
+            <CategoryManagement />
+          </TabsContent>
+        )}
 
-       
-
-        <TabsContent value="analytics" className="mt-6">
-          <PlatformAnalytics />
-        </TabsContent>
+        {availableTabs.includes("analytics") && (
+          <TabsContent value="analytics" className="mt-6">
+            <PlatformAnalytics />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

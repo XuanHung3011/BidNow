@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Search, Send, MoreVertical, ImageIcon, Paperclip, Loader2, Plus, Mail } from "lucide-react"
+import { Search, Send, MoreVertical, ImageIcon, Paperclip, Loader2, Plus, Mail, AlertCircle } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MessagesAPI } from "@/lib/api/messages"
@@ -44,6 +44,9 @@ export function MessagesView() {
   const [messageInput, setMessageInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [conversations, setConversations] = useState<ConversationDto[]>([])
+  const [disputeConversations, setDisputeConversations] = useState<Array<{disputeId: number, orderId: number, title: string, lastMessageTime: string, createdAt: string, buyerId: number, sellerId: number, adminId: number | null}>>([])
+  const [disputeParticipantPairs, setDisputeParticipantPairs] = useState<Set<string>>(new Set())
+  const [disputesLoaded, setDisputesLoaded] = useState(false)
   const [messages, setMessages] = useState<MessageResponseDto[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -61,6 +64,7 @@ export function MessagesView() {
   const selectedAuctionIdRef = useRef<number | null>(null)
   const userIdRef = useRef<number | null>(null)
   const supportAdminIdRef = useRef<number | null>(null)
+  const disputeIdRef = useRef<number | null>(null)
 
   const emitUnreadSync = useCallback((count?: number) => {
     if (typeof window === "undefined") return
@@ -107,11 +111,19 @@ export function MessagesView() {
     const disputeIdParam = searchParams?.get("disputeId")
     if (disputeIdParam) {
       const id = parseInt(disputeIdParam, 10)
-      if (!isNaN(id)) {
+      if (!isNaN(id) && id !== disputeId) {
         setDisputeId(id)
+        disputeIdRef.current = id
+      }
+    } else {
+      // Only clear if we're not already showing a dispute chat
+      if (disputeId !== null) {
+        setDisputeId(null)
+        setDisputeInfo(null)
+        disputeIdRef.current = null
       }
     }
-  }, [searchParams])
+  }, [searchParams, disputeId])
 
   // Load dispute info when disputeId is set
   useEffect(() => {
@@ -126,8 +138,8 @@ export function MessagesView() {
       setDisputeInfo(data)
       // Auto-select conversations with buyer and seller
       if (data && userIdRef.current) {
-        // For admin, show both conversations
-        if (user?.currentRole === "admin") {
+        // For admin/staff/support, show both conversations
+        if (user?.currentRole === "admin" || user?.currentRole === "staff" || user?.currentRole === "support") {
           // Select buyer conversation first
           setSelectedConversation(data.buyerId)
         } else {
@@ -145,10 +157,11 @@ export function MessagesView() {
     }
   }
 
-  // Load conversations
+  // Load conversations and disputes
   useEffect(() => {
     if (user?.id && !disputeId) {
       loadConversations()
+      loadDisputeConversations()
     }
   }, [user?.id, disputeId])
 
@@ -301,6 +314,134 @@ export function MessagesView() {
     }
   }, [selectedConversation, selectedAuctionId, user?.id])
 
+  const loadDisputeConversations = async () => {
+    if (!user?.id) return
+    const userId = Number(user.id)
+    if (isNaN(userId)) return
+    
+    try {
+      let disputes: DisputeDto[] = []
+      
+      // Load disputes based on user role
+      if (user.currentRole === "admin" || user.currentRole === "staff" || user.currentRole === "support") {
+        disputes = await disputesAPI.getAll()
+      } else if (user.currentRole === "buyer") {
+        disputes = await disputesAPI.getByBuyerId(userId)
+      } else {
+        // seller or other
+        disputes = await disputesAPI.getBySellerId(userId)
+      }
+      
+      // Filter only active disputes (pending or in_review)
+      const activeDisputes = disputes.filter(d => 
+        d.status === "pending" || d.status === "in_review"
+      )
+      
+      // Store dispute participant IDs to filter conversations later
+      const pairs = new Set<string>()
+      for (const dispute of activeDisputes) {
+        const { buyerId, sellerId } = dispute
+        let adminId = dispute.resolvedBy
+        if (!adminId) {
+          try {
+            const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
+            adminId = adminUser?.id ?? null
+          } catch {
+            adminId = null
+          }
+        }
+        // Create pairs for filtering: "buyerId-sellerId", "buyerId-adminId", "sellerId-adminId"
+        pairs.add(`${buyerId}-${sellerId}`)
+        pairs.add(`${sellerId}-${buyerId}`)
+        if (adminId) {
+          pairs.add(`${buyerId}-${adminId}`)
+          pairs.add(`${adminId}-${buyerId}`)
+          pairs.add(`${sellerId}-${adminId}`)
+          pairs.add(`${adminId}-${sellerId}`)
+        }
+      }
+      setDisputeParticipantPairs(pairs)
+      setDisputesLoaded(true)
+      
+      // Get last message time for each dispute (from dispute chat messages)
+      const disputeConvs = await Promise.all(
+        activeDisputes.map(async (dispute) => {
+          try {
+            // Get last message from dispute chat
+            const { buyerId, sellerId } = dispute
+            let adminId = dispute.resolvedBy
+            if (!adminId) {
+              try {
+                const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
+                adminId = adminUser?.id ?? null
+              } catch {
+                adminId = null
+              }
+            }
+            
+            // Load messages between participants
+            const allMessagePromises: Promise<MessageResponseDto[]>[] = []
+            allMessagePromises.push(
+              MessagesAPI.getConversation(buyerId, sellerId, null)
+            )
+            if (adminId) {
+              allMessagePromises.push(
+                MessagesAPI.getConversation(buyerId, adminId, null),
+                MessagesAPI.getConversation(sellerId, adminId, null)
+              )
+            }
+            
+            const allMessageArrays = await Promise.all(allMessagePromises)
+            const allMessages = allMessageArrays.flat()
+            
+            // Filter messages after dispute created
+            const disputeCreatedAt = new Date(dispute.createdAt).getTime()
+            const relevantMessages = allMessages.filter(msg => {
+              const msgTime = msg.sentAt ? new Date(msg.sentAt).getTime() : 0
+              return msgTime >= disputeCreatedAt - 60000
+            })
+            
+            // Get last message time
+            const lastMessage = relevantMessages.sort((a, b) => {
+              const timeA = a.sentAt ? new Date(a.sentAt).getTime() : 0
+              const timeB = b.sentAt ? new Date(b.sentAt).getTime() : 0
+              return timeB - timeA
+            })[0]
+            
+            return {
+              disputeId: dispute.id,
+              orderId: dispute.orderId,
+              title: `Khiếu nại đơn hàng #${dispute.orderId}`,
+              lastMessageTime: lastMessage?.sentAt || dispute.createdAt,
+              createdAt: dispute.createdAt,
+              buyerId: dispute.buyerId,
+              sellerId: dispute.sellerId,
+              adminId: adminId
+            }
+          } catch (error) {
+            console.error(`Error loading messages for dispute ${dispute.id}:`, error)
+            return {
+              disputeId: dispute.id,
+              orderId: dispute.orderId,
+              title: `Khiếu nại đơn hàng #${dispute.orderId}`,
+              lastMessageTime: dispute.createdAt,
+              createdAt: dispute.createdAt,
+              buyerId: dispute.buyerId,
+              sellerId: dispute.sellerId,
+              adminId: null
+            }
+          }
+        })
+      )
+      
+      setDisputeConversations(disputeConvs)
+    } catch (error) {
+      console.error("Error loading dispute conversations:", error)
+      setDisputeConversations([])
+      setDisputesLoaded(true) // Mark as loaded even on error
+    }
+  }
+
   const loadConversations = async (showLoading = true) => {
     if (!user?.id) return
     const userId = Number(user.id)
@@ -392,7 +533,34 @@ export function MessagesView() {
     try {
       setLoadingMessages(true)
       const data = await MessagesAPI.getConversation(userId1, userId2, auctionId || undefined)
-      setMessages(data || [])
+      
+      // Filter out messages that belong to active dispute chats
+      // (to avoid showing dispute chat messages in regular 1-1 conversations)
+      let filteredData = data || []
+      
+      if (!auctionId && disputeConversations.length > 0) {
+        // Check if this conversation is between dispute participants
+        const matchingDisputes = disputeConversations.filter(disputeConv => {
+          const { buyerId, sellerId, adminId } = disputeConv
+          const participants = [buyerId, sellerId]
+          if (adminId) participants.push(adminId)
+          return participants.includes(userId1) && participants.includes(userId2)
+        })
+        
+        if (matchingDisputes.length > 0) {
+          // Filter out messages sent after dispute was created
+          filteredData = (data || []).filter(msg => {
+            const msgTime = msg.sentAt ? new Date(msg.sentAt).getTime() : 0
+            // Keep message only if it was sent before ALL matching disputes were created
+            return matchingDisputes.every(dispute => {
+              const disputeCreatedAt = new Date(dispute.createdAt).getTime()
+              return msgTime < disputeCreatedAt - 60000 // Before dispute (with 1 minute buffer)
+            })
+          })
+        }
+      }
+      
+      setMessages(filteredData)
       
       // Find and set conversation info for display
       const convInfo = conversations.find(
@@ -415,9 +583,9 @@ export function MessagesView() {
       }
       
       // Mark messages as read when loading conversation
-      if (data && data.length > 0) {
+      if (filteredData && filteredData.length > 0) {
         // Mark all unread messages in this conversation as read
-        const unreadMessages = data.filter(m => !m.isRead && m.receiverId === userId1)
+        const unreadMessages = filteredData.filter(m => !m.isRead && m.receiverId === userId1)
         for (const message of unreadMessages) {
           await MessagesAPI.markAsRead(message.id)
         }
@@ -437,7 +605,113 @@ export function MessagesView() {
     }
   }
 
-  const filteredConversations = conversations
+  // Filter out conversations that are part of active disputes
+  // (to avoid showing buyer-seller, buyer-admin, seller-admin conversations separately)
+  // BUT keep regular 1-1 conversations that are NOT part of disputes
+  const filteredRegularConversations = conversations.filter(conv => {
+    if (!conv || !user?.id) return true
+    
+    // Always keep conversations with auctionId (they are auction-related, not dispute chats)
+    if (conv.auctionId) {
+      return true
+    }
+    
+    // If disputes haven't loaded yet, keep all conversations (to avoid flickering)
+    if (!disputesLoaded) {
+      return true
+    }
+    
+    // If no active disputes, keep all conversations
+    if (disputeParticipantPairs.size === 0 || disputeConversations.length === 0) {
+      return true
+    }
+    
+    const currentUserId = Number(user.id)
+    const otherUserId = conv.otherUserId
+    
+    // Check if this conversation pair is part of an active dispute
+    const pairKey1 = `${currentUserId}-${otherUserId}`
+    const pairKey2 = `${otherUserId}-${currentUserId}`
+    
+    // Only filter if this pair is in dispute participants
+    if (!disputeParticipantPairs.has(pairKey1) && !disputeParticipantPairs.has(pairKey2)) {
+      return true // Not a dispute participant pair, keep it
+    }
+    
+    // This pair is in dispute participants, check if there's an active dispute between them
+    // Find ALL matching disputes (there could be multiple disputes with same participants)
+    const matchingDisputes = disputeConversations.filter(disputeConv => {
+      const { buyerId, sellerId, adminId } = disputeConv
+      // Check if this conversation is between any two participants of this dispute
+      const participants = [buyerId, sellerId]
+      if (adminId) participants.push(adminId)
+      
+      return participants.includes(currentUserId) && participants.includes(otherUserId)
+    })
+    
+    if (matchingDisputes.length > 0) {
+      // Check if conversation's last message is after dispute was created
+      // Only filter if last message is after dispute (meaning it's part of dispute chat)
+      // Keep conversations with messages before dispute (regular 1-1 chats)
+      const convLastMessageTime = conv.lastMessageTime ? new Date(conv.lastMessageTime).getTime() : 0
+      
+      if (convLastMessageTime === 0) {
+        // No last message time - be conservative and keep it (don't filter)
+        console.log("Keeping conversation (no lastMessageTime):", conv.otherUserId)
+        return true
+      }
+      
+      // Check against all matching disputes
+      // Only filter if last message is CLEARLY after dispute was created
+      const isAfterAnyDispute = matchingDisputes.some(dispute => {
+        const disputeCreatedAt = new Date(dispute.createdAt).getTime()
+        // Only filter if last message is clearly after dispute (with 1 minute buffer to account for timing)
+        const isAfter = convLastMessageTime >= disputeCreatedAt - 60000
+        if (isAfter) {
+          console.log("Filtering conversation (after dispute):", {
+            otherUserId: conv.otherUserId,
+            lastMessageTime: new Date(convLastMessageTime).toISOString(),
+            disputeCreatedAt: new Date(disputeCreatedAt).toISOString(),
+            disputeId: dispute.disputeId
+          })
+        }
+        return isAfter
+      })
+      
+      if (isAfterAnyDispute) {
+        return false // Filter out - it's part of a dispute chat
+      }
+      
+      // Last message is before dispute - it's a regular conversation, keep it
+      console.log("Keeping conversation (before dispute):", {
+        otherUserId: conv.otherUserId,
+        lastMessageTime: new Date(convLastMessageTime).toISOString()
+      })
+      return true
+    }
+    
+    return true // Keep this conversation (regular 1-1 chat before dispute or not matching any dispute)
+  })
+
+  // Combine regular conversations and dispute conversations
+  const allConversations = [
+    ...filteredRegularConversations.map(conv => ({ ...conv, type: 'regular' as const })),
+    ...disputeConversations.map(dispute => ({
+      otherUserId: 0, // Special marker for dispute
+      otherUserName: dispute.title,
+      otherUserAvatarUrl: null,
+      lastMessage: "Chat khiếu nại",
+      lastMessageTime: dispute.lastMessageTime,
+      unreadCount: 0,
+      auctionId: null,
+      auctionTitle: null,
+      type: 'dispute' as const,
+      disputeId: dispute.disputeId,
+      orderId: dispute.orderId
+    }))
+  ]
+
+  const filteredConversations = allConversations
     .filter((conv) => {
       if (!conv) return false
       const name = conv.otherUserName?.toLowerCase() || ""
@@ -499,7 +773,13 @@ export function MessagesView() {
     return `${days} ngày trước`
   }
 
-  const handleConversationSelect = (otherUserId: number, auctionId: number | null) => {
+  const handleConversationSelect = (otherUserId: number, auctionId: number | null, disputeId?: number) => {
+    // If it's a dispute conversation, open dispute chat
+    if (disputeId) {
+      router.push(`/messages?disputeId=${disputeId}`)
+      return
+    }
+    
     setSelectedConversation(otherUserId)
     setSelectedAuctionId(auctionId)
     
@@ -751,29 +1031,45 @@ export function MessagesView() {
               <div className="space-y-1">
                 {filteredConversations.map((conv) => {
                   if (!conv) return null
-                  const isSelected = selectedConversation === conv.otherUserId && 
-                                   selectedAuctionId === (conv.auctionId || null)
+                  const isDispute = conv.type === 'dispute'
+                  const disputeId = (conv as any).disputeId
+                  const isSelected = isDispute 
+                    ? disputeId === disputeIdRef.current
+                    : selectedConversation === conv.otherUserId && 
+                      selectedAuctionId === (conv.auctionId || null)
                   const userName = conv.otherUserName || "Người dùng"
                   
                   return (
                     <button
-                      key={`${conv.otherUserId}-${conv.auctionId || 'none'}`}
-                      onClick={() => handleConversationSelect(conv.otherUserId, conv.auctionId || null)}
+                      key={isDispute ? `dispute-${disputeId}` : `${conv.otherUserId}-${conv.auctionId || 'none'}`}
+                      onClick={() => handleConversationSelect(
+                        conv.otherUserId, 
+                        conv.auctionId || null,
+                        disputeId
+                      )}
                       className={`w-full rounded-lg p-3 text-left transition-all ${
                         isSelected
                           ? "bg-accent border-l-2 border-l-primary"
                           : "hover:bg-muted/50"
-                      }`}
+                      } ${isDispute ? "border-l-2 border-l-red-500" : ""}`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="relative flex-shrink-0">
                           <Avatar className="h-12 w-12">
-                            <AvatarImage src={conv.otherUserAvatarUrl || "/placeholder.svg"} />
-                            <AvatarFallback className="text-sm font-semibold">
-                              {userName.charAt(0)?.toUpperCase() || "U"}
-                            </AvatarFallback>
+                            {isDispute ? (
+                              <AvatarFallback className="text-sm font-semibold bg-red-100 text-red-700">
+                                <AlertCircle className="h-6 w-6" />
+                              </AvatarFallback>
+                            ) : (
+                              <>
+                                <AvatarImage src={conv.otherUserAvatarUrl || "/placeholder.svg"} />
+                                <AvatarFallback className="text-sm font-semibold">
+                                  {userName.charAt(0)?.toUpperCase() || "U"}
+                                </AvatarFallback>
+                              </>
+                            )}
                           </Avatar>
-                          {conv.unreadCount > 0 && (
+                          {!isDispute && conv.unreadCount > 0 && (
                             <div className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary flex items-center justify-center">
                               <span className="text-xs font-bold text-primary-foreground">
                                 {conv.unreadCount > 9 ? "9+" : conv.unreadCount}
@@ -1036,15 +1332,49 @@ export function MessagesView() {
     </div>
   )
 
-  // If disputeId is set, show dispute chat
-  if (disputeId) {
+  // If disputeId is set, show dispute chat integrated into messages view
+  if (disputeId && disputeInfo) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Chat khiếu nại</h1>
-          <p className="text-muted-foreground">Trao đổi về khiếu nại đơn hàng</p>
+          <h1 className="text-3xl font-bold text-foreground">Tin nhắn</h1>
+          <p className="text-muted-foreground">
+            Chat khiếu nại - Đơn hàng #{disputeInfo.orderId} - {disputeInfo.auctionTitle || "Khiếu nại"}
+          </p>
         </div>
-        <DisputeChat disputeId={disputeId} />
+        <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
+          {/* Conversations List - Show dispute info */}
+          <Card className="p-4">
+            <div className="mb-4">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setDisputeId(null)
+                  setDisputeInfo(null)
+                  disputeIdRef.current = null
+                  router.replace('/messages')
+                }}
+              >
+                ← Quay lại danh sách chat
+              </Button>
+            </div>
+            <div className="p-4 bg-muted rounded-lg">
+              <h3 className="font-semibold mb-2">Thông tin khiếu nại</h3>
+              <div className="text-sm space-y-1 text-muted-foreground">
+                <p><span className="font-medium text-foreground">Lý do:</span> {disputeInfo.reason}</p>
+                <p><span className="font-medium text-foreground">Trạng thái:</span> {disputeInfo.status}</p>
+                <p><span className="font-medium text-foreground">Người mua:</span> {disputeInfo.buyerName}</p>
+                <p><span className="font-medium text-foreground">Người bán:</span> {disputeInfo.sellerName}</p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Dispute Chat Area */}
+          <Card className="flex flex-col h-[calc(100vh-120px)] max-h-[900px]">
+            <DisputeChat disputeId={disputeId} />
+          </Card>
+        </div>
       </div>
     )
   }
@@ -1054,7 +1384,7 @@ export function MessagesView() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Tin nhắn</h1>
         <p className="text-muted-foreground">
-          {user?.currentRole === "admin"
+          {user?.currentRole === "admin" || user?.currentRole === "staff" || user?.currentRole === "support"
             ? "Quản lý trao đổi với người dùng"
             : `Trò chuyện với ${user?.currentRole === "buyer" ? "mọi người" : "mọi người"}`}
         </p>

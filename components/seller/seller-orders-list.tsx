@@ -4,9 +4,11 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Package, Truck, CheckCircle2, AlertCircle } from "lucide-react"
+import { Loader2, Package, Truck, CheckCircle2, AlertCircle, MessageSquare, XCircle } from "lucide-react"
 import { PaymentsAPI, type OrderDto } from "@/lib/api/payments"
 import { ShippingFormDialog } from "./shipping-form-dialog"
+import { useRouter } from "next/navigation"
+import { disputesAPI, type DisputeDto } from "@/lib/api/disputes"
 
 interface SellerOrdersListProps {
   sellerId: number
@@ -14,10 +16,12 @@ interface SellerOrdersListProps {
 
 export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
   const [orders, setOrders] = useState<OrderDto[]>([])
+  const [disputes, setDisputes] = useState<Map<number, DisputeDto>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<OrderDto | null>(null)
   const [showShippingDialog, setShowShippingDialog] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
     loadOrders()
@@ -29,6 +33,24 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
       setError(null)
       const data = await PaymentsAPI.getSellerOrders(sellerId)
       setOrders(data)
+      
+      // Load disputes for orders that might have disputes
+      const disputeMap = new Map<number, DisputeDto>()
+      for (const order of data) {
+        // Check if order has dispute status or might have been resolved
+        if (order.orderStatus === 'dispute' || order.orderStatus === 'cancelled' || order.orderStatus === 'completed') {
+          try {
+            const dispute = await disputesAPI.getByOrderId(order.id)
+            if (dispute) {
+              disputeMap.set(order.id, dispute)
+            }
+          } catch (err) {
+            // Dispute might not exist, ignore
+            console.debug(`No dispute found for order ${order.id}`)
+          }
+        }
+      }
+      setDisputes(disputeMap)
     } catch (err) {
       console.error('Error loading orders:', err)
       setError(err instanceof Error ? err.message : 'Không thể tải danh sách đơn hàng')
@@ -104,6 +126,43 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
     })
   }
 
+  const handleOpenDisputeChat = async (orderId: number) => {
+    try {
+      // Get dispute by orderId
+      const dispute = await disputesAPI.getByOrderId(orderId)
+      if (dispute && dispute.id) {
+        router.push(`/messages?disputeId=${dispute.id}`)
+      } else {
+        // If no dispute found, show helpful message
+        const shouldReload = confirm(
+          "Không tìm thấy khiếu nại cho đơn hàng này.\n\n" +
+          "Có thể buyer chưa tạo khiếu nại hoặc khiếu nại đang được xử lý.\n\n" +
+          "Bạn có muốn làm mới trang để kiểm tra lại không?"
+        )
+        if (shouldReload) {
+          loadOrders()
+        }
+      }
+    } catch (error: any) {
+      console.error("Error opening dispute chat:", error)
+      const errorMessage = error.message || "Lỗi không xác định"
+      if (errorMessage.includes("Unauthorized") || errorMessage.includes("Forbid")) {
+        alert("Bạn không có quyền truy cập khiếu nại này")
+      } else if (errorMessage.includes("404") || errorMessage.includes("not found")) {
+        const shouldReload = confirm(
+          "Không tìm thấy khiếu nại cho đơn hàng này.\n\n" +
+          "Có thể buyer chưa tạo khiếu nại hoặc khiếu nại đang được xử lý.\n\n" +
+          "Bạn có muốn làm mới trang để kiểm tra lại không?"
+        )
+        if (shouldReload) {
+          loadOrders()
+        }
+      } else {
+        alert("Không thể mở chat khiếu nại: " + errorMessage)
+      }
+    }
+  }
+
 
   if (loading) {
     return (
@@ -169,6 +228,58 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
                         <p className="text-green-600">Đã thanh toán: {formatDate(order.payment.paidAt)}</p>
                       )}
                     </div>
+                    {/* Dispute Resolution Info */}
+                    {disputes.has(order.id) && (() => {
+                      const dispute = disputes.get(order.id)!
+                      const isResolved = dispute.status === 'buyer_won' || dispute.status === 'seller_won'
+                      const isSellerWinner = dispute.status === 'seller_won'
+                      
+                      if (isResolved) {
+                        return (
+                          <div className={`mt-4 p-4 rounded-lg border-2 ${
+                            isSellerWinner 
+                              ? 'bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700' 
+                              : 'bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700'
+                          }`}>
+                            <div className="flex items-start gap-3">
+                              {isSellerWinner ? (
+                                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                              ) : (
+                                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                              )}
+                              <div className="flex-1">
+                                <p className={`font-semibold mb-1 ${
+                                  isSellerWinner 
+                                    ? 'text-green-800 dark:text-green-200' 
+                                    : 'text-red-800 dark:text-red-200'
+                                }`}>
+                                  {isSellerWinner ? 'Bạn thắng khiếu nại' : 'Người mua thắng khiếu nại'}
+                                </p>
+                                {dispute.adminNotes && (
+                                  <p className={`text-sm ${
+                                    isSellerWinner 
+                                      ? 'text-green-700 dark:text-green-300' 
+                                      : 'text-red-700 dark:text-red-300'
+                                  }`}>
+                                    <strong>Lý do:</strong> {dispute.adminNotes}
+                                  </p>
+                                )}
+                                {dispute.resolvedAt && (
+                                  <p className={`text-xs mt-1 ${
+                                    isSellerWinner 
+                                      ? 'text-green-600 dark:text-green-400' 
+                                      : 'text-red-600 dark:text-red-400'
+                                  }`}>
+                                    Giải quyết vào: {formatDate(dispute.resolvedAt)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
                   <Button
                     onClick={() => {
@@ -229,10 +340,69 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
           <div className="space-y-4">
             {completedOrders.map((order) => (
               <Card key={order.id} className="p-6">
-                <div className="flex items-start gap-2 flex-wrap">
-                  <h3 className="font-semibold text-foreground">Đơn hàng #{order.id}</h3>
-                  {getStatusBadge(order)}
-                  {getPaymentStatusBadge(order)}
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-start gap-2 flex-wrap">
+                    <h3 className="font-semibold text-foreground">Đơn hàng #{order.id}</h3>
+                    {getStatusBadge(order)}
+                    {getPaymentStatusBadge(order)}
+                  </div>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p>Giá trị: <span className="font-semibold text-foreground">{formatCurrency(order.finalPrice)}</span></p>
+                    <p>Người mua: <span className="font-semibold text-foreground">User #{order.buyerId}</span></p>
+                    <p>Ngày tạo: <span className="font-semibold text-foreground">{formatDate(order.createdAt)}</span></p>
+                  </div>
+                  {/* Dispute Resolution Info */}
+                  {disputes.has(order.id) && (() => {
+                    const dispute = disputes.get(order.id)!
+                    const isResolved = dispute.status === 'buyer_won' || dispute.status === 'seller_won'
+                    const isSellerWinner = dispute.status === 'seller_won'
+                    
+                    if (isResolved) {
+                      return (
+                        <div className={`mt-4 p-4 rounded-lg border-2 ${
+                          isSellerWinner 
+                            ? 'bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700' 
+                            : 'bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700'
+                        }`}>
+                          <div className="flex items-start gap-3">
+                            {isSellerWinner ? (
+                              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                            ) : (
+                              <XCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                            )}
+                            <div className="flex-1">
+                              <p className={`font-semibold mb-1 ${
+                                isSellerWinner 
+                                  ? 'text-green-800 dark:text-green-200' 
+                                  : 'text-red-800 dark:text-red-200'
+                              }`}>
+                                {isSellerWinner ? 'Bạn thắng khiếu nại' : 'Người mua thắng khiếu nại'}
+                              </p>
+                              {dispute.adminNotes && (
+                                <p className={`text-sm ${
+                                  isSellerWinner 
+                                    ? 'text-green-700 dark:text-green-300' 
+                                    : 'text-red-700 dark:text-red-300'
+                                }`}>
+                                  <strong>Lý do:</strong> {dispute.adminNotes}
+                                </p>
+                              )}
+                              {dispute.resolvedAt && (
+                                <p className={`text-xs mt-1 ${
+                                  isSellerWinner 
+                                    ? 'text-green-600 dark:text-green-400' 
+                                    : 'text-red-600 dark:text-red-400'
+                                }`}>
+                                  Giải quyết vào: {formatDate(dispute.resolvedAt)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
               </Card>
             ))}
@@ -247,9 +417,81 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
           <div className="space-y-4">
             {otherOrders.map((order) => (
               <Card key={order.id} className="p-6">
-                <div className="flex items-start gap-2 flex-wrap">
-                  <h3 className="font-semibold text-foreground">Đơn hàng #{order.id}</h3>
-                  {getStatusBadge(order)}
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-start gap-2 flex-wrap mb-4">
+                      <h3 className="font-semibold text-foreground">Đơn hàng #{order.id}</h3>
+                      {getStatusBadge(order)}
+                      {getPaymentStatusBadge(order)}
+                    </div>
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>Giá trị: <span className="font-semibold text-foreground">{formatCurrency(order.finalPrice)}</span></p>
+                      <p>Người mua: <span className="font-semibold text-foreground">User #{order.buyerId}</span></p>
+                      <p>Ngày tạo: <span className="font-semibold text-foreground">{formatDate(order.createdAt)}</span></p>
+                    </div>
+                    {/* Dispute Resolution Info */}
+                    {disputes.has(order.id) && (() => {
+                      const dispute = disputes.get(order.id)!
+                      const isResolved = dispute.status === 'buyer_won' || dispute.status === 'seller_won'
+                      const isSellerWinner = dispute.status === 'seller_won'
+                      
+                      if (isResolved) {
+                        return (
+                          <div className={`mt-4 p-4 rounded-lg border-2 ${
+                            isSellerWinner 
+                              ? 'bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700' 
+                              : 'bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700'
+                          }`}>
+                            <div className="flex items-start gap-3">
+                              {isSellerWinner ? (
+                                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                              ) : (
+                                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                              )}
+                              <div className="flex-1">
+                                <p className={`font-semibold mb-1 ${
+                                  isSellerWinner 
+                                    ? 'text-green-800 dark:text-green-200' 
+                                    : 'text-red-800 dark:text-red-200'
+                                }`}>
+                                  {isSellerWinner ? 'Bạn thắng khiếu nại' : 'Người mua thắng khiếu nại'}
+                                </p>
+                                {dispute.adminNotes && (
+                                  <p className={`text-sm ${
+                                    isSellerWinner 
+                                      ? 'text-green-700 dark:text-green-300' 
+                                      : 'text-red-700 dark:text-red-300'
+                                  }`}>
+                                    <strong>Lý do:</strong> {dispute.adminNotes}
+                                  </p>
+                                )}
+                                {dispute.resolvedAt && (
+                                  <p className={`text-xs mt-1 ${
+                                    isSellerWinner 
+                                      ? 'text-green-600 dark:text-green-400' 
+                                      : 'text-red-600 dark:text-red-400'
+                                  }`}>
+                                    Giải quyết vào: {formatDate(dispute.resolvedAt)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
+                  </div>
+                  {order.orderStatus === 'dispute' && (
+                    <Button
+                      onClick={() => handleOpenDisputeChat(order.id)}
+                      variant="outline"
+                      className="bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
+                    >
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      Mở chat khiếu nại
+                    </Button>
+                  )}
                 </div>
               </Card>
             ))}

@@ -168,10 +168,30 @@ export class UsersAPI {
    * Change user password
    */
   static async changePassword(id: number, passwordData: ChangePasswordDto): Promise<{ message: string }> {
+    const userId = localStorage.getItem("bidnow_user") ? JSON.parse(localStorage.getItem("bidnow_user")!).id : null;
     const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.CHANGE_PASSWORD(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-User-Id': userId || ''
+      },
       body: JSON.stringify(passwordData),
+    });
+    return await this.handleResponse<{ message: string }>(response);
+  }
+
+  /**
+   * Reset user password (Admin/Support only - no current password required)
+   */
+  static async resetPassword(id: number, newPassword: string): Promise<{ message: string }> {
+    const userId = localStorage.getItem("bidnow_user") ? JSON.parse(localStorage.getItem("bidnow_user")!).id : null;
+    const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.RESET_PASSWORD(id)}`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-User-Id': userId || ''
+      },
+      body: JSON.stringify({ newPassword }),
     });
     return await this.handleResponse<{ message: string }>(response);
   }
@@ -211,9 +231,13 @@ export class UsersAPI {
    */
   static async addRole(userId: number, role: string): Promise<{ message: string }> {
     try {
+      const currentUserId = localStorage.getItem("bidnow_user") ? JSON.parse(localStorage.getItem("bidnow_user")!).id : null;
       const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.ADD_ROLE(userId)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-Id': currentUserId || ''
+        },
         body: JSON.stringify({ role } as AddRoleRequest),
       });
       return await this.handleResponse<{ message: string }>(response);
@@ -279,6 +303,25 @@ export class UsersAPI {
       return await this.handleResponse<ValidateCredentialsResponse>(response);
     } catch (error) {
       console.error('Validate credentials error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload avatar for user
+   */
+  static async uploadAvatar(id: number, file: File): Promise<{ avatarUrl: string }> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.UPLOAD_AVATAR(id)}`, {
+        method: 'POST',
+        body: formData,
+      });
+      return await this.handleResponse<{ avatarUrl: string }>(response);
+    } catch (error) {
+      console.error('Upload avatar error:', error);
       throw error;
     }
   }

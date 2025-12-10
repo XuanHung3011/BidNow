@@ -62,7 +62,7 @@ export function DisputeManagement() {
         description: "Đã bắt đầu xử lý khiếu nại",
       })
       await loadDisputes()
-      // Open chat for this dispute
+      // Navigate to messages page with disputeId
       router.push(`/messages?disputeId=${dispute.id}`)
     } catch (error: any) {
       toast({
