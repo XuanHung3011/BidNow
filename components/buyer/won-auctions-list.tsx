@@ -27,6 +27,7 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
     auctionId: number
     auctionTitle: string
     sellerName: string
+    sellerId: number
   } | null>(null)
 
   useEffect(() => {
@@ -199,6 +200,7 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
       auctionId: auction.auctionId,
       auctionTitle: auction.itemTitle,
       sellerName: auction.sellerName || 'Người bán',
+      sellerId: auction.sellerId,
     })
   }
 
@@ -389,6 +391,9 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
           targetName={ratingDialog.sellerName}
           targetType="seller"
           auctionTitle={ratingDialog.auctionTitle}
+          auctionId={ratingDialog.auctionId}
+          raterId={bidderId}
+          ratedId={ratingDialog.sellerId}
           onSubmit={handleRatingSubmit}
         />
       )}
