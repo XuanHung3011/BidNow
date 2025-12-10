@@ -453,7 +453,7 @@ export function AllAuctionsManagement() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Tìm kiếm sản phẩm hoặc người bán..."
+              placeholder="Tìm kiếm phiên đấu giá..."
               value={searchDebounce}
               onChange={(e) => setSearchDebounce(e.target.value)}
               className="pl-10"
