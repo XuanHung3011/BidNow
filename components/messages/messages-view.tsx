@@ -128,9 +128,22 @@ export function MessagesView() {
   // Load dispute info when disputeId is set
   useEffect(() => {
     if (disputeId) {
+      // Support role không được xử lý chat khiếu nại
+      if (user?.currentRole === "support") {
+        toast({
+          title: "Không có quyền",
+          description: "Support chỉ xử lý chat 1-1, không tham gia khiếu nại.",
+          variant: "destructive",
+        })
+        router.replace("/messages")
+        setDisputeId(null)
+        setDisputeInfo(null)
+        disputeIdRef.current = null
+        return
+      }
       loadDisputeInfo()
     }
-  }, [disputeId])
+  }, [disputeId, user?.currentRole, router, toast])
 
   const loadDisputeInfo = async () => {
     try {
@@ -318,12 +331,19 @@ export function MessagesView() {
     if (!user?.id) return
     const userId = Number(user.id)
     if (isNaN(userId)) return
+
+    // Support chỉ chat 1-1, không tải danh sách khiếu nại
+    if (user.currentRole === "support") {
+      setDisputeConversations([])
+      setDisputesLoaded(true)
+      return
+    }
     
     try {
       let disputes: DisputeDto[] = []
       
       // Load disputes based on user role
-      if (user.currentRole === "admin" || user.currentRole === "staff" || user.currentRole === "support") {
+      if (user.currentRole === "admin" || user.currentRole === "staff") {
         disputes = await disputesAPI.getAll()
       } else if (user.currentRole === "buyer") {
         disputes = await disputesAPI.getByBuyerId(userId)
@@ -938,6 +958,63 @@ export function MessagesView() {
     router.push(`/profile/${targetId}`)
   }, [selectedConversationInfo?.otherUserId, isAdminContact, getSupportAdminId, router, toast])
 
+  const startSupportChat = useCallback(async () => {
+    try {
+      const supportId = await getSupportAdminId()
+      if (!supportId) {
+        toast({
+          title: "Không tìm thấy nhân viên hỗ trợ",
+          description: "Vui lòng thử lại sau hoặc gửi email tới bộ phận hỗ trợ.",
+          variant: "destructive",
+        })
+        return
+      }
+      const userId = userIdRef.current
+      if (!userId) return
+
+      // Tạo entry conversation tối thiểu nếu chưa có
+      setConversations((prev) => {
+        const exists = prev.some((c) => c.otherUserId === supportId && c.auctionId === null)
+        if (exists) return prev
+        return [
+          {
+            otherUserId: supportId,
+            otherUserName: "Hỗ trợ",
+            otherUserAvatarUrl: null,
+            lastMessage: null,
+            lastMessageTime: new Date().toISOString(),
+            unreadCount: 0,
+            auctionId: null,
+            auctionTitle: null,
+          },
+          ...prev,
+        ]
+      })
+
+      setSelectedConversation(supportId)
+      setSelectedAuctionId(null)
+      setSelectedConversationInfo({
+        otherUserId: supportId,
+        otherUserName: "Hỗ trợ",
+        otherUserAvatarUrl: null,
+        lastMessage: null,
+        lastMessageTime: new Date().toISOString(),
+        unreadCount: 0,
+        auctionId: null,
+        auctionTitle: null,
+      })
+
+      await loadMessages(userId, supportId, null)
+    } catch (error: any) {
+      console.error("Start support chat error:", error)
+      toast({
+        title: "Lỗi",
+        description: error?.message || "Không thể mở chat hỗ trợ",
+        variant: "destructive",
+      })
+    }
+  }, [getSupportAdminId, loadMessages, toast])
+
   const conversationBody = (
     <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
         {/* Conversations List */}
@@ -1006,6 +1083,12 @@ export function MessagesView() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+
+            {(user?.currentRole === "buyer" || user?.currentRole === "seller") && (
+              <Button variant="outline" className="w-full" onClick={startSupportChat}>
+                Liên hệ nhân viên hỗ trợ
+              </Button>
+            )}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
