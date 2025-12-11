@@ -9,10 +9,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { UsersAPI } from "@/lib/api/users"
 import { AuctionsAPI, type SellerAuctionDto } from "@/lib/api/auctions"
 import type { UserResponse } from "@/lib/api/types"
-import { Loader2, Mail, Shield, Calendar, Package } from "lucide-react"
+import { Loader2, Mail, Shield, Calendar, Package, Heart } from "lucide-react"
 import { getImageUrls } from "@/lib/api/config"
 import Link from "next/link"
 import Image from "next/image"
+import { useAuth } from "@/lib/auth-context"
+import { FavoriteSellersAPI } from "@/lib/api/favorite-sellers"
+import { useToast } from "@/hooks/use-toast"
 
 interface UserPublicProfileProps {
   userId?: number | null
@@ -25,6 +28,12 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
   const [sellerAuctions, setSellerAuctions] = useState<SellerAuctionDto[]>([])
   const [loadingAuctions, setLoadingAuctions] = useState(false)
   const [showAllProductsDialog, setShowAllProductsDialog] = useState(false)
+  const [isFavorite, setIsFavorite] = useState(false)
+  const [isCheckingFavorite, setIsCheckingFavorite] = useState(false)
+  const [isTogglingFavorite, setIsTogglingFavorite] = useState(false)
+  const [favoriteMessage, setFavoriteMessage] = useState<string | null>(null)
+  const { user } = useAuth()
+  const { toast } = useToast()
 
   useEffect(() => {
     let isMounted = true
@@ -99,6 +108,52 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
     }
   }, [profile, userId])
 
+  // Check if seller is in favorites
+  useEffect(() => {
+    let isMounted = true
+
+    const checkFavorite = async () => {
+      // Only check if user is logged in and viewing a seller profile
+      if (!user || !userId || !profile?.roles?.includes("seller")) {
+        if (isMounted) {
+          setIsFavorite(false)
+        }
+        return
+      }
+
+      // Don't check if viewing own profile
+      if (user.id === String(userId)) {
+        if (isMounted) {
+          setIsFavorite(false)
+        }
+        return
+      }
+
+      try {
+        setIsCheckingFavorite(true)
+        const favorite = await FavoriteSellersAPI.checkIsFavorite(userId)
+        if (isMounted) {
+          setIsFavorite(favorite)
+        }
+      } catch (err) {
+        // Silently fail - default to false
+        if (isMounted) {
+          setIsFavorite(false)
+        }
+      } finally {
+        if (isMounted) {
+          setIsCheckingFavorite(false)
+        }
+      }
+    }
+
+    checkFavorite()
+
+    return () => {
+      isMounted = false
+    }
+  }, [user, userId, profile])
+
   if (loading) {
     return (
       <div className="flex min-h-[300px] items-center justify-center">
@@ -139,6 +194,59 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
     if (s === "cancelled" || s === "canceled") return { label: "Đã hủy", variant: "outline" as const }
     if (s === "draft") return { label: "Bản nháp", variant: "outline" as const }
     return { label: "Không xác định", variant: "outline" as const }
+  }
+
+  // Handle toggle favorite seller
+  const handleToggleFavorite = async () => {
+    if (!userId || !profile) {
+      return
+    }
+
+    // Kiểm tra đăng nhập trước
+    if (!user?.id) {
+      setFavoriteMessage("Vui lòng đăng nhập để thêm seller vào danh sách yêu thích")
+      setTimeout(() => setFavoriteMessage(null), 3000)
+      return
+    }
+
+    // Don't allow adding self to favorites
+    if (user.id === String(userId)) {
+      setFavoriteMessage("Bạn không thể thêm chính mình vào danh sách yêu thích")
+      setTimeout(() => setFavoriteMessage(null), 3000)
+      return
+    }
+
+    setIsTogglingFavorite(true)
+    setFavoriteMessage(null)
+    
+    try {
+      let result: { success: boolean; message: string }
+      
+      if (isFavorite) {
+        // Remove from favorites
+        result = await FavoriteSellersAPI.removeFavorite(userId)
+        if (result.success) {
+          setIsFavorite(false)
+        }
+      } else {
+        // Add to favorites
+        result = await FavoriteSellersAPI.addFavorite(userId)
+        if (result.success) {
+          setIsFavorite(true)
+        }
+      }
+      
+      // Luôn hiển thị message từ API
+      setFavoriteMessage(result.message)
+      setTimeout(() => setFavoriteMessage(null), 3000)
+      
+    } catch (error: any) {
+      // Không log vào console, chỉ hiển thị message cho user
+      setFavoriteMessage(error.message || "Không thể thực hiện thao tác. Vui lòng đăng nhập.")
+      setTimeout(() => setFavoriteMessage(null), 3000)
+    } finally {
+      setIsTogglingFavorite(false)
+    }
   }
 
   // Component để render product card
@@ -224,6 +332,41 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
                 <span>Gia nhập: {profile.createdAt ? new Date(profile.createdAt).toLocaleDateString() : "Không rõ"}</span>
               </div>
             </div>
+
+            {/* Favorite Seller Button - Only show for seller profiles and not own profile */}
+            {profile.roles?.includes("seller") && user?.id !== String(userId) && (
+              <div className="mt-6 w-full space-y-2">
+                <Button
+                  onClick={handleToggleFavorite}
+                  disabled={isTogglingFavorite || (isCheckingFavorite && !!user)}
+                  variant={isFavorite ? "default" : "outline"}
+                  className="w-full"
+                >
+                  {isTogglingFavorite ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Đang xử lý...
+                    </>
+                  ) : (
+                    <>
+                      <Heart className={`mr-2 h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
+                      {isFavorite ? "Đã yêu thích" : "Thêm vào yêu thích"}
+                    </>
+                  )}
+                </Button>
+                {favoriteMessage && (
+                  <div
+                    className={`rounded-lg border p-3 text-sm ${
+                      favoriteMessage.includes("thành công") || favoriteMessage.includes("Đã")
+                        ? "bg-green-50 border-green-200 text-green-800"
+                        : "bg-red-50 border-red-200 text-red-800"
+                    }`}
+                  >
+                    {favoriteMessage}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
