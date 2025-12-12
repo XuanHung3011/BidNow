@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Clock, TrendingUp, AlertCircle, Loader2 } from "lucide-react"
+import { Clock, TrendingUp, AlertCircle, Loader2, Filter } from "lucide-react"
 import Link from "next/link"
 import { AuctionsAPI, type BuyerActiveBidDto } from "@/lib/api/auctions"
 
@@ -19,6 +19,7 @@ export function ActiveBidsList({ bidderId }: ActiveBidsListProps) {
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const pageSize = 10
+  const [filterStatus, setFilterStatus] = useState<"all" | "leading" | "outbid">("all")
 
   useEffect(() => {
     // Only load if bidderId is valid
@@ -84,6 +85,26 @@ export function ActiveBidsList({ bidderId }: ActiveBidsListProps) {
     }
   }
 
+  // Filter và sắp xếp bids
+  const filteredBids = useMemo(() => {
+    let filtered = [...bids]
+    
+    if (filterStatus === "leading") {
+      filtered = filtered.filter(b => b.isLeading)
+    } else if (filterStatus === "outbid") {
+      filtered = filtered.filter(b => !b.isLeading)
+    }
+    
+    // Sắp xếp: đang dẫn đầu lên đầu, sau đó bị vượt giá
+    filtered.sort((a, b) => {
+      if (a.isLeading && !b.isLeading) return -1
+      if (!a.isLeading && b.isLeading) return 1
+      return 0
+    })
+    
+    return filtered
+  }, [bids, filterStatus])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -126,13 +147,54 @@ export function ActiveBidsList({ bidderId }: ActiveBidsListProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Tổng cộng: <span className="font-semibold">{totalCount}</span> phiên đấu giá
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <p className="text-sm text-muted-foreground">
+            Tổng cộng: <span className="font-semibold">{totalCount}</span> phiên đấu giá
+          </p>
+          {/* Filter buttons */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Button
+              variant={filterStatus === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("all")}
+            >
+              Tất cả
+            </Button>
+            <Button
+              variant={filterStatus === "leading" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("leading")}
+            >
+              Đang dẫn đầu
+            </Button>
+            <Button
+              variant={filterStatus === "outbid" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("outbid")}
+            >
+              Bị vượt giá
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {bids.map((bid) => (
+      {filteredBids.length === 0 ? (
+        <Card className="p-12">
+          <div className="text-center text-muted-foreground">
+            <p className="text-lg mb-2">
+              {filterStatus === "leading" 
+                ? "Không có phiên nào đang dẫn đầu"
+                : filterStatus === "outbid"
+                ? "Không có phiên nào bị vượt giá"
+                : "Không có phiên đấu giá nào"}
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <>
+          {filteredBids.map((bid) => (
         <Card key={bid.auctionId} className="p-6 hover:shadow-lg transition-shadow">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-4">
@@ -199,7 +261,9 @@ export function ActiveBidsList({ bidderId }: ActiveBidsListProps) {
             </div>
           </div>
         </Card>
-      ))}
+          ))}
+        </>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

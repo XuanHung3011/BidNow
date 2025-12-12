@@ -65,9 +65,18 @@ export class AuthAPI {
 
   static async addRole(userId: number, role: string): Promise<boolean> {
     try {
+      // Get current user ID from localStorage for authorization
+      const currentUserId = localStorage.getItem("bidnow_user") 
+        ? JSON.parse(localStorage.getItem("bidnow_user")!).id 
+        : null;
+      
       const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.ADD_ROLE(userId)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-Id': currentUserId || ''
+        },
+        credentials: 'include',
         body: JSON.stringify({ role }),
       });
       return response.ok;

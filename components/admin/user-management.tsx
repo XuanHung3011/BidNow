@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Search, MoreVertical, Ban, Shield, Mail, Edit, Key, UserPlus, Users } from "lucide-react"
+import { Search, MoreVertical, Ban, Shield, Mail, Edit, Key, UserPlus, Users, Filter } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
@@ -32,10 +32,13 @@ interface UserManagementProps {
 export function UserManagement({ userRole }: UserManagementProps) {
   const [users, setUsers] = useState<UserResponse[]>([])
   const [loading, setLoading] = useState(true)
+  const [isSearching, setIsSearching] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [page, setPage] = useState(1)
   const [pageSize] = useState(10)
   const [selectedUser, setSelectedUser] = useState<UserResponse | null>(null)
+  const [filterRole, setFilterRole] = useState<"all" | "buyer" | "seller" | "staff" | "support">("all")
+  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all")
   
   const isAdmin = userRole === "admin"
   const isStaff = userRole === "staff"
@@ -56,19 +59,27 @@ export function UserManagement({ userRole }: UserManagementProps) {
 
   const { toast } = useToast()
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (search: string = searchTerm, currentPage: number = page, showLoading: boolean = true) => {
     try {
-      setLoading(true)
+      if (showLoading) {
+        if (search.trim()) {
+          setIsSearching(true)
+        } else {
+          setLoading(true)
+        }
+      }
+      
       let data: UserResponse[]
       
-      if (searchTerm.trim()) {
-        data = await UsersAPI.search(searchTerm.trim(), page, pageSize)
+      if (search.trim()) {
+        data = await UsersAPI.search(search.trim(), currentPage, pageSize)
       } else {
-        data = await UsersAPI.getAll(page, pageSize)
+        data = await UsersAPI.getAll(currentPage, pageSize)
       }
 
       data = data.filter((user) => !user.roles?.includes("admin"))
       
+      // Chỉ update nếu search term vẫn khớp (tránh race condition)
       setUsers(data)
     } catch (error: any) {
       toast({
@@ -77,17 +88,31 @@ export function UserManagement({ userRole }: UserManagementProps) {
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
+      if (showLoading) {
+        setLoading(false)
+        setIsSearching(false)
+      }
     }
   }
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      fetchUsers()
-    }, searchTerm ? 500 : 0) // Debounce search
+      if (searchTerm.trim()) {
+        setPage(1) // Reset về trang 1 khi search
+        fetchUsers(searchTerm, 1, true)
+      } else {
+        fetchUsers("", page, true)
+      }
+    }, searchTerm.trim() ? 700 : 0) // Debounce search để mượt hơn
 
     return () => clearTimeout(timeoutId)
-  }, [page, searchTerm])
+  }, [searchTerm])
+
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      fetchUsers("", page, true)
+    }
+  }, [page])
 
   const handleCreateUser = async (userData: UserCreateDto, role?: string): Promise<UserResponse> => {
     try {
@@ -278,9 +303,42 @@ export function UserManagement({ userRole }: UserManagementProps) {
       admin: "Quản trị viên",
       seller: "Người bán",
       buyer: "Người mua",
+      staff: "Nhân viên",
+      support: "Hỗ trợ",
     }
     return labels[role] || role
   }
+
+  // Filter và sắp xếp users - Phải đặt trước các early returns
+  const filteredUsers = useMemo(() => {
+    let filtered = [...users]
+    
+    // Filter theo role
+    if (filterRole !== "all") {
+      filtered = filtered.filter(user => 
+        user.roles?.some(role => role.toLowerCase() === filterRole)
+      )
+    }
+    
+    // Filter theo trạng thái
+    if (filterStatus === "active") {
+      filtered = filtered.filter(user => user.isActive)
+    } else if (filterStatus === "inactive") {
+      filtered = filtered.filter(user => !user.isActive)
+    }
+    
+    // Sắp xếp: active lên đầu, sau đó theo ngày tạo (mới nhất trước)
+    filtered.sort((a, b) => {
+      if (a.isActive && !b.isActive) return -1
+      if (!a.isActive && b.isActive) return 1
+      
+      const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      return bDate - aDate
+    })
+    
+    return filtered
+  }, [users, filterRole, filterStatus])
 
   return (
     <div className="space-y-4">
@@ -294,8 +352,8 @@ export function UserManagement({ userRole }: UserManagementProps) {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Tìm kiếm người dùng..."
@@ -303,9 +361,69 @@ export function UserManagement({ userRole }: UserManagementProps) {
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value)
-              setPage(1)
+              // Không reset page ngay, để debounce xử lý
             }}
           />
+        </div>
+        {/* Filter buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Button
+            variant={filterRole === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterRole("all")}
+          >
+            Tất cả vai trò
+          </Button>
+          <Button
+            variant={filterRole === "buyer" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterRole("buyer")}
+          >
+            Người mua
+          </Button>
+          <Button
+            variant={filterRole === "seller" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterRole("seller")}
+          >
+            Người bán
+          </Button>
+          <Button
+            variant={filterRole === "staff" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterRole("staff")}
+          >
+            Nhân viên
+          </Button>
+          <Button
+            variant={filterRole === "support" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterRole("support")}
+          >
+            Hỗ trợ
+          </Button>
+          <Button
+            variant={filterStatus === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterStatus("all")}
+          >
+            Tất cả
+          </Button>
+          <Button
+            variant={filterStatus === "active" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterStatus("active")}
+          >
+            Hoạt động
+          </Button>
+          <Button
+            variant={filterStatus === "inactive" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterStatus("inactive")}
+          >
+            Bị khóa
+          </Button>
         </div>
       </div>
 
@@ -313,16 +431,31 @@ export function UserManagement({ userRole }: UserManagementProps) {
         <div className="flex items-center justify-center py-12">
           <p className="text-muted-foreground">Đang tải...</p>
         </div>
-      ) : users.length === 0 ? (
-        <Card className="p-12 text-center">
-          <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">Không tìm thấy người dùng nào</p>
-        </Card>
       ) : (
-        <>
-      <div className="space-y-4">
-        {users.map((user) => (
-          <Card key={user.id} className="p-6">
+        <div className="space-y-4">
+          {isSearching && (
+            <div className="flex items-center justify-center py-2">
+              <p className="text-sm text-muted-foreground">Đang tìm kiếm...</p>
+            </div>
+          )}
+          {filteredUsers.length === 0 && !isSearching ? (
+            <Card className="p-12 text-center">
+              <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
+                {searchTerm
+                  ? "Không tìm thấy người dùng nào"
+                  : filterRole !== "all" || filterStatus !== "all"
+                  ? "Không có người dùng nào phù hợp với bộ lọc"
+                  : "Không tìm thấy người dùng nào"}
+              </p>
+            </Card>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Hiển thị <span className="font-semibold">{filteredUsers.length}</span> người dùng
+              </p>
+              {filteredUsers.map((user) => (
+                <Card key={user.id} className="p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex gap-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-lg font-semibold text-primary">
@@ -436,27 +569,27 @@ export function UserManagement({ userRole }: UserManagementProps) {
               </DropdownMenu>
             </div>
           </Card>
-        ))}
-      </div>
-
-          <div className="flex items-center justify-between">
-            <Button
-              variant="outline"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-            >
-              Trước
-            </Button>
-            <span className="text-sm text-muted-foreground">Trang {page}</span>
-            <Button
-              variant="outline"
-              onClick={() => setPage((p) => p + 1)}
-              disabled={users.length < pageSize}
-            >
-              Sau
-            </Button>
-          </div>
-        </>
+              ))}
+              <div className="flex items-center justify-between">
+                <Button
+                  variant="outline"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  Trước
+                </Button>
+                <span className="text-sm text-muted-foreground">Trang {page}</span>
+                <Button
+                  variant="outline"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={users.length < pageSize}
+                >
+                  Sau
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       <CreateUserDialog

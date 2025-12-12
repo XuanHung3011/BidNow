@@ -1,11 +1,11 @@
 // app/(platform)/buyer/bidding-history.tsx
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { TrendingUp, TrendingDown, Trophy, X, Loader2, Star } from "lucide-react"
+import { TrendingUp, TrendingDown, Trophy, X, Loader2, Star, Filter } from "lucide-react"
 import { AuctionsAPI, type BiddingHistoryDto, AuctionDetailDto } from "@/lib/api/auctions"
 import { RatingsAPI } from "@/lib/api/ratings"
 import { useAuth } from "@/lib/auth-context"
@@ -22,6 +22,7 @@ export function BiddingHistory() {
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const pageSize = 10
+  const [filterStatus, setFilterStatus] = useState<"all" | "won" | "lost">("all")
   
   // Rating dialog state
   const [ratingDialog, setRatingDialog] = useState<{
@@ -100,6 +101,24 @@ export function BiddingHistory() {
     }
   }
 
+  // Filter và sắp xếp history
+  const filteredHistory = useMemo(() => {
+    let filtered = [...history]
+    
+    if (filterStatus !== "all") {
+      filtered = filtered.filter(item => item.status === filterStatus)
+    }
+    
+    // Sắp xếp theo thời gian đấu giá (mới nhất trước)
+    filtered.sort((a, b) => {
+      const aTime = new Date(a.bidTime).getTime()
+      const bTime = new Date(b.bidTime).getTime()
+      return bTime - aTime
+    })
+    
+    return filtered
+  }, [history, filterStatus])
+
   const handleRateClick = async (auctionId: number, itemTitle: string) => {
     try {
       // Fetch auction detail to get seller info
@@ -171,19 +190,54 @@ export function BiddingHistory() {
     )
   }
 
-  if (history.length === 0) {
-    return (
-      <Card className="p-12 text-center">
-        <p className="text-muted-foreground">Bạn chưa có lịch sử đấu giá nào</p>
-      </Card>
-    )
-  }
-
   const totalPages = Math.ceil(totalCount / pageSize)
 
   return (
     <div className="space-y-4">
-      {history.map((item) => {
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <p className="text-sm text-muted-foreground">
+          Tổng cộng: <span className="font-semibold">{totalCount}</span> lượt đấu giá
+        </p>
+        {/* Filter buttons */}
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Button
+            variant={filterStatus === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterStatus("all")}
+          >
+            Tất cả
+          </Button>
+          <Button
+            variant={filterStatus === "won" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterStatus("won")}
+          >
+            Đã thắng
+          </Button>
+          <Button
+            variant={filterStatus === "lost" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterStatus("lost")}
+          >
+            Không thắng
+          </Button>
+        </div>
+      </div>
+
+      {filteredHistory.length === 0 ? (
+        <Card className="p-12 text-center">
+          <p className="text-muted-foreground">
+            {filterStatus === "all"
+              ? "Bạn chưa có lịch sử đấu giá nào"
+              : filterStatus === "won"
+              ? "Không có lượt đấu giá nào đã thắng"
+              : "Không có lượt đấu giá nào không thắng"}
+          </p>
+        </Card>
+      ) : (
+        <>
+          {filteredHistory.map((item) => {
         const statusConfig = getStatusConfig(item.status)
         
         return (
@@ -258,7 +312,9 @@ export function BiddingHistory() {
             </div>
           </Card>
         )
-      })}
+          })}
+        </>
+      )}
 
       {totalPages > 1 && (
         <div className="flex justify-center gap-2 pt-4">

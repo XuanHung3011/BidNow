@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { MoreVertical, Edit, Trash2, Eye, Star, Loader2 } from "lucide-react"
+import { MoreVertical, Edit, Trash2, Eye, Star, Loader2, Filter } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
   Dialog,
@@ -55,6 +55,7 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
   const [selectedAuctionId, setSelectedAuctionId] = useState<number | null>(null)
   const [auctionDetail, setAuctionDetail] = useState<AuctionDetailDto | null>(null)
   const [loadingAuctionDetail, setLoadingAuctionDetail] = useState(false)
+  const [filterSort, setFilterSort] = useState<"newest" | "oldest" | "price-high" | "price-low" | "bids-high" | "bids-low">("newest")
 
   // Load draft items when status is "draft"
   useEffect(() => {
@@ -228,7 +229,26 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
         }
       })
       .filter(a => a.displayStatus === status)
-  }, [auctions, status, refreshKey]) // Include refreshKey to trigger re-calculation
+      .sort((a, b) => {
+        // Sắp xếp theo filterSort
+        switch (filterSort) {
+          case "newest":
+            return new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+          case "oldest":
+            return new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+          case "price-high":
+            return (b.currentBid || b.startingBid) - (a.currentBid || a.startingBid)
+          case "price-low":
+            return (a.currentBid || a.startingBid) - (b.currentBid || b.startingBid)
+          case "bids-high":
+            return (b.bidCount || 0) - (a.bidCount || 0)
+          case "bids-low":
+            return (a.bidCount || 0) - (b.bidCount || 0)
+          default:
+            return 0
+        }
+      })
+  }, [auctions, status, refreshKey, filterSort]) // Include filterSort in dependencies
 
   // Auto-refresh every 10 seconds to update status in real-time
   useEffect(() => {
@@ -565,7 +585,67 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
   return (
     <>
       <div className="space-y-4">
-        {filteredAuctions.map((auction) => (
+        {/* Filter/Sort controls - Only show for active, scheduled, completed */}
+        {status !== "draft" && status !== "pending" && filteredAuctions.length > 0 && (
+          <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
+            <p className="text-sm text-muted-foreground">
+              Tổng cộng: <span className="font-semibold">{filteredAuctions.length}</span> phiên đấu giá
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Button
+                variant={filterSort === "newest" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterSort("newest")}
+              >
+                Mới nhất
+              </Button>
+              <Button
+                variant={filterSort === "oldest" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterSort("oldest")}
+              >
+                Cũ nhất
+              </Button>
+              <Button
+                variant={filterSort === "price-high" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterSort("price-high")}
+              >
+                Giá cao
+              </Button>
+              <Button
+                variant={filterSort === "price-low" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterSort("price-low")}
+              >
+                Giá thấp
+              </Button>
+              <Button
+                variant={filterSort === "bids-high" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterSort("bids-high")}
+              >
+                Nhiều lượt
+              </Button>
+              <Button
+                variant={filterSort === "bids-low" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterSort("bids-low")}
+              >
+                Ít lượt
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {filteredAuctions.length === 0 ? (
+          <Card className="p-12 text-center">
+            <p className="text-muted-foreground">Không có phiên đấu giá nào trong danh mục này</p>
+          </Card>
+        ) : (
+          <>
+            {filteredAuctions.map((auction) => (
           <Card key={auction.id} className="p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex gap-4">
@@ -665,7 +745,9 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
               </div>
             </div>
           </Card>
-        ))}
+            ))}
+          </>
+        )}
       </div>
 
       {ratingDialog && user && (
