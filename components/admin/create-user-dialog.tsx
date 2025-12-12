@@ -61,7 +61,11 @@ export function CreateUserDialog({ open, onOpenChange, onSubmit }: CreateUserDia
       newErrors.fullName = "Họ tên là bắt buộc"
     }
 
-if (!formData.phone) {
+    if (!selectedRole) {
+      newErrors.role = "Vai trò là bắt buộc"
+    }
+
+    if (!formData.phone) {
       newErrors.phone = "Số điện thoại là bắt buộc"
     } else if (!/^[0-9+\-\s()]+$/.test(formData.phone)) {
       newErrors.phone = "Số điện thoại không hợp lệ"
@@ -153,9 +157,8 @@ if (!formData.phone) {
         avatarUrl: undefined, // Don't send avatarUrl in create
       }
 
-      // Convert "none" back to empty string for role
-      const roleToAdd = selectedRole === "none" ? undefined : selectedRole
-      const createdUser = await onSubmit(userData, roleToAdd)
+      // Role is required, so always pass it
+      const createdUser = await onSubmit(userData, selectedRole)
       
       // Upload avatar file if selected (after user is created)
       if (avatarFile && createdUser?.id) {
@@ -297,23 +300,23 @@ if (!formData.phone) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="role">Vai trò (tùy chọn)</Label>
+            <Label htmlFor="role">Vai trò *</Label>
             <Select 
               value={selectedRole || undefined} 
-              onValueChange={(value) => setSelectedRole(value === "none" ? "" : value)} 
+              onValueChange={(value) => setSelectedRole(value)} 
               disabled={isLoading}
             >
               <SelectTrigger id="role">
-                <SelectValue placeholder="Chọn vai trò (mặc định: buyer)" />
+                <SelectValue placeholder="Chọn vai trò" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Không có (mặc định: buyer)</SelectItem>
                 <SelectItem value="staff">Staff</SelectItem>
                 <SelectItem value="support">Support</SelectItem>
               </SelectContent>
             </Select>
+            {errors.role && <p className="text-sm text-destructive">{errors.role}</p>}
             <p className="text-xs text-muted-foreground">
-              Chọn vai trò cho tài khoản. Nếu không chọn, tài khoản sẽ có vai trò buyer mặc định.
+              Chọn vai trò cho tài khoản (Staff hoặc Support).
             </p>
           </div>
 

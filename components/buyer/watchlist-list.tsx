@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +15,7 @@ export function WatchlistList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [removingId, setRemovingId] = useState<number | null>(null)
+  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "ended" | "scheduled">("all")
 
   useEffect(() => {
     if (user) {
@@ -113,6 +114,47 @@ export function WatchlistList() {
     }
   }
 
+  // Filter và sắp xếp watchlist
+  const filteredWatchlist = useMemo(() => {
+    let filtered = [...watchlist]
+    
+    if (filterStatus === "active") {
+      filtered = filtered.filter(item => {
+        const status = getAuctionStatus(item.status, item.endTime)
+        return status.label === "Đang diễn ra"
+      })
+    } else if (filterStatus === "ended") {
+      filtered = filtered.filter(item => {
+        const status = getAuctionStatus(item.status, item.endTime)
+        return status.label === "Đã kết thúc"
+      })
+    } else if (filterStatus === "scheduled") {
+      filtered = filtered.filter(item => {
+        const status = getAuctionStatus(item.status, item.endTime)
+        return status.label === "Sắp diễn ra"
+      })
+    }
+    
+    // Sắp xếp: đang diễn ra lên đầu, sau đó sắp diễn ra, cuối cùng là đã kết thúc
+    filtered.sort((a, b) => {
+      const aStatus = getAuctionStatus(a.status, a.endTime)
+      const bStatus = getAuctionStatus(b.status, b.endTime)
+      
+      const order = { "Đang diễn ra": 1, "Sắp diễn ra": 2, "Đã kết thúc": 3 }
+      const aOrder = order[aStatus.label as keyof typeof order] || 4
+      const bOrder = order[bStatus.label as keyof typeof order] || 4
+      
+      if (aOrder !== bOrder) return aOrder - bOrder
+      
+      // Nếu cùng trạng thái, sắp xếp theo thời gian kết thúc (sớm nhất trước)
+      const aEnd = new Date(a.endTime).getTime()
+      const bEnd = new Date(b.endTime).getTime()
+      return aEnd - bEnd
+    })
+    
+    return filtered
+  }, [watchlist, filterStatus])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -153,13 +195,63 @@ export function WatchlistList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Tổng cộng: <span className="font-semibold">{watchlist.length}</span> phiên đang theo dõi
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <p className="text-sm text-muted-foreground">
+            Tổng cộng: <span className="font-semibold">{watchlist.length}</span> phiên đang theo dõi
+          </p>
+          {/* Filter buttons */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Button
+              variant={filterStatus === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("all")}
+            >
+              Tất cả
+            </Button>
+            <Button
+              variant={filterStatus === "active" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("active")}
+            >
+              Đang diễn ra
+            </Button>
+            <Button
+              variant={filterStatus === "scheduled" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("scheduled")}
+            >
+              Sắp diễn ra
+            </Button>
+            <Button
+              variant={filterStatus === "ended" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("ended")}
+            >
+              Đã kết thúc
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {watchlist.map((item) => {
+      {filteredWatchlist.length === 0 ? (
+        <Card className="p-12">
+          <div className="text-center text-muted-foreground">
+            <p className="text-lg mb-2">
+              {filterStatus === "all"
+                ? "Danh sách theo dõi trống"
+                : filterStatus === "active"
+                ? "Không có phiên nào đang diễn ra"
+                : filterStatus === "scheduled"
+                ? "Không có phiên nào sắp diễn ra"
+                : "Không có phiên nào đã kết thúc"}
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <>
+          {filteredWatchlist.map((item) => {
         const status = getAuctionStatus(item.status, item.endTime)
         const isActive = status.label === "Đang diễn ra"
         const isEnded = status.label === "Đã kết thúc"
@@ -236,7 +328,9 @@ export function WatchlistList() {
             </div>
           </Card>
         )
-      })}
+          })}
+        </>
+      )}
     </div>
   )
 }

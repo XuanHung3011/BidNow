@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Package, Truck, CheckCircle2, AlertCircle, MessageSquare, XCircle } from "lucide-react"
+import { Loader2, Package, Truck, CheckCircle2, AlertCircle, MessageSquare, XCircle, Filter } from "lucide-react"
 import { PaymentsAPI, type OrderDto } from "@/lib/api/payments"
 import { ShippingFormDialog } from "./shipping-form-dialog"
 import { useRouter } from "next/navigation"
@@ -21,6 +21,7 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
   const [error, setError] = useState<string | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<OrderDto | null>(null)
   const [showShippingDialog, setShowShippingDialog] = useState(false)
+  const [filterStatus, setFilterStatus] = useState<"all" | "awaiting_payment" | "awaiting_shipment" | "shipped" | "completed" | "dispute" | "cancelled">("all")
   const router = useRouter()
 
   useEffect(() => {
@@ -163,6 +164,35 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
     }
   }
 
+  // Filter và sắp xếp orders - Phải đặt trước các early returns
+  const filteredOrders = useMemo(() => {
+    let filtered = [...orders]
+    
+    if (filterStatus !== "all") {
+      filtered = filtered.filter(o => o.orderStatus === filterStatus)
+    }
+    
+    // Sắp xếp: awaiting_shipment lên đầu (cần xử lý), sau đó theo ngày tạo
+    filtered.sort((a, b) => {
+      if (a.orderStatus === 'awaiting_shipment' && b.orderStatus !== 'awaiting_shipment') return -1
+      if (a.orderStatus !== 'awaiting_shipment' && b.orderStatus === 'awaiting_shipment') return 1
+      
+      // Sắp xếp theo ngày tạo (mới nhất trước)
+      const aDate = new Date(a.createdAt).getTime()
+      const bDate = new Date(b.createdAt).getTime()
+      return bDate - aDate
+    })
+    
+    return filtered
+  }, [orders, filterStatus])
+
+  // Filter orders by status for display
+  const awaitingShipmentOrders = filteredOrders.filter(o => o.orderStatus === 'awaiting_shipment')
+  const shippedOrders = filteredOrders.filter(o => o.orderStatus === 'shipped')
+  const completedOrders = filteredOrders.filter(o => o.orderStatus === 'completed')
+  const otherOrders = filteredOrders.filter(o => 
+    !['awaiting_shipment', 'shipped', 'completed'].includes(o.orderStatus?.toLowerCase() || '')
+  )
 
   if (loading) {
     return (
@@ -186,21 +216,68 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
     )
   }
 
-  // Filter orders by status
-  const awaitingShipmentOrders = orders.filter(o => o.orderStatus === 'awaiting_shipment')
-  const shippedOrders = orders.filter(o => o.orderStatus === 'shipped')
-  const completedOrders = orders.filter(o => o.orderStatus === 'completed')
-  const otherOrders = orders.filter(o => 
-    !['awaiting_shipment', 'shipped', 'completed'].includes(o.orderStatus?.toLowerCase() || '')
-  )
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <h2 className="text-2xl font-bold">Đơn hàng của tôi</h2>
-        <Button onClick={loadOrders} variant="outline" size="sm">
-          Làm mới
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Filter buttons */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Button
+              variant={filterStatus === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("all")}
+            >
+              Tất cả
+            </Button>
+            <Button
+              variant={filterStatus === "awaiting_payment" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("awaiting_payment")}
+            >
+              Chờ thanh toán
+            </Button>
+            <Button
+              variant={filterStatus === "awaiting_shipment" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("awaiting_shipment")}
+            >
+              Chờ vận chuyển
+            </Button>
+            <Button
+              variant={filterStatus === "shipped" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("shipped")}
+            >
+              Đã gửi hàng
+            </Button>
+            <Button
+              variant={filterStatus === "completed" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("completed")}
+            >
+              Hoàn thành
+            </Button>
+            <Button
+              variant={filterStatus === "dispute" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("dispute")}
+            >
+              Khiếu nại
+            </Button>
+            <Button
+              variant={filterStatus === "cancelled" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("cancelled")}
+            >
+              Đã hủy
+            </Button>
+          </div>
+          <Button onClick={loadOrders} variant="outline" size="sm">
+            Làm mới
+          </Button>
+        </div>
       </div>
 
       {/* Awaiting Shipment */}
@@ -499,11 +576,25 @@ export function SellerOrdersList({ sellerId }: SellerOrdersListProps) {
         </div>
       )}
 
-      {orders.length === 0 && (
+      {filteredOrders.length === 0 && (
         <Card className="p-12">
           <div className="text-center text-muted-foreground">
             <Package className="mx-auto h-12 w-12 mb-4 opacity-50" />
-            <p className="text-lg mb-2">Chưa có đơn hàng nào</p>
+            <p className="text-lg mb-2">
+              {filterStatus === "all"
+                ? "Chưa có đơn hàng nào"
+                : filterStatus === "awaiting_payment"
+                ? "Không có đơn hàng nào chờ thanh toán"
+                : filterStatus === "awaiting_shipment"
+                ? "Không có đơn hàng nào chờ vận chuyển"
+                : filterStatus === "shipped"
+                ? "Không có đơn hàng nào đã gửi hàng"
+                : filterStatus === "completed"
+                ? "Không có đơn hàng nào đã hoàn thành"
+                : filterStatus === "dispute"
+                ? "Không có đơn hàng nào đang khiếu nại"
+                : "Không có đơn hàng nào đã hủy"}
+            </p>
           </div>
         </Card>
       )}
