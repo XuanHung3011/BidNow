@@ -9,22 +9,31 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { UsersAPI } from "@/lib/api/users"
 import { AuctionsAPI, type SellerAuctionDto } from "@/lib/api/auctions"
 import type { UserResponse } from "@/lib/api/types"
-import { Loader2, Mail, Shield, Calendar, Package } from "lucide-react"
+import { Loader2, Mail, Shield, Calendar, Package, Heart, Send } from "lucide-react"
 import { getImageUrls } from "@/lib/api/config"
 import Link from "next/link"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import { FavoriteSellersAPI } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
 
 interface UserPublicProfileProps {
   userId?: number | null
 }
 
 export function UserPublicProfile({ userId }: UserPublicProfileProps) {
+  const { user } = useAuth()
+  const router = useRouter()
+  const { toast } = useToast()
   const [profile, setProfile] = useState<UserResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sellerAuctions, setSellerAuctions] = useState<SellerAuctionDto[]>([])
   const [loadingAuctions, setLoadingAuctions] = useState(false)
   const [showAllProductsDialog, setShowAllProductsDialog] = useState(false)
+  const [isFavoriteSeller, setIsFavoriteSeller] = useState(false)
+  const [loadingFavorite, setLoadingFavorite] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -98,6 +107,67 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
       isMounted = false
     }
   }, [profile, userId])
+
+  // Check if seller is favorite
+  useEffect(() => {
+    if (!userId || !user?.id || !profile?.roles?.includes("seller")) {
+      setIsFavoriteSeller(false)
+      return
+    }
+    
+    let mounted = true
+    const checkFavorite = async () => {
+      try {
+        const isFav = await FavoriteSellersAPI.checkIsFavorite(userId)
+        if (!mounted) return
+        setIsFavoriteSeller(isFav)
+      } catch (err) {
+        if (!mounted) return
+        setIsFavoriteSeller(false)
+      }
+    }
+    
+    checkFavorite()
+    return () => { mounted = false }
+  }, [userId, user?.id, profile?.roles])
+
+  // Toggle favorite seller
+  const toggleFavoriteSeller = async () => {
+    if (!userId) return
+    
+    if (!user?.id) {
+      toast({
+        title: "Cần đăng nhập",
+        description: "Vui lòng đăng nhập để theo dõi người bán",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    setLoadingFavorite(true)
+    try {
+      let result
+      if (isFavoriteSeller) {
+        result = await FavoriteSellersAPI.removeFavorite(userId)
+        setIsFavoriteSeller(false)
+      } else {
+        result = await FavoriteSellersAPI.addFavorite(userId)
+        setIsFavoriteSeller(true)
+      }
+      toast({
+        title: "Thành công",
+        description: result.message,
+      })
+    } catch (err: any) {
+      toast({
+        title: "Lỗi",
+        description: err.message || "Không thể thực hiện thao tác",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingFavorite(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -224,6 +294,37 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
                 <span>Gia nhập: {profile.createdAt ? new Date(profile.createdAt).toLocaleDateString() : "Không rõ"}</span>
               </div>
             </div>
+
+            {/* Action Buttons - Only show if user is a seller and current user is logged in */}
+            {profile.roles?.includes("seller") && user?.id && Number(user.id) !== userId && (
+              <div className="mt-6 flex flex-col gap-2 w-full">
+                <Button
+                  size="sm"
+                  variant={isFavoriteSeller ? "secondary" : "default"}
+                  onClick={toggleFavoriteSeller}
+                  disabled={loadingFavorite}
+                  className={`w-full flex items-center justify-center gap-2 ${isFavoriteSeller ? "bg-red-50 text-red-600" : ""}`}
+                >
+                  {loadingFavorite ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Heart className="h-4 w-4" />
+                  )}
+                  {isFavoriteSeller ? "Bỏ theo dõi" : "Theo dõi"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    router.push(`/messages?sellerId=${userId}`)
+                  }}
+                  className="w-full flex items-center justify-center gap-2"
+                >
+                  <Send className="h-4 w-4" />
+                  Nhắn tin
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
