@@ -110,6 +110,7 @@ export const API_ENDPOINTS = {
     SEND: "/api/Messages", // POST - Gửi tin nhắn
     CONVERSATIONS: "/api/Messages/conversations", // GET - Danh sách hội thoại
     CONVERSATION: "/api/Messages/conversation", // GET - Chi tiết cuộc hội thoại
+    DISPUTE_MESSAGES: (disputeId: number) => `/api/Messages/dispute/${disputeId}`, // GET - Tin nhắn của dispute chat
     MARK_READ: (messageId: number) => `/api/Messages/${messageId}/read`, // PUT - Đánh dấu đã đọc
     UNREAD: "/api/Messages/unread", // GET - Tin nhắn chưa đọc
     ALL: "/api/Messages/all", // GET - Tất cả tin nhắn (đã gửi và đã nhận)

@@ -196,6 +196,7 @@ export interface SendMessageRequest {
   senderId: number;
   receiverId: number;
   auctionId?: number | null;
+  disputeId?: number | null;
   content: string;
 }
 
@@ -216,6 +217,7 @@ export interface MessageResponseDto {
   receiverAvatarUrl?: string | null;
   auctionId?: number | null;
   auctionTitle?: string | null;
+  disputeId?: number | null;
   content: string;
   isRead: boolean;
   sentAt?: string | null;

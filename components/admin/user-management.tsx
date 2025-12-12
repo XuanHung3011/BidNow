@@ -270,6 +270,8 @@ export function UserManagement({ userRole }: UserManagementProps) {
   const getRoleBadgeVariant = (role: string) => {
     if (role === "admin") return "default"
     if (role === "seller") return "secondary"
+    if (role === "staff") return "secondary"
+    if (role === "support") return "secondary"
     return "outline"
   }
 
@@ -278,6 +280,8 @@ export function UserManagement({ userRole }: UserManagementProps) {
       admin: "Quản trị viên",
       seller: "Người bán",
       buyer: "Người mua",
+      staff: "Nhân viên",
+      support: "Hỗ trợ",
     }
     return labels[role] || role
   }

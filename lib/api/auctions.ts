@@ -302,12 +302,24 @@ export const AuctionsAPI = {
 
     if (!response.ok) {
       const raw = await response.text().catch(() => '')
-      try {
-        const parsed = raw ? JSON.parse(raw) : {}
-        throw new Error(parsed.message || 'Mua ngay thất bại')
-      } catch {
-        throw new Error(raw || 'Mua ngay thất bại')
+      if (!raw) {
+        throw new Error('Mua ngay thất bại')
       }
+      
+      // Try to parse as JSON first
+      let errorMessage = raw
+      try {
+        const parsed = JSON.parse(raw)
+        // If it's a JSON object with message property, use that
+        if (parsed && typeof parsed === 'object' && parsed.message) {
+          errorMessage = parsed.message
+        }
+      } catch {
+        // If JSON parse failed, raw is plain text - use it directly
+        errorMessage = raw
+      }
+      
+      throw new Error(errorMessage)
     }
 
     return response.json()
