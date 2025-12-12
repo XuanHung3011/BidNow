@@ -23,6 +23,7 @@ const formatCurrency = (v?: number) =>
 export function AllAuctions() {
   const searchParams = useSearchParams()
   const qParam = searchParams?.get("q") ?? ""
+  const categoryIdParam = searchParams?.get("categoryId")
   const { user } = useAuth()
 
   // search
@@ -49,15 +50,14 @@ export function AllAuctions() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-// sync q param -> searchQuery, reset page
+
+// sync q param and categoryId -> searchQuery, reset page
 useEffect(() => {
   const newQ = searchParams?.get("q") ?? ""
+  const newCategoryId = searchParams?.get("categoryId")
   setSearchQuery(newQ)
   setDebouncedQuery(newQ)
-  setPage(1)
-
-  // Note: Category filter from URL is not yet supported by auctions API
-  // Can be added later if needed
+  setPage(1) // Reset page when query or category changes
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [searchParams?.toString()])
@@ -160,8 +160,13 @@ useEffect(() => {
           params.searchTerm = debouncedQuery
         }
 
-        // Note: Category and price filters are not yet supported by auctions API
-        // These would need backend support to filter auctions by category/price
+        // Add category filter if categoryId is in URL
+        if (categoryIdParam) {
+          const catId = Number(categoryIdParam)
+          if (!isNaN(catId) && catId > 0) {
+            params.categoryId = catId
+          }
+        }
 
         const res = await AuctionsAPI.getAll(params)
         if (!isMounted) return
@@ -181,7 +186,7 @@ useEffect(() => {
 
     fetchData()
     return () => { isMounted = false }
-  }, [debouncedQuery, page, pageSize, sortBy, user?.id])
+  }, [debouncedQuery, page, pageSize, sortBy, user?.id, categoryIdParam])
 
   // Sort is now handled by backend, but we can do additional client-side sorting if needed
   const sortedAuctions = useMemo(() => {
@@ -189,20 +194,11 @@ useEffect(() => {
     return [...auctions]
   }, [auctions])
 
-  // Chỉ hiển thị auction chưa bị hủy / chưa kết thúc
+  // Backend now handles filtering of completed/cancelled auctions
+  // Just filter out any invalid auctions (no id)
   const visibleItems = useMemo(() => {
-    const isVisibleStatus = (status?: string | null) => {
-      const s = status?.toLowerCase() ?? ""
-      // Ẩn các phiên đã hủy hoặc đã kết thúc
-      if (s === "cancelled" || s === "canceled" || s === "completed" || s === "ended") {
-        return false
-      }
-      return true
-    }
-
     return sortedAuctions.filter((auction) => {
-      if (!auction.id) return false
-      return isVisibleStatus(auction.status)
+      return auction.id != null && auction.id > 0
     })
   }, [sortedAuctions])
 

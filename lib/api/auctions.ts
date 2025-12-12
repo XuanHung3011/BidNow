@@ -151,6 +151,7 @@ export interface AuctionListItemDto {
 export interface AuctionFilterParams {
   searchTerm?: string
   statuses?: string // comma-separated: active,scheduled,completed,cancelled
+  categoryId?: number // Filter by category ID
   sortBy?: string // ItemTitle, EndTime, CurrentBid, BidCount
   sortOrder?: string // asc, desc
   page?: number
@@ -167,6 +168,9 @@ export const AuctionsAPI = {
     }
     if (params?.statuses) {
       url.searchParams.set('statuses', params.statuses)
+    }
+    if (params?.categoryId) {
+      url.searchParams.set('categoryId', String(params.categoryId))
     }
     if (params?.sortBy) {
       url.searchParams.set('sortBy', params.sortBy)
