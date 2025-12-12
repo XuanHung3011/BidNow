@@ -194,9 +194,17 @@ useEffect(() => {
     return [...auctions]
   }, [auctions])
 
-  // Backend now handles filtering of completed/cancelled auctions
-  // Just filter out any invalid auctions (no id)
+  // Hiển thị tất cả auctions (bao gồm cả đã kết thúc), chỉ ẩn những phiên đã bị hủy
   const visibleItems = useMemo(() => {
+    const isVisibleStatus = (status?: string | null) => {
+      const s = status?.toLowerCase() ?? ""
+      // Chỉ ẩn các phiên đã bị hủy, hiển thị cả những phiên đã kết thúc (completed/ended)
+      if (s === "cancelled" || s === "canceled") {
+        return false
+      }
+      return true
+    }
+
     return sortedAuctions.filter((auction) => {
       return auction.id != null && auction.id > 0
     })
