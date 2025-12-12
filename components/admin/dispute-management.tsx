@@ -1,11 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AlertCircle, MessageSquare, Loader2, CheckCircle2, XCircle } from "lucide-react"
+import { AlertCircle, MessageSquare, Loader2, CheckCircle2, XCircle, Search, Filter } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { disputesAPI, type DisputeDto } from "@/lib/api/disputes"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
@@ -31,6 +33,9 @@ export function DisputeManagement() {
   const [resolveWinner, setResolveWinner] = useState<"buyer" | "seller">("buyer")
   const [resolveNotes, setResolveNotes] = useState("")
   const [resolving, setResolving] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [sortDate, setSortDate] = useState<"newest" | "oldest">("newest")
+  const [sortName, setSortName] = useState<"a-z" | "z-a">("a-z")
   const { toast } = useToast()
   const router = useRouter()
 
@@ -135,9 +140,56 @@ export function DisputeManagement() {
     }).format(amount)
   }
 
-  const pendingDisputes = disputes.filter((d) => d.status === "pending")
-  const inReviewDisputes = disputes.filter((d) => d.status === "in_review")
-  const resolvedDisputes = disputes.filter((d) => ["buyer_won", "seller_won", "resolved", "closed"].includes(d.status))
+  // Filter and sort disputes
+  const filteredDisputes = useMemo(() => {
+    let filtered = [...disputes]
+
+    // Filter by search term (buyer name or seller name)
+    if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase().trim()
+      filtered = filtered.filter(
+        (d) =>
+          d.buyerName?.toLowerCase().includes(searchLower) ||
+          d.sellerName?.toLowerCase().includes(searchLower)
+      )
+    }
+
+    // Sort by date
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime()
+      const dateB = new Date(b.createdAt).getTime()
+      return sortDate === "newest" ? dateB - dateA : dateA - dateB
+    })
+
+    // Sort by name (buyer name or seller name)
+    if (sortName === "a-z") {
+      filtered.sort((a, b) => {
+        const nameA = (a.buyerName || "").toLowerCase()
+        const nameB = (b.buyerName || "").toLowerCase()
+        if (nameA !== nameB) return nameA.localeCompare(nameB, "vi")
+        // If buyer names are equal, sort by seller name
+        const sellerA = (a.sellerName || "").toLowerCase()
+        const sellerB = (b.sellerName || "").toLowerCase()
+        return sellerA.localeCompare(sellerB, "vi")
+      })
+    } else {
+      filtered.sort((a, b) => {
+        const nameA = (a.buyerName || "").toLowerCase()
+        const nameB = (b.buyerName || "").toLowerCase()
+        if (nameA !== nameB) return nameB.localeCompare(nameA, "vi")
+        // If buyer names are equal, sort by seller name
+        const sellerA = (a.sellerName || "").toLowerCase()
+        const sellerB = (b.sellerName || "").toLowerCase()
+        return sellerB.localeCompare(sellerA, "vi")
+      })
+    }
+
+    return filtered
+  }, [disputes, searchTerm, sortDate, sortName])
+
+  const pendingDisputes = filteredDisputes.filter((d) => d.status === "pending")
+  const inReviewDisputes = filteredDisputes.filter((d) => d.status === "in_review")
+  const resolvedDisputes = filteredDisputes.filter((d) => ["buyer_won", "seller_won", "resolved", "closed"].includes(d.status))
 
   if (loading) {
     return (
@@ -153,6 +205,56 @@ export function DisputeManagement() {
         <h2 className="text-2xl font-bold">Quản lý khiếu nại</h2>
         <p className="text-muted-foreground">Xem và xử lý các khiếu nại từ người dùng</p>
       </div>
+
+      {/* Search and Filter */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Tìm theo tên người mua/bán..."
+            className="pl-9 pr-9"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          {searchTerm && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
+              onClick={() => setSearchTerm("")}
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Select value={sortDate} onValueChange={(value) => setSortDate(value as "newest" | "oldest")}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Sắp xếp theo ngày" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Ngày gần nhất</SelectItem>
+              <SelectItem value="oldest">Ngày xa nhất</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sortName} onValueChange={(value) => setSortName(value as "a-z" | "z-a")}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Sắp xếp theo tên" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="a-z">Tên A-Z</SelectItem>
+              <SelectItem value="z-a">Tên Z-A</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      {searchTerm && (
+        <p className="text-sm text-muted-foreground">
+          Hiển thị <span className="font-semibold">{filteredDisputes.length}</span> kết quả
+          {disputes.length !== filteredDisputes.length && ` (tổng ${disputes.length})`}
+        </p>
+      )}
 
       <Tabs defaultValue="pending" className="w-full">
         <TabsList>
