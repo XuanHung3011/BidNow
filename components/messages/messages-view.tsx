@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Search, Send, MoreVertical, ImageIcon, Paperclip, Loader2, Plus, Mail, AlertCircle } from "lucide-react"
+import { Search, Send, MoreVertical, ImageIcon, Paperclip, Loader2, Plus, Mail, AlertCircle, MessageSquare, HeadphonesIcon } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/lib/auth-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MessagesAPI } from "@/lib/api/messages"
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useRouter, useSearchParams } from "next/navigation"
 import { UsersAPI } from "@/lib/api/users"
 import { disputesAPI, type DisputeDto } from "@/lib/api/disputes"
@@ -56,6 +58,13 @@ export function MessagesView() {
   const [newConversationEmail, setNewConversationEmail] = useState("")
   const [newConversationMessage, setNewConversationMessage] = useState("")
   const [creating, setCreating] = useState(false)
+  const [showSupportDialog, setShowSupportDialog] = useState(false)
+  const [supportMessage, setSupportMessage] = useState("")
+  const [sendingSupportMessage, setSendingSupportMessage] = useState(false)
+  const [supportUsers, setSupportUsers] = useState<Array<{id: number, email: string, fullName: string, avatarUrl?: string}>>([])
+  const [selectedSupportUserId, setSelectedSupportUserId] = useState<number | null>(null)
+  const [loadingSupportUsers, setLoadingSupportUsers] = useState(false)
+  const [activeTab, setActiveTab] = useState<"personal" | "dispute" | "support">("personal")
   const { user } = useAuth()
   const { toast } = useToast()
 
@@ -96,15 +105,56 @@ export function MessagesView() {
       return supportAdminIdRef.current
     }
     try {
-      const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
-      const adminId = adminUser?.id ?? null
-      supportAdminIdRef.current = adminId
-      return adminId
+      // Lấy tất cả users và tìm user có role "support"
+      // Cần lấy nhiều pages để đảm bảo tìm thấy support
+      let allUsers: any[] = []
+      let page = 1
+      const pageSize = 100
+      
+      // Lấy tối đa 5 pages (500 users) để tìm support
+      while (page <= 5) {
+        const users = await UsersAPI.getAll(page, pageSize)
+        if (users.length === 0) break
+        allUsers = [...allUsers, ...users]
+        if (users.length < pageSize) break
+        page++
+      }
+      
+      const supportUser = allUsers.find(user => 
+        user.roles && user.roles.some((role: string) => role.toLowerCase() === "support")
+      )
+      
+      if (supportUser) {
+        console.log("Found support user:", supportUser.id, supportUser.email, supportUser.roles)
+        supportAdminIdRef.current = supportUser.id
+        return supportUser.id
+      }
+      
+      console.error("Không tìm thấy user có role support trong", allUsers.length, "users")
+      // KHÔNG fallback về admin - chỉ trả về null nếu không tìm thấy support
+      return null
     } catch (error) {
-      console.error("Không thể lấy thông tin admin:", error)
+      console.error("Không thể lấy thông tin support:", error)
       return null
     }
   }, [])
+
+  // Check for sellerId in URL - auto open chat with seller
+  useEffect(() => {
+    const sellerIdParam = searchParams?.get("sellerId")
+    if (sellerIdParam && user?.id) {
+      const sellerId = parseInt(sellerIdParam, 10)
+      const currentUserId = Number(user.id)
+      if (!isNaN(sellerId) && sellerId !== selectedConversation && currentUserId) {
+        // Switch to personal tab and select conversation with seller
+        setActiveTab("personal")
+        setSelectedConversation(sellerId)
+        setSelectedAuctionId(null)
+        // Load messages with seller
+        loadMessages(currentUserId, sellerId, null)
+      }
+    }
+  }, [searchParams, user?.id, selectedConversation])
 
   // Check for disputeId in URL
   useEffect(() => {
@@ -128,9 +178,23 @@ export function MessagesView() {
   // Load dispute info when disputeId is set
   useEffect(() => {
     if (disputeId) {
+      setActiveTab("dispute")
+      // Support role không được xử lý chat khiếu nại
+      if (user?.currentRole === "support") {
+        toast({
+          title: "Không có quyền",
+          description: "Support chỉ xử lý chat 1-1, không tham gia khiếu nại.",
+          variant: "destructive",
+        })
+        router.replace("/messages")
+        setDisputeId(null)
+        setDisputeInfo(null)
+        disputeIdRef.current = null
+        return
+      }
       loadDisputeInfo()
     }
-  }, [disputeId])
+  }, [disputeId, user?.currentRole, router, toast])
 
   const loadDisputeInfo = async () => {
     try {
@@ -160,10 +224,17 @@ export function MessagesView() {
   // Load conversations and disputes
   useEffect(() => {
     if (user?.id && !disputeId) {
-      loadConversations()
-      loadDisputeConversations()
+      // Load support ID first, then load conversations
+      getSupportAdminId().then(() => {
+        loadConversations()
+        loadDisputeConversations()
+        // Auto switch to support tab if user is support
+        if (user.currentRole === "support") {
+          setActiveTab("support")
+        }
+      })
     }
-  }, [user?.id, disputeId])
+  }, [user?.id, user?.currentRole, disputeId, getSupportAdminId])
 
   useEffect(() => {
     const currentUserId = userIdRef.current
@@ -318,12 +389,19 @@ export function MessagesView() {
     if (!user?.id) return
     const userId = Number(user.id)
     if (isNaN(userId)) return
+
+    // Support chỉ chat 1-1, không tải danh sách khiếu nại
+    if (user.currentRole === "support") {
+      setDisputeConversations([])
+      setDisputesLoaded(true)
+      return
+    }
     
     try {
       let disputes: DisputeDto[] = []
       
       // Load disputes based on user role
-      if (user.currentRole === "admin" || user.currentRole === "staff" || user.currentRole === "support") {
+      if (user.currentRole === "admin" || user.currentRole === "staff") {
         disputes = await disputesAPI.getAll()
       } else if (user.currentRole === "buyer") {
         disputes = await disputesAPI.getByBuyerId(userId)
@@ -450,6 +528,8 @@ export function MessagesView() {
       if (showLoading) {
         setLoading(true)
       }
+      // Load support ID if needed
+      await getSupportAdminId()
       console.log("Loading conversations for user:", userId)
       const data = await MessagesAPI.getConversations(userId)
       console.log("Conversations loaded:", data, "Count:", data?.length)
@@ -693,37 +773,80 @@ export function MessagesView() {
     return true // Keep this conversation (regular 1-1 chat before dispute or not matching any dispute)
   })
 
-  // Combine regular conversations and dispute conversations
-  const allConversations = [
-    ...filteredRegularConversations.map(conv => ({ ...conv, type: 'regular' as const })),
-    ...disputeConversations.map(dispute => ({
-      otherUserId: 0, // Special marker for dispute
-      otherUserName: dispute.title,
-      otherUserAvatarUrl: null,
-      lastMessage: "Chat khiếu nại",
-      lastMessageTime: dispute.lastMessageTime,
-      unreadCount: 0,
-      auctionId: null,
-      auctionTitle: null,
-      type: 'dispute' as const,
-      disputeId: dispute.disputeId,
-      orderId: dispute.orderId
-    }))
-  ]
+  // Separate conversations into 3 types
+  const isSupportUser = user?.currentRole === "support"
+  const supportId = supportAdminIdRef.current
+  
+  console.log("Separating conversations - isSupportUser:", isSupportUser, "supportId:", supportId, "total conversations:", filteredRegularConversations.length)
+  
+  const personalConversations = filteredRegularConversations
+    .filter(conv => {
+      // If current user is support, all their conversations go to support tab (not personal)
+      if (isSupportUser) return false
+      // For other users, exclude conversations with support
+      if (supportId && conv.otherUserId === supportId) return false
+      return true
+    })
+    .map(conv => ({ ...conv, type: 'personal' as const }))
 
-  const filteredConversations = allConversations
-    .filter((conv) => {
-      if (!conv) return false
-      const name = conv.otherUserName?.toLowerCase() || ""
-      const search = searchQuery.toLowerCase()
-      return name.includes(search)
+  const supportConversations = filteredRegularConversations
+    .filter(conv => {
+      // If current user is support, show ALL their conversations in support tab
+      if (isSupportUser) {
+        console.log("Support user - including conversation:", conv.otherUserId, conv.otherUserName)
+        return true
+      }
+      // For other users (buyer/seller), show only conversations with support user
+      const isWithSupport = supportId && conv.otherUserId === supportId
+      if (isWithSupport) {
+        console.log("Non-support user - showing conversation with support:", supportId, "otherUserId:", conv.otherUserId)
+      }
+      return isWithSupport
     })
-    .sort((a, b) => {
-      // Sort by last message time (most recent first), like Facebook Messenger
-      const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0
-      const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0
-      return timeB - timeA
-    })
+    .map(conv => ({ ...conv, type: 'support' as const }))
+  
+  console.log("Support conversations count:", supportConversations.length, "Personal conversations count:", personalConversations.length)
+
+  const disputeConversationsList = disputeConversations.map(dispute => ({
+    otherUserId: 0, // Special marker for dispute
+    otherUserName: dispute.title,
+    otherUserAvatarUrl: null,
+    lastMessage: "Chat khiếu nại",
+    lastMessageTime: dispute.lastMessageTime,
+    unreadCount: 0,
+    auctionId: null,
+    auctionTitle: null,
+    type: 'dispute' as const,
+    disputeId: dispute.disputeId,
+    orderId: dispute.orderId
+  }))
+
+  // Get conversations for active tab
+  const getConversationsForTab = () => {
+    let tabConversations: typeof personalConversations = []
+    if (activeTab === "personal") {
+      tabConversations = personalConversations
+    } else if (activeTab === "dispute") {
+      tabConversations = disputeConversationsList
+    } else if (activeTab === "support") {
+      tabConversations = supportConversations
+    }
+    
+    return tabConversations
+      .filter((conv) => {
+        if (!conv) return false
+        const name = conv.otherUserName?.toLowerCase() || ""
+        const search = searchQuery.toLowerCase()
+        return name.includes(search)
+      })
+      .sort((a, b) => {
+        const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0
+        const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0
+        return timeB - timeA
+      })
+  }
+
+  const filteredConversations = getConversationsForTab()
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() || !user?.id || !selectedConversation || sending) return
@@ -938,74 +1061,336 @@ export function MessagesView() {
     router.push(`/profile/${targetId}`)
   }, [selectedConversationInfo?.otherUserId, isAdminContact, getSupportAdminId, router, toast])
 
+  const loadSupportUsers = useCallback(async () => {
+    try {
+      setLoadingSupportUsers(true)
+      // Lấy tất cả users và filter những user có role "support"
+      let allUsers: any[] = []
+      let page = 1
+      const pageSize = 100
+      
+      // Lấy tối đa 5 pages (500 users) để tìm tất cả support users
+      while (page <= 5) {
+        const users = await UsersAPI.getAll(page, pageSize)
+        if (users.length === 0) break
+        allUsers = [...allUsers, ...users]
+        if (users.length < pageSize) break
+        page++
+      }
+      
+      const supports = allUsers.filter(user => 
+        user.roles && user.roles.some((role: string) => role.toLowerCase() === "support")
+      ).map(user => ({
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName || user.email,
+        avatarUrl: user.avatarUrl
+      }))
+      
+      setSupportUsers(supports)
+      
+      // Auto-select first support user if available
+      if (supports.length > 0 && !selectedSupportUserId) {
+        setSelectedSupportUserId(supports[0].id)
+      }
+      
+      console.log("Loaded support users:", supports.length, supports)
+    } catch (error) {
+      console.error("Error loading support users:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải danh sách nhân viên hỗ trợ",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingSupportUsers(false)
+    }
+  }, [selectedSupportUserId, toast])
+
+  const startSupportChat = useCallback(() => {
+    setShowSupportDialog(true)
+    loadSupportUsers()
+  }, [loadSupportUsers])
+
+  const handleSendSupportMessage = useCallback(async () => {
+    if (!supportMessage.trim()) {
+      toast({
+        title: "Vui lòng nhập nội dung",
+        description: "Bạn cần nhập nội dung hỗ trợ trước khi gửi.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!selectedSupportUserId) {
+      toast({
+        title: "Vui lòng chọn nhân viên hỗ trợ",
+        description: "Bạn cần chọn một nhân viên hỗ trợ trước khi gửi.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setSendingSupportMessage(true)
+      const supportId = selectedSupportUserId
+      const userId = userIdRef.current
+      if (!userId) return
+
+      // Tìm thông tin support user đã chọn
+      const selectedSupport = supportUsers.find(s => s.id === supportId)
+      const supportName = selectedSupport?.fullName || "Hỗ trợ"
+
+      // Gửi tin nhắn đến support user đã chọn
+      console.log("Sending support message to supportId:", supportId, "from userId:", userId)
+      await MessagesAPI.send({
+        senderId: userId,
+        receiverId: supportId,
+        auctionId: undefined,
+        content: supportMessage.trim(),
+      })
+
+      console.log("Support message sent successfully")
+
+      // Đóng dialog và reset message
+      setShowSupportDialog(false)
+      setSupportMessage("")
+
+      // Chuyển sang tab support và mở conversation
+      setActiveTab("support")
+      
+      // Tạo entry conversation tối thiểu nếu chưa có
+      setConversations((prev) => {
+        const exists = prev.some((c) => c.otherUserId === supportId && c.auctionId === null)
+        if (exists) return prev
+        return [
+          {
+            otherUserId: supportId,
+            otherUserName: supportName,
+            otherUserAvatarUrl: selectedSupport?.avatarUrl || null,
+            lastMessage: supportMessage.trim(),
+            lastMessageTime: new Date().toISOString(),
+            unreadCount: 0,
+            auctionId: null,
+            auctionTitle: null,
+          },
+          ...prev,
+        ]
+      })
+
+      setSelectedConversation(supportId)
+      setSelectedAuctionId(null)
+      setSelectedConversationInfo({
+        otherUserId: supportId,
+        otherUserName: supportName,
+        otherUserAvatarUrl: selectedSupport?.avatarUrl || null,
+        lastMessage: supportMessage.trim(),
+        lastMessageTime: new Date().toISOString(),
+        unreadCount: 0,
+        auctionId: null,
+        auctionTitle: null,
+      })
+
+      // Load messages
+      await loadMessages(userId, supportId, null)
+      
+      // Reload conversations để cập nhật
+      await loadConversations(false)
+
+      toast({
+        title: "Đã gửi",
+        description: `Tin nhắn của bạn đã được gửi đến ${supportName}.`,
+      })
+    } catch (error: any) {
+      console.error("Send support message error:", error)
+      toast({
+        title: "Lỗi",
+        description: error?.message || "Không thể gửi tin nhắn hỗ trợ",
+        variant: "destructive",
+      })
+    } finally {
+      setSendingSupportMessage(false)
+    }
+  }, [supportMessage, selectedSupportUserId, supportUsers, loadMessages, loadConversations, toast])
+
   const conversationBody = (
     <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
         {/* Conversations List */}
         <Card className="p-4">
           <div className="mb-4 space-y-2">
-            <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-              <DialogTrigger asChild>
-                <Button className="w-full" variant="default">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Tạo cuộc trò chuyện mới
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Tạo cuộc trò chuyện mới</DialogTitle>
-                  <DialogDescription>
-                    Nhập email của người bạn muốn trò chuyện. Bạn có thể gửi tin nhắn đầu tiên ngay bây giờ.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email người nhận</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="example@email.com"
-                        value={newConversationEmail}
-                        onChange={(e) => setNewConversationEmail(e.target.value)}
-                        className="pl-9"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault()
-                            handleCreateConversation()
-                          }
-                        }}
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="personal">Cá nhân</TabsTrigger>
+                <TabsTrigger value="dispute">Khiếu nại</TabsTrigger>
+                <TabsTrigger value="support">Hỗ trợ</TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            {activeTab === "personal" && (
+              <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+                <DialogTrigger asChild>
+                  <Button className="w-full" variant="default">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Tạo cuộc trò chuyện mới
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Tạo cuộc trò chuyện mới</DialogTitle>
+                    <DialogDescription>
+                      Nhập email của người bạn muốn trò chuyện. Bạn có thể gửi tin nhắn đầu tiên ngay bây giờ.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email người nhận</Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="example@email.com"
+                          value={newConversationEmail}
+                          onChange={(e) => setNewConversationEmail(e.target.value)}
+                          className="pl-9"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault()
+                              handleCreateConversation()
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="message">Tin nhắn đầu tiên (tùy chọn)</Label>
+                      <Textarea
+                        id="message"
+                        placeholder="Nhập tin nhắn đầu tiên..."
+                        value={newConversationMessage}
+                        onChange={(e) => setNewConversationMessage(e.target.value)}
+                        rows={3}
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="message">Tin nhắn đầu tiên (tùy chọn)</Label>
-                    <Textarea
-                      id="message"
-                      placeholder="Nhập tin nhắn đầu tiên..."
-                      value={newConversationMessage}
-                      onChange={(e) => setNewConversationMessage(e.target.value)}
-                      rows={3}
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-                    Hủy
-                  </Button>
-                  <Button onClick={handleCreateConversation} disabled={creating || !newConversationEmail.trim()}>
-                    {creating ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Đang tạo...
-                      </>
-                    ) : (
-                      "Tạo cuộc trò chuyện"
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+                      Hủy
+                    </Button>
+                    <Button onClick={handleCreateConversation} disabled={creating || !newConversationEmail.trim()}>
+                      {creating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang tạo...
+                        </>
+                      ) : (
+                        "Tạo cuộc trò chuyện"
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {activeTab === "support" && (user?.currentRole === "buyer" || user?.currentRole === "seller") && (
+              <>
+                <Button variant="outline" className="w-full" onClick={startSupportChat}>
+                  Liên hệ nhân viên hỗ trợ
+                </Button>
+                
+                <Dialog open={showSupportDialog} onOpenChange={(open) => {
+                  setShowSupportDialog(open)
+                  if (!open) {
+                    setSupportMessage("")
+                    setSelectedSupportUserId(null)
+                  }
+                }}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Bạn muốn hỗ trợ gì?</DialogTitle>
+                      <DialogDescription>
+                        Chọn nhân viên hỗ trợ và mô tả vấn đề bạn gặp phải.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="support-user">Chọn nhân viên hỗ trợ</Label>
+                        {loadingSupportUsers ? (
+                          <div className="flex items-center justify-center p-4">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                            <span className="ml-2 text-sm text-muted-foreground">Đang tải danh sách...</span>
+                          </div>
+                        ) : supportUsers.length === 0 ? (
+                          <div className="p-4 text-center text-sm text-muted-foreground">
+                            Không có nhân viên hỗ trợ nào
+                          </div>
+                        ) : (
+                          <Select
+                            value={selectedSupportUserId?.toString() || ""}
+                            onValueChange={(value) => setSelectedSupportUserId(Number(value))}
+                          >
+                            <SelectTrigger id="support-user">
+                              <SelectValue placeholder="Chọn nhân viên hỗ trợ" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {supportUsers.map((support) => (
+                                <SelectItem key={support.id} value={support.id.toString()}>
+                                  <div className="flex items-center gap-2">
+                                    <Avatar className="h-6 w-6">
+                                      <AvatarImage src={support.avatarUrl || "/placeholder.svg"} />
+                                      <AvatarFallback className="text-xs">
+                                        {support.fullName.charAt(0).toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-medium">{support.fullName}</span>
+                                      <span className="text-xs text-muted-foreground">{support.email}</span>
+                                    </div>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="support-message">Nội dung hỗ trợ</Label>
+                        <Textarea
+                          id="support-message"
+                          placeholder="Ví dụ: Tôi gặp vấn đề với đơn hàng #123..."
+                          value={supportMessage}
+                          onChange={(e) => setSupportMessage(e.target.value)}
+                          rows={5}
+                          className="resize-none"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => {
+                        setShowSupportDialog(false)
+                        setSupportMessage("")
+                        setSelectedSupportUserId(null)
+                      }}>
+                        Hủy
+                      </Button>
+                      <Button 
+                        onClick={handleSendSupportMessage} 
+                        disabled={sendingSupportMessage || !supportMessage.trim() || !selectedSupportUserId}
+                      >
+                        {sendingSupportMessage ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Đang gửi...
+                          </>
+                        ) : (
+                          "Gửi tin nhắn"
+                        )}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </>
+            )}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input

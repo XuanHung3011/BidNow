@@ -21,9 +21,11 @@ import { getImageUrls } from "@/lib/api/config"
 import { createAuctionHubConnection } from "@/lib/realtime/auctionHub"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { useAuth } from "@/lib/auth-context"
 
 export function PendingAuctions() {
   const { toast } = useToast()
+  const { user } = useAuth()
   const [items, setItems] = useState<ItemResponseDto[]>([])
   const [allItems, setAllItems] = useState<ItemResponseDto[]>([]) // For client-side search
   const [loading, setLoading] = useState(true)
@@ -260,7 +262,7 @@ export function PendingAuctions() {
     
     try {
       setProcessingIds((prev) => new Set(prev).add(itemToApprove))
-      await ItemsAPI.approveItem(itemToApprove)
+      await ItemsAPI.approveItem(itemToApprove, user?.id)
       toast({
         title: "Thành công",
         description: "Đã phê duyệt sản phẩm",
@@ -305,7 +307,7 @@ export function PendingAuctions() {
 
     try {
       setProcessingIds((prev) => new Set(prev).add(itemToReject))
-      await ItemsAPI.rejectItem(itemToReject, rejectReason)
+      await ItemsAPI.rejectItem(itemToReject, rejectReason, user?.id)
       toast({
         title: "Thành công",
         description: "Đã từ chối sản phẩm",

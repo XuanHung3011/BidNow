@@ -2,6 +2,21 @@
 import { API_BASE, API_ENDPOINTS } from './config'
 import { CategoryDtos, CreateCategoryDtos, UpdateCategoryDtos, CategoryFilterDto, PaginatedResult } from './types'
 
+// Helper to include X-User-Id for admin/staff actions
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const storedUser = typeof localStorage !== "undefined" ? localStorage.getItem("bidnow_user") : null
+  if (!storedUser) return { "Content-Type": "application/json" }
+  try {
+    const user = JSON.parse(storedUser)
+    return {
+      "Content-Type": "application/json",
+      "X-User-Id": String(user.id).trim(),
+    }
+  } catch {
+    return { "Content-Type": "application/json" }
+  }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => null)
@@ -50,8 +65,9 @@ export const CategoriesAPI = {
     const url = `${API_BASE}${API_ENDPOINTS.CATEGORIES.CREATE}`
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify(data),
+      credentials: 'include',
       cache: 'no-store',
     })
     return handleResponse<CategoryDtos>(res)
@@ -62,8 +78,9 @@ export const CategoriesAPI = {
     const url = `${API_BASE}${API_ENDPOINTS.CATEGORIES.UPDATE}/${id}`
     const res = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify(data),
+      credentials: 'include',
       cache: 'no-store',
     })
     return handleResponse<CategoryDtos>(res)
@@ -74,6 +91,8 @@ export const CategoriesAPI = {
     const url = `${API_BASE}${API_ENDPOINTS.CATEGORIES.DELETE}/${id}`
     const res = await fetch(url, {
       method: 'DELETE',
+      headers: await getAuthHeaders(),
+      credentials: 'include',
       cache: 'no-store',
     })
     if (!res.ok) {

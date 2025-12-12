@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import {
   Clock,
   TrendingUp,
@@ -21,6 +22,7 @@ import {
   Award,
   ShoppingBag,
   Loader2,
+  Send,
 } from "lucide-react"
 import { BidHistory } from "@/components/bid-history"
 import {
@@ -40,8 +42,10 @@ import type { BidDto } from "@/lib/api/auctions"
 import { useAuth } from "@/lib/auth-context"
 import { createAuctionHubConnection, type BidPlacedPayload, type AuctionStatusUpdatedPayload } from "@/lib/realtime/auctionHub"
 import { getImageUrls, getImageUrl } from "@/lib/api/config"
-import { WatchlistAPI } from "@/lib/api"
+import { WatchlistAPI, MessagesAPI } from "@/lib/api"
 import { PaymentButton } from "@/components/payment-button"
+import { useRouter } from "next/navigation"
+import { useToast } from "@/hooks/use-toast"
 
 interface AuctionDetailProps {
   auctionId: string
@@ -49,6 +53,8 @@ interface AuctionDetailProps {
 
 export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const { user } = useAuth()
+  const router = useRouter()
+  const { toast } = useToast()
   const [timeLeft, setTimeLeft] = useState("")
   const [auctionStatus, setAuctionStatus] = useState<"scheduled" | "active" | "ended" | "paused" | "cancelled">("active")
   const [bidAmount, setBidAmount] = useState("")
@@ -76,8 +82,16 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const [sellerInfo, setSellerInfo] = useState<{ email?: string; reputationScore?: number; totalProducts?: number; avatarUrl?: string } | null>(null)
   const [loadingSellerInfo, setLoadingSellerInfo] = useState(false)
 
+  // Buy now availability: disable if current bid đã vượt giá mua ngay
+  const isBuyNowUnavailable = useMemo(() => {
+    if (!auction?.buyNowPrice) return false
+    const current = auction.currentBid ?? auction.startingBid ?? 0
+    return current >= auction.buyNowPrice
+  }, [auction?.buyNowPrice, auction?.currentBid, auction?.startingBid])
+
   const normalizedStatus = useMemo(() => auction?.status?.toLowerCase() ?? "", [auction?.status])
   const isAuctionLocked = useMemo(() => ["paused", "cancelled", "completed"].includes(normalizedStatus), [normalizedStatus])
+  const isAuctionEnded = useMemo(() => auctionStatus === "ended" || normalizedStatus === "completed", [auctionStatus, normalizedStatus])
 
   const handleBuyNow = async () => {
     if (!auction?.buyNowPrice) {
@@ -199,6 +213,16 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       if (!isMounted) return
       if (payload.auctionId !== Number(auctionId)) return
       
+      console.log("🔔 BidPlaced event received:", {
+        auctionId: payload.auctionId,
+        currentBid: payload.currentBid,
+        bidCount: payload.bidCount,
+        bidderId: payload.placedBid?.bidderId,
+        amount: payload.placedBid?.amount,
+        isAutoBid: payload.placedBid?.isAutoBid
+      })
+      
+      // CRITICAL: Luôn update với giá mới nhất từ SignalR (ưu tiên SignalR hơn API response)
       // Chỉ update nếu giá mới cao hơn hoặc bằng giá hiện tại (tránh update ngược về giá cũ)
       setAuction((prev) => {
         if (!prev) return prev
@@ -208,6 +232,11 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
 
         // Chỉ update nếu currentBid mới >= currentBid hiện tại
         if (payload.currentBid >= prevCurrent) {
+          console.log("✅ Updating auction with new bid:", {
+            oldBid: prevCurrent,
+            newBid: payload.currentBid,
+            isAutoBid: payload.placedBid?.isAutoBid
+          })
           return {
             ...prev,
             currentBid: payload.currentBid,
@@ -215,6 +244,10 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
           }
         }
         // Nếu giá mới thấp hơn, có thể là update cũ đến muộn, bỏ qua
+        console.log("⚠️ Ignoring older bid:", {
+          prevCurrent,
+          newBid: payload.currentBid
+        })
         return prev
       })
       
@@ -248,23 +281,52 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       if (!isMounted) return
       if (payload.auctionId !== Number(auctionId)) return
       
-      // If auction is completed, update winnerId immediately from payload
-      if (payload.status === "completed" && payload.winnerId) {
-        setAuction(prev => prev ? {
-          ...prev,
-          status: "completed",
-          winnerId: payload.winnerId,
-          currentBid: payload.finalPrice ?? prev.currentBid
-        } : null)
-      }
+      console.log("🔔 AuctionStatusUpdated event received:", payload)
       
-      // Refresh auction data khi status thay đổi để đảm bảo có đầy đủ thông tin
-      try {
-        const data = await AuctionsAPI.getDetail(Number(auctionId))
-        if (!isMounted) return
-        setAuction(data)
-      } catch (err) {
-        console.error('Failed to refresh auction after status update:', err)
+      // CRITICAL: Chỉ update status và winnerId, KHÔNG refresh toàn bộ để tránh mất giá mới từ auto bid
+      setAuction((prev) => {
+        if (!prev) return prev
+        
+        // If auction is completed, update winnerId and status immediately from payload
+        if (payload.status === "completed" && payload.winnerId) {
+          return {
+            ...prev,
+            status: "completed",
+            winnerId: payload.winnerId,
+            // Chỉ update finalPrice nếu >= giá hiện tại (tránh override giá mới)
+            currentBid: payload.finalPrice && payload.finalPrice >= (prev.currentBid ?? prev.startingBid) 
+              ? payload.finalPrice 
+              : prev.currentBid
+          }
+        }
+        
+        // Chỉ update status, giữ nguyên currentBid và bidCount
+        return {
+          ...prev,
+          status: payload.status ?? prev.status
+        }
+      })
+      
+      // CHỈ refresh auction data khi status thay đổi sang completed/paused/cancelled
+      // KHÔNG refresh khi status vẫn là "active" để tránh mất giá mới từ auto bid
+      if (payload.status === "completed" || payload.status === "paused" || payload.status === "cancelled") {
+        try {
+          const data = await AuctionsAPI.getDetail(Number(auctionId))
+          if (!isMounted) return
+          // Merge với state hiện tại, ưu tiên giá cao hơn
+          setAuction((prev) => {
+            if (!prev) return data
+            const prevCurrent = prev.currentBid ?? prev.startingBid
+            const dataCurrent = data.currentBid ?? data.startingBid
+            return {
+              ...data,
+              // Giữ giá cao hơn nếu có
+              currentBid: Math.max(prevCurrent, dataCurrent)
+            }
+          })
+        } catch (err) {
+          console.error('Failed to refresh auction after status update:', err)
+        }
       }
     })
 
@@ -852,7 +914,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
             </div>
           </Card>
 
-          <Card className="border border-border bg-card p-6 shadow-lg">
+          <Card className={`border border-border bg-card p-6 shadow-lg ${isAuctionEnded ? "opacity-60" : ""}`}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.35em] text-muted-foreground">Đặt giá</p>
@@ -860,7 +922,16 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 </div>
                 <div className="rounded-full border border-border bg-muted px-3 py-1 text-xs text-muted-foreground">Realtime</div>
               </div>
-              <div className="mt-6 space-y-4">
+              {isAuctionEnded && (
+                <Alert variant="destructive" className="mt-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Phiên đấu giá đã kết thúc</AlertTitle>
+                  <AlertDescription>
+                    Phiên đấu giá này đã kết thúc. Bạn không thể đặt giá nữa.
+                  </AlertDescription>
+                </Alert>
+              )}
+              <div className={`mt-6 space-y-4 ${isAuctionEnded ? "pointer-events-none" : ""}`}>
             <div className="flex items-baseline justify-between">
               <span className="text-sm text-muted-foreground">Giá hiện tại</span>
               <div className="text-right">
@@ -899,13 +970,20 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 value={bidAmount}
                 onChange={(e) => setBidAmount(e.target.value)}
                 className="flex-1"
-                disabled={["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
+                disabled={isAuctionEnded || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
               />
               <Button 
-                disabled={placing || !user || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
+                disabled={isAuctionEnded || placing || !user || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
                 onClick={async () => {
                   if (!auction) return
                   setPlaceError(null)
+                  
+                  // Kiểm tra nếu phiên đấu giá đã kết thúc
+                  if (isAuctionEnded || normalizedStatus === "completed") {
+                    setPlaceError("Phiên đấu giá đã kết thúc. Bạn không thể đặt giá nữa.")
+                    return
+                  }
+                  
                   const amount = Number(bidAmount)
                         if (!amount || isNaN(amount)) {
                           setPlaceError("Vui lòng nhập số hợp lệ")
@@ -922,14 +1000,31 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                   try {
                     setPlacing(true)
                     const res = await AuctionsAPI.placeBid(Number(auctionId), { bidderId: Number(user.id), amount })
-                    setAuction({
-                      ...auction,
-                      currentBid: res.currentBid,
-                      bidCount: res.bidCount,
+                    // CRITICAL: Chỉ update nếu giá từ API >= giá hiện tại (tránh override giá mới từ auto bid)
+                    // SignalR BidPlaced event sẽ handle real-time updates, API response chỉ là fallback
+                    setAuction((prev) => {
+                      if (!prev) return prev
+                      const prevCurrent = prev.currentBid ?? prev.startingBid
+                      // Chỉ update nếu giá từ API >= giá hiện tại (tránh race condition với auto bid)
+                      if (res.currentBid >= prevCurrent) {
+                        return {
+                          ...prev,
+                          currentBid: res.currentBid,
+                          bidCount: res.bidCount,
+                        }
+                      }
+                      // Nếu giá từ API thấp hơn, giữ nguyên giá hiện tại (có thể đã bị auto bid vượt)
+                      return prev
                     })
                     setBidAmount("")
                   } catch (err: any) {
-                    setPlaceError(err.message || "Đặt giá thất bại")
+                    // Cải thiện thông báo lỗi từ backend
+                    const errorMessage = err.message || "Đặt giá thất bại"
+                    if (errorMessage.includes("not active") || errorMessage.includes("ended")) {
+                      setPlaceError("Phiên đấu giá đã kết thúc hoặc không còn hoạt động.")
+                    } else {
+                      setPlaceError(errorMessage)
+                    }
                   } finally {
                     setPlacing(false)
                   }
@@ -938,17 +1033,24 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 {placing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Đặt giá"}
               </Button>
             </div>
-            {placeError && <div className="text-sm text-destructive">{placeError}</div>}
+            {placeError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Lỗi đặt giá</AlertTitle>
+                <AlertDescription>{placeError}</AlertDescription>
+              </Alert>
+            )}
                   {auction.buyNowPrice && (
                     <div className="flex flex-col gap-2">
                       <Button
                         variant="default"
-                        className="w-full"
+                      className={`w-full ${isBuyNowUnavailable ? "bg-muted text-muted-foreground border-muted pointer-events-none" : ""}`}
                         disabled={
                           buyNowLoading ||
                           !user ||
                           isAuctionLocked ||
-                          auctionStatus !== "active"
+                        auctionStatus !== "active" ||
+                        isBuyNowUnavailable
                         }
                         onClick={handleBuyNow}
                       >
@@ -960,10 +1062,18 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                         Mua ngay với giá {formatPrice(auction.buyNowPrice)}
                       </Button>
                       {buyNowMessage && (
-                        <div className="text-sm text-emerald-600">{buyNowMessage}</div>
+                        <Alert className="border-emerald-200 bg-emerald-50">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          <AlertTitle className="text-emerald-900">Thành công</AlertTitle>
+                          <AlertDescription className="text-emerald-800">{buyNowMessage}</AlertDescription>
+                        </Alert>
                       )}
                       {buyNowError && (
-                        <div className="text-sm text-destructive">{buyNowError}</div>
+                        <Alert variant="destructive">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertTitle>Lỗi mua ngay</AlertTitle>
+                          <AlertDescription>{buyNowError}</AlertDescription>
+                        </Alert>
                       )}
                     </div>
                   )}
@@ -974,13 +1084,13 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                       variant="outline"
                       className="flex-1 bg-transparent text-xs"
                         onClick={() => setBidAmount((suggestedBid + minIncrement * idx).toString())}
-                        disabled={["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
+                        disabled={isAuctionEnded || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
               >
                         <span className="truncate">{formatPrice(suggestedBid + minIncrement * idx)}</span>
               </Button>
                     ))}
             </div>
-            {![ "paused", "cancelled" ].includes(auction.status?.toLowerCase() ?? "") && (
+            {!isAuctionEnded && ![ "paused", "cancelled" ].includes(auction.status?.toLowerCase() ?? "") && (
               <AutoBidDialog auctionId={Number(auctionId)} currentBid={auction.currentBid || auction.startingBid} minIncrement={minIncrement} />
             )}
           </div>
@@ -1164,7 +1274,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Button
                         size="sm"
                         variant={isFavoriteSeller ? "secondary" : "default"}
@@ -1175,8 +1285,28 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                         {loadingFavorite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Heart className="h-4 w-4" />}
                         {isFavoriteSeller ? "Bỏ yêu thích" : "Theo dõi người bán"}
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          if (!user?.id) {
+                            toast({
+                              title: "Cần đăng nhập",
+                              description: "Vui lòng đăng nhập để nhắn tin với người bán",
+                              variant: "destructive",
+                            })
+                            return
+                          }
+                          // Navigate to messages page with sellerId
+                          router.push(`/messages?sellerId=${auction.sellerId}`)
+                        }}
+                        className="flex items-center gap-2"
+                      >
+                        <Send className="h-4 w-4" />
+                        Nhắn tin
+                      </Button>
                       <Link href={`/profile/${auction.sellerId}`}>
-                        <Button className="bg-primary hover:bg-primary/90">
+                        <Button size="sm" className="bg-primary hover:bg-primary/90">
                           Xem trang người bán
                         </Button>
                       </Link>

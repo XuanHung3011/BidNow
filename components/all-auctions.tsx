@@ -189,12 +189,12 @@ useEffect(() => {
     return [...auctions]
   }, [auctions])
 
-  // Chỉ hiển thị auction chưa bị hủy / chưa kết thúc
+  // Hiển thị tất cả auctions (bao gồm cả đã kết thúc), chỉ ẩn những phiên đã bị hủy
   const visibleItems = useMemo(() => {
     const isVisibleStatus = (status?: string | null) => {
       const s = status?.toLowerCase() ?? ""
-      // Ẩn các phiên đã hủy hoặc đã kết thúc
-      if (s === "cancelled" || s === "canceled" || s === "completed" || s === "ended") {
+      // Chỉ ẩn các phiên đã bị hủy, hiển thị cả những phiên đã kết thúc (completed/ended)
+      if (s === "cancelled" || s === "canceled") {
         return false
       }
       return true

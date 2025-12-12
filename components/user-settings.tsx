@@ -17,7 +17,6 @@ const NOTIFICATION_PREFS_KEY = "bidnow_notification_preferences"
 const USER_PREFS_KEY = "bidnow_user_preferences"
 
 interface NotificationPreferences {
-  emailNotifications: boolean
   pushNotifications: boolean
   bidUpdates: boolean
   newAuctions: boolean
@@ -40,7 +39,6 @@ export function UserSettings() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   
   // Notification preferences
-  const [emailNotifications, setEmailNotifications] = useState(true)
   const [pushNotifications, setPushNotifications] = useState(true)
   const [bidUpdates, setBidUpdates] = useState(true)
   const [newAuctions, setNewAuctions] = useState(false)
@@ -66,7 +64,6 @@ export function UserSettings() {
       if (savedNotifications) {
         try {
           const prefs: NotificationPreferences = JSON.parse(savedNotifications)
-          setEmailNotifications(prefs.emailNotifications ?? true)
           setPushNotifications(prefs.pushNotifications ?? true)
           setBidUpdates(prefs.bidUpdates ?? true)
           setNewAuctions(prefs.newAuctions ?? false)
@@ -173,12 +170,14 @@ export function UserSettings() {
     setIsSavingNotifications(true)
     try {
       const prefs: NotificationPreferences = {
-        emailNotifications,
         pushNotifications,
         bidUpdates,
         newAuctions,
       }
       localStorage.setItem(NOTIFICATION_PREFS_KEY, JSON.stringify(prefs))
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("notification:prefs", { detail: prefs }))
+      }
       
       toast({
         title: "Thành công",
@@ -228,14 +227,10 @@ export function UserSettings() {
       </div>
 
       <Tabs defaultValue="account" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="account">
             <User className="mr-2 h-4 w-4" />
             Tài khoản
-          </TabsTrigger>
-          <TabsTrigger value="notifications">
-            <Bell className="mr-2 h-4 w-4" />
-            Thông báo
           </TabsTrigger>
           <TabsTrigger value="security">
             <Lock className="mr-2 h-4 w-4" />
@@ -424,78 +419,6 @@ export function UserSettings() {
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="notifications">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cài đặt thông báo</CardTitle>
-              <CardDescription>Quản lý cách bạn nhận thông báo từ BidNow</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="email-notifications">Thông báo Email</Label>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo qua email</p>
-                </div>
-                <Switch
-                  id="email-notifications"
-                  checked={emailNotifications}
-                  onCheckedChange={setEmailNotifications}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="push-notifications">Thông báo đẩy</Label>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo trên trình duyệt</p>
-                </div>
-                <Switch
-                  id="push-notifications"
-                  checked={pushNotifications}
-                  onCheckedChange={setPushNotifications}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="bid-updates">Cập nhật đấu giá</Label>
-                  <p className="text-sm text-muted-foreground">Thông báo khi bị vượt giá</p>
-                </div>
-                <Switch
-                  id="bid-updates"
-                  checked={bidUpdates}
-                  onCheckedChange={setBidUpdates}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="new-auctions">Phiên đấu giá mới</Label>
-                  <p className="text-sm text-muted-foreground">Thông báo về phiên đấu giá mới</p>
-                </div>
-                <Switch
-                  id="new-auctions"
-                  checked={newAuctions}
-                  onCheckedChange={setNewAuctions}
-                />
-              </div>
-
-              <Button
-                onClick={handleSaveNotifications}
-                disabled={isSavingNotifications}
-              >
-                {isSavingNotifications ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Đang lưu...
-                  </>
-                ) : (
-                  "Lưu cài đặt"
-                )}
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
