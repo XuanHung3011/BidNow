@@ -116,14 +116,6 @@ useEffect(() => {
   const toggleArrayItemNum = (arr: number[], value: number) =>
     arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value]
 
-  // Apply filter: Note - Category and price filters are not yet supported by auctions API
-  const applyFilter = () => {
-    // For now, just show a message that these filters are not yet supported
-    // In the future, these can be added to the backend auctions API
-    console.log("Category and price filters are not yet supported for auctions API")
-    setPage(1)
-  }
-
   const resetFilter = () => {
     setSelectedCategories([])
     setSelectedStatuses([])
@@ -131,6 +123,11 @@ useEffect(() => {
     setMaxPriceStr("")
     setPage(1)
   }
+
+  // Auto-apply filter when category or price changes
+  useEffect(() => {
+    setPage(1)
+  }, [selectedCategories, minPriceStr, maxPriceStr])
 
   // fetch whenever page / debouncedQuery / activeFilter / sortBy changes
   useEffect(() => {
@@ -189,6 +186,40 @@ useEffect(() => {
     return [...auctions]
   }, [auctions])
 
+  // Apply client-side filters (category and price)
+  const filteredAuctions = useMemo(() => {
+    let filtered = [...sortedAuctions]
+
+    // Filter by category
+    if (selectedCategories.length > 0) {
+      // Get selected category names
+      const selectedCategoryNames = categories
+        .filter(c => selectedCategories.includes(Number(c.id)))
+        .map(c => c.name)
+      
+      filtered = filtered.filter((auction) => {
+        // Match by category name
+        if (auction.categoryName) {
+          return selectedCategoryNames.includes(auction.categoryName)
+        }
+        return false
+      })
+    }
+
+    // Filter by price range
+    if (minPriceStr.trim() || maxPriceStr.trim()) {
+      const minPrice = minPriceStr.trim() ? parseFloat(minPriceStr) : 0
+      const maxPrice = maxPriceStr.trim() ? parseFloat(maxPriceStr) : Infinity
+
+      filtered = filtered.filter((auction) => {
+        const currentPrice = auction.currentBid ?? auction.startingBid ?? 0
+        return currentPrice >= minPrice && currentPrice <= maxPrice
+      })
+    }
+
+    return filtered
+  }, [sortedAuctions, selectedCategories, minPriceStr, maxPriceStr, categories])
+
   // Hiển thị tất cả auctions (bao gồm cả đã kết thúc), chỉ ẩn những phiên đã bị hủy
   const visibleItems = useMemo(() => {
     const isVisibleStatus = (status?: string | null) => {
@@ -200,11 +231,11 @@ useEffect(() => {
       return true
     }
 
-    return sortedAuctions.filter((auction) => {
+    return filteredAuctions.filter((auction) => {
       if (!auction.id) return false
       return isVisibleStatus(auction.status)
     })
-  }, [sortedAuctions])
+  }, [filteredAuctions])
 
   const totalPages = totalCount ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1
 
@@ -310,8 +341,7 @@ useEffect(() => {
         </div>
 
         <div className="flex gap-2">
-          <Button className="flex-1" onClick={applyFilter}>Áp dụng</Button>
-          <Button variant="ghost" className="flex-1" onClick={resetFilter}>Xóa</Button>
+          <Button variant="ghost" className="flex-1" onClick={resetFilter}>Xóa bộ lọc</Button>
         </div>
       </aside>
 
