@@ -24,12 +24,12 @@ export function AdminDashboard() {
   const isStaff = user?.currentRole === "staff"
   const isSupport = user?.currentRole === "support"
   
-  // Staff tabs: auctions, pending, categories, users, disputes
-  const staffTabs = ["auctions", "pending", "categories", "users", "disputes"]
-  // Support tabs: disputes, users
-  const supportTabs = ["disputes", "users"]
-  // Admin tabs: all
-  const adminTabs = ["auctions", "pending", "users", "disputes", "categories", "analytics"]
+  // Staff tabs: Sản phẩm, Chờ duyệt, Danh mục, Khiếu nại (không quản lý users)
+  const staffTabs: string[] = ["auctions", "pending", "categories", "disputes"]
+  // Support tabs: chỉ quản lý người dùng
+  const supportTabs = ["users"]
+  // Admin tabs: ẩn Chờ duyệt/Khiếu nại/Danh mục (theo yêu cầu), giữ Sản phẩm, Người dùng, Phân tích
+  const adminTabs = ["auctions", "users", "analytics"]
   
   const availableTabs = isAdmin ? adminTabs : isStaff ? staffTabs : isSupport ? supportTabs : []
   

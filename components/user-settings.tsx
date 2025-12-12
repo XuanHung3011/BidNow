@@ -17,7 +17,6 @@ const NOTIFICATION_PREFS_KEY = "bidnow_notification_preferences"
 const USER_PREFS_KEY = "bidnow_user_preferences"
 
 interface NotificationPreferences {
-  emailNotifications: boolean
   pushNotifications: boolean
   bidUpdates: boolean
   newAuctions: boolean
@@ -40,7 +39,6 @@ export function UserSettings() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   
   // Notification preferences
-  const [emailNotifications, setEmailNotifications] = useState(true)
   const [pushNotifications, setPushNotifications] = useState(true)
   const [bidUpdates, setBidUpdates] = useState(true)
   const [newAuctions, setNewAuctions] = useState(false)
@@ -66,7 +64,6 @@ export function UserSettings() {
       if (savedNotifications) {
         try {
           const prefs: NotificationPreferences = JSON.parse(savedNotifications)
-          setEmailNotifications(prefs.emailNotifications ?? true)
           setPushNotifications(prefs.pushNotifications ?? true)
           setBidUpdates(prefs.bidUpdates ?? true)
           setNewAuctions(prefs.newAuctions ?? false)
@@ -173,12 +170,14 @@ export function UserSettings() {
     setIsSavingNotifications(true)
     try {
       const prefs: NotificationPreferences = {
-        emailNotifications,
         pushNotifications,
         bidUpdates,
         newAuctions,
       }
       localStorage.setItem(NOTIFICATION_PREFS_KEY, JSON.stringify(prefs))
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("notification:prefs", { detail: prefs }))
+      }
       
       toast({
         title: "Thành công",
@@ -437,25 +436,26 @@ export function UserSettings() {
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label htmlFor="email-notifications">Thông báo Email</Label>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo qua email</p>
-                </div>
-                <Switch
-                  id="email-notifications"
-                  checked={emailNotifications}
-                  onCheckedChange={setEmailNotifications}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
                   <Label htmlFor="push-notifications">Thông báo đẩy</Label>
                   <p className="text-sm text-muted-foreground">Nhận thông báo trên trình duyệt</p>
                 </div>
                 <Switch
                   id="push-notifications"
                   checked={pushNotifications}
-                  onCheckedChange={setPushNotifications}
+                  onCheckedChange={async (checked) => {
+                    setPushNotifications(checked)
+                    if (checked && typeof Notification !== "undefined") {
+                      const permission = await Notification.requestPermission()
+                      if (permission !== "granted") {
+                        setPushNotifications(false)
+                        toast({
+                          title: "Thông báo bị chặn",
+                          description: "Hãy cho phép thông báo trong trình duyệt để nhận tin.",
+                          variant: "destructive",
+                        })
+                      }
+                    }
+                  }}
                 />
               </div>
 

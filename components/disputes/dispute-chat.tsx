@@ -56,28 +56,33 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
 
   // Get admin ID for dispute chat
   useEffect(() => {
-    const getAdminId = async () => {
+    const getResolverId = async () => {
       if (adminIdRef.current) return adminIdRef.current
       try {
-        // Try to get admin from dispute resolver first
+        // Ưu tiên người đang xử lý (resolvedBy)
         if (dispute?.resolvedBy) {
           adminIdRef.current = dispute.resolvedBy
           return dispute.resolvedBy
         }
-        // Otherwise get first admin
+        // Nếu staff đang đăng nhập, dùng chính staff đó
+        if (user?.currentRole === "staff" && userIdRef.current) {
+          adminIdRef.current = userIdRef.current
+          return userIdRef.current
+        }
+        // Fallback: lấy admin mặc định
         const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
         const adminId = adminUser?.id ?? null
         adminIdRef.current = adminId
         return adminId
       } catch (error) {
-        console.error("Không thể lấy thông tin admin:", error)
+        console.error("Không thể lấy thông tin admin/staff:", error)
         return null
       }
     }
     if (dispute) {
-      getAdminId()
+      getResolverId()
     }
-  }, [dispute])
+  }, [dispute, user?.currentRole])
 
   useEffect(() => {
     loadDispute()
@@ -120,19 +125,22 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
       const currentUserId = userIdRef.current
       const { buyerId, sellerId } = dispute
       
-      // Get admin ID (use resolvedBy if available, otherwise get first admin)
+      // Get resolver ID (ưu tiên staff/admin đã nhận, nếu không có thì lấy admin mặc định)
       let adminId = dispute.resolvedBy
+      if (!adminId && user?.currentRole === "staff" && userIdRef.current) {
+        adminId = userIdRef.current
+      }
       if (!adminId) {
         try {
           const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
           adminId = adminUser?.id ?? null
-          console.log("Dispute chat - Admin ID:", adminId)
+          console.log("Dispute chat - Resolver ID (fallback admin):", adminId)
         } catch (error) {
-          console.error("Không thể lấy admin ID:", error)
+          console.error("Không thể lấy resolver ID:", error)
           adminId = null
         }
       } else {
-        console.log("Dispute chat - Using resolvedBy admin ID:", adminId)
+        console.log("Dispute chat - Using resolver ID:", adminId)
       }
 
       // Always load messages between these 3 participants, regardless of who is viewing
@@ -364,16 +372,21 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
     try {
       setSending(true)
 
-      // Get admin ID
+      // Get resolver ID (ưu tiên staff/admin đang xử lý)
       let adminId = dispute.resolvedBy
+      // Nếu staff/admin đang đăng nhập và dispute chưa có resolver, dùng chính họ
+      if (!adminId && (user?.currentRole === "admin" || user?.currentRole === "staff") && senderId) {
+        adminId = senderId
+        console.log("Dispute chat send - Using current staff/admin ID:", adminId)
+      }
       if (!adminId) {
         try {
           const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
           adminId = adminUser?.id ?? null
-          console.log("Dispute chat send - Admin ID:", adminId)
+          console.log("Dispute chat send - Fallback Admin ID:", adminId)
         } catch (error) {
           console.error("Không thể lấy admin ID khi gửi:", error)
-          adminId = (user?.currentRole === "admin" || user?.currentRole === "staff" || user?.currentRole === "support") ? senderId : null
+          adminId = null
         }
       }
 
