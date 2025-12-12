@@ -34,6 +34,9 @@ export function Header() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false)
+  const [pushEnabled, setPushEnabled] = useState(true)
+  const [prefBidUpdates, setPrefBidUpdates] = useState(true)
+  const [prefNewAuctions, setPrefNewAuctions] = useState(true)
   
   // Messages state
   const [unreadMessages, setUnreadMessages] = useState(0)
@@ -88,6 +91,51 @@ export function Header() {
     }
   }, [user, toast])
 
+  // Load notification prefs from localStorage & listen for changes
+  useEffect(() => {
+    const loadPrefs = () => {
+      const saved = localStorage.getItem("bidnow_notification_preferences")
+      if (saved) {
+        try {
+          const prefs = JSON.parse(saved)
+          setPushEnabled(prefs?.pushNotifications ?? true)
+          setPrefBidUpdates(prefs?.bidUpdates ?? true)
+          setPrefNewAuctions(prefs?.newAuctions ?? true)
+          return
+        } catch {
+          /* ignore parse error */
+        }
+      }
+      setPushEnabled(true)
+      setPrefBidUpdates(true)
+      setPrefNewAuctions(true)
+    }
+
+    loadPrefs()
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "bidnow_notification_preferences") {
+        loadPrefs()
+      }
+    }
+    const handleCustom = (e: Event) => {
+      const detail = (e as CustomEvent<any>).detail
+      if (detail) {
+        setPushEnabled(detail.pushNotifications ?? true)
+        setPrefBidUpdates(detail.bidUpdates ?? true)
+          setPrefNewAuctions(detail.newAuctions ?? true)
+      } else {
+        loadPrefs()
+      }
+    }
+    window.addEventListener("storage", handleStorage)
+    window.addEventListener("notification:prefs", handleCustom)
+    return () => {
+      window.removeEventListener("storage", handleStorage)
+      window.removeEventListener("notification:prefs", handleCustom)
+    }
+  }, [])
+
   // Initial load và auto refresh for notifications
   useEffect(() => {
     if (!user) {
@@ -132,6 +180,21 @@ export function Header() {
 
     const handleNotificationReceived = (notification: NotificationResponseDto) => {
       if (notification.userId === userIdNumber && !notification.isRead) {
+        // Tôn trọng cài đặt: nếu tắt pushNotifications => bỏ qua hoàn toàn
+        if (!pushEnabled) {
+          return
+        }
+
+        // Tôn trọng cài đặt: nếu tắt bidUpdates và là outbid => bỏ qua
+        if (!prefBidUpdates && notification.type === "bid_outbid") {
+          return
+        }
+
+        // Tôn trọng cài đặt: nếu tắt newAuctions và là auction_new => bỏ qua
+        if (!prefNewAuctions && notification.type === "auction_new") {
+          return
+        }
+
         // Tăng unread count
         setUnreadCount((prev) => prev + 1)
         
@@ -144,6 +207,27 @@ export function Header() {
           // Thêm vào đầu danh sách
           return [notification, ...prev]
         })
+
+        // Hiển thị thông báo đẩy nếu được bật
+        if (pushEnabled && typeof Notification !== "undefined") {
+          const showBrowserNotification = () => {
+            try {
+              new Notification(notification.message || "Bạn có thông báo mới", {
+                body: notification.type,
+              })
+            } catch (err) {
+              console.error("Browser notification error:", err)
+            }
+          }
+
+          if (Notification.permission === "granted") {
+            showBrowserNotification()
+          } else if (Notification.permission === "default") {
+            Notification.requestPermission().then((perm) => {
+              if (perm === "granted") showBrowserNotification()
+            })
+          }
+        }
       }
     }
 

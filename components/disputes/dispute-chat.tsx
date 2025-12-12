@@ -372,16 +372,21 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
     try {
       setSending(true)
 
-      // Get admin ID
+      // Get resolver ID (ưu tiên staff/admin đang xử lý)
       let adminId = dispute.resolvedBy
+      // Nếu staff/admin đang đăng nhập và dispute chưa có resolver, dùng chính họ
+      if (!adminId && (user?.currentRole === "admin" || user?.currentRole === "staff") && senderId) {
+        adminId = senderId
+        console.log("Dispute chat send - Using current staff/admin ID:", adminId)
+      }
       if (!adminId) {
         try {
           const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
           adminId = adminUser?.id ?? null
-          console.log("Dispute chat send - Admin ID:", adminId)
+          console.log("Dispute chat send - Fallback Admin ID:", adminId)
         } catch (error) {
           console.error("Không thể lấy admin ID khi gửi:", error)
-          adminId = (user?.currentRole === "admin" || user?.currentRole === "staff" || user?.currentRole === "support") ? senderId : null
+          adminId = null
         }
       }
 

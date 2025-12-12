@@ -76,6 +76,13 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const [sellerInfo, setSellerInfo] = useState<{ email?: string; reputationScore?: number; totalProducts?: number; avatarUrl?: string } | null>(null)
   const [loadingSellerInfo, setLoadingSellerInfo] = useState(false)
 
+  // Buy now availability: disable if current bid đã vượt giá mua ngay
+  const isBuyNowUnavailable = useMemo(() => {
+    if (!auction?.buyNowPrice) return false
+    const current = auction.currentBid ?? auction.startingBid ?? 0
+    return current >= auction.buyNowPrice
+  }, [auction?.buyNowPrice, auction?.currentBid, auction?.startingBid])
+
   const normalizedStatus = useMemo(() => auction?.status?.toLowerCase() ?? "", [auction?.status])
   const isAuctionLocked = useMemo(() => ["paused", "cancelled", "completed"].includes(normalizedStatus), [normalizedStatus])
 
@@ -943,12 +950,13 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                     <div className="flex flex-col gap-2">
                       <Button
                         variant="default"
-                        className="w-full"
+                      className={`w-full ${isBuyNowUnavailable ? "bg-muted text-muted-foreground border-muted pointer-events-none" : ""}`}
                         disabled={
                           buyNowLoading ||
                           !user ||
                           isAuctionLocked ||
-                          auctionStatus !== "active"
+                        auctionStatus !== "active" ||
+                        isBuyNowUnavailable
                         }
                         onClick={handleBuyNow}
                       >

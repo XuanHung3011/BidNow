@@ -14,6 +14,30 @@ type PagedResponse = {
   }
 }
 
+// Helper to include X-User-Id for admin/staff actions
+function getAuthHeaders(explicitUserId?: number): HeadersInit {
+  // Ưu tiên userId truyền vào từ component (auth context)
+  if (explicitUserId) {
+    return {
+      "Content-Type": "application/json",
+      "X-User-Id": String(explicitUserId).trim(),
+    }
+  }
+
+  // Fallback đọc từ localStorage
+  const storedUser = typeof localStorage !== "undefined" ? localStorage.getItem("bidnow_user") : null
+  if (!storedUser) return { "Content-Type": "application/json" }
+  try {
+    const user = JSON.parse(storedUser)
+    return {
+      "Content-Type": "application/json",
+      "X-User-Id": String(user.id).trim(),
+    }
+  } catch {
+    return { "Content-Type": "application/json" }
+  }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => null)
@@ -132,23 +156,23 @@ export const ItemsAPI = {
     return handleResponse<PaginatedResult<ItemResponseDto>>(res)
   },
 
-  // Admin: Approve item
-  approveItem: async (id: number): Promise<{ message: string }> => {
+  // Admin/Staff: Approve item
+  approveItem: async (id: number, userId?: number): Promise<{ message: string }> => {
     const url = `${API_BASE}${API_ENDPOINTS.ITEMS.APPROVE(id)}`
     const res = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(userId),
       cache: 'no-store'
     })
     return handleResponse<{ message: string }>(res)
   },
 
-  // Admin: Reject item
-  rejectItem: async (id: number, reason: string): Promise<{ message: string }> => {
+  // Admin/Staff: Reject item
+  rejectItem: async (id: number, reason: string, userId?: number): Promise<{ message: string }> => {
     const url = `${API_BASE}${API_ENDPOINTS.ITEMS.REJECT(id)}`
     const res = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(userId),
       body: JSON.stringify({ reason }),
       cache: 'no-store'
     })
