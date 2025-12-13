@@ -295,6 +295,8 @@ export function UserManagement({ userRole }: UserManagementProps) {
   const getRoleBadgeVariant = (role: string) => {
     if (role === "admin") return "default"
     if (role === "seller") return "secondary"
+    if (role === "staff") return "secondary"
+    if (role === "support") return "secondary"
     return "outline"
   }
 
