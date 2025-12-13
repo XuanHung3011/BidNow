@@ -58,6 +58,7 @@ export const API_ENDPOINTS = {
     RESEND_VERIFICATION: "/api/Auth/resend-verification",
     FORGOT_PASSWORD: "/api/Auth/forgot-password",
     RESET_PASSWORD: "/api/Auth/reset-password",
+    CONTACT: "/api/Contact",
   },
     USERS: {
     GET_ALL: "/api/Users",

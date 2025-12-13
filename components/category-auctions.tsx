@@ -1,84 +1,161 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AuctionCard } from "@/components/auction-card"
-import { Smartphone, Palette, Watch, Gem, Car, Home, Music, Camera } from "lucide-react"
+import { Package, Loader2, Smartphone, Palette, Watch, Gem, Car, Home, Music, Camera } from "lucide-react"
+import { CategoriesAPI } from "@/lib/api/categories"
+import { AuctionsAPI, AuctionListItemDto, AuctionFilterParams } from "@/lib/api/auctions"
+import { CategoryDtos } from "@/lib/api/types"
+import { getImageUrl } from "@/lib/api/config"
 
-const categoryInfo: Record<string, { name: string; icon: any }> = {
-  electronics: { name: "Điện tử", icon: Smartphone },
-  art: { name: "Nghệ thuật", icon: Palette },
-  collectibles: { name: "Sưu tầm", icon: Watch },
-  jewelry: { name: "Trang sức", icon: Gem },
-  vehicles: { name: "Xe cộ", icon: Car },
-  "real-estate": { name: "Bất động sản", icon: Home },
-  music: { name: "Nhạc cụ", icon: Music },
-  photography: { name: "Nhiếp ảnh", icon: Camera },
+// Icon mapping based on category name or slug
+const getCategoryIcon = (name: string, slug: string): any => {
+  const lowerName = name.toLowerCase()
+  const lowerSlug = slug.toLowerCase()
+  
+  if (lowerName.includes("điện tử") || lowerName.includes("electronics") || lowerSlug.includes("dien-tu") || lowerSlug.includes("electronics")) {
+    return Smartphone
+  }
+  if (lowerName.includes("nghệ thuật") || lowerName.includes("art") || lowerSlug.includes("nghe-thuat") || lowerSlug.includes("art")) {
+    return Palette
+  }
+  if (lowerName.includes("sưu tầm") || lowerName.includes("collectibles") || lowerSlug.includes("suu-tam") || lowerSlug.includes("collectibles")) {
+    return Watch
+  }
+  if (lowerName.includes("trang sức") || lowerName.includes("jewelry") || lowerSlug.includes("trang-suc") || lowerSlug.includes("jewelry")) {
+    return Gem
+  }
+  if (lowerName.includes("xe") || lowerName.includes("vehicle") || lowerSlug.includes("xe") || lowerSlug.includes("vehicle")) {
+    return Car
+  }
+  if (lowerName.includes("bất động sản") || lowerName.includes("real estate") || lowerSlug.includes("bat-dong-san") || lowerSlug.includes("real-estate")) {
+    return Home
+  }
+  if (lowerName.includes("nhạc") || lowerName.includes("music") || lowerSlug.includes("nhac") || lowerSlug.includes("music")) {
+    return Music
+  }
+  if (lowerName.includes("nhiếp ảnh") || lowerName.includes("photography") || lowerSlug.includes("nhiep-anh") || lowerSlug.includes("photography")) {
+    return Camera
+  }
+  return Package // Default icon
 }
-
-const mockAuctions = [
-  {
-    id: "1",
-    title: "iPhone 15 Pro Max 256GB",
-    image: "/modern-smartphone.png",
-    currentBid: 25000000,
-    startingBid: 22000000,
-    endTime: new Date(Date.now() + 2 * 60 * 60 * 1000),
-    bidCount: 45,
-    category: "Điện tử",
-    sellerRating: 4.8,
-    sellerName: "TechStore VN",
-  },
-  {
-    id: "2",
-    title: "MacBook Pro M3 16 inch",
-    image: "/silver-macbook-on-desk.png",
-    currentBid: 45000000,
-    startingBid: 40000000,
-    endTime: new Date(Date.now() + 5 * 60 * 60 * 1000),
-    bidCount: 32,
-    category: "Điện tử",
-    sellerRating: 4.9,
-    sellerName: "Apple Store",
-  },
-  {
-    id: "3",
-    title: "Tranh sơn dầu trừu tượng",
-    image: "/abstract-oil-painting.png",
-    currentBid: 15000000,
-    startingBid: 12000000,
-    endTime: new Date(Date.now() + 8 * 60 * 60 * 1000),
-    bidCount: 28,
-    category: "Nghệ thuật",
-    sellerRating: 4.7,
-    sellerName: "Art Gallery",
-  },
-  {
-    id: "4",
-    title: "Đồng hồ Rolex Submariner",
-    image: "/rolex-watch.jpg",
-    currentBid: 180000000,
-    startingBid: 150000000,
-    endTime: new Date(Date.now() + 12 * 60 * 60 * 1000),
-    bidCount: 67,
-    category: "Sưu tầm",
-    sellerRating: 5.0,
-    sellerName: "Luxury Watches",
-  },
-]
 
 export function CategoryAuctions({ categorySlug }: { categorySlug: string }) {
   const [sortBy, setSortBy] = useState("ending-soon")
   const [priceRange, setPriceRange] = useState("all")
+  const [category, setCategory] = useState<CategoryDtos | null>(null)
+  const [auctions, setAuctions] = useState<AuctionListItemDto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const pageSize = 12
 
-  const category = categoryInfo[categorySlug] || { name: "Danh mục", icon: Smartphone }
-  const Icon = category.icon
+  // Load category by slug
+  useEffect(() => {
+    const loadCategory = async () => {
+      try {
+        setLoading(true)
+        const cat = await CategoriesAPI.getBySlug(categorySlug)
+        setCategory(cat)
+      } catch (err) {
+        console.error("Error loading category:", err)
+        setError("Không tìm thấy danh mục")
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadCategory()
+  }, [categorySlug])
 
-  const filteredAuctions = mockAuctions.filter((auction) => {
-    const categoryName = categoryInfo[categorySlug]?.name || ""
-    return auction.category === categoryName || categorySlug === "all"
+  // Load auctions when category is loaded
+  useEffect(() => {
+    if (!category) return
+
+    const loadAuctions = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        // Map sortBy to backend sortBy values
+        let backendSortBy = "EndTime"
+        if (sortBy === 'ending-soon') backendSortBy = "EndTime"
+        else if (sortBy === 'newest') backendSortBy = "EndTime"
+        else if (sortBy === 'price-low' || sortBy === 'price-high') backendSortBy = "CurrentBid"
+        else if (sortBy === 'most-bids') backendSortBy = "BidCount"
+
+        const backendSortOrder = (sortBy === 'price-low' || sortBy === 'newest') ? "asc" : "desc"
+
+        // Filter by active and scheduled auctions
+        const params: AuctionFilterParams = {
+          categoryId: category.id,
+          statuses: "active,scheduled",
+          sortBy: backendSortBy,
+          sortOrder: backendSortOrder,
+          page,
+          pageSize,
+        }
+
+        const result = await AuctionsAPI.getAll(params)
+        setAuctions(result.data || [])
+        setTotalCount(result.totalCount || 0)
+      } catch (err) {
+        console.error("Error loading auctions:", err)
+        setError("Không thể tải danh sách đấu giá")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadAuctions()
+  }, [category, sortBy, page])
+
+  // Map AuctionListItemDto to AuctionCard format
+  const mappedAuctions = auctions.map((auction) => {
+    const images = auction.itemImages 
+      ? (typeof auction.itemImages === 'string' 
+          ? (auction.itemImages.includes('[') 
+              ? JSON.parse(auction.itemImages) 
+              : auction.itemImages.split(','))
+          : [])
+      : []
+    const firstImage = images.length > 0 ? images[0] : "/placeholder.png"
+    
+    return {
+      id: auction.id,
+      title: auction.itemTitle,
+      image: getImageUrl(firstImage),
+      currentBid: auction.currentBid || auction.startingBid,
+      startingBid: auction.startingBid,
+      endTime: new Date(auction.endTime),
+      startTime: auction.startTime ? new Date(auction.startTime) : undefined,
+      bidCount: auction.bidCount || 0,
+      category: auction.categoryName || category?.name || "",
+      sellerName: auction.sellerName,
+      status: auction.status,
+      pausedAt: auction.pausedAt ? new Date(auction.pausedAt) : null,
+    }
   })
+
+  if (loading && !category) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (error && !category) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <p>{error}</p>
+      </div>
+    )
+  }
+
+  const Icon = category ? getCategoryIcon(category.name, category.slug) : Package
 
   return (
     <>
@@ -89,8 +166,10 @@ export function CategoryAuctions({ categorySlug }: { categorySlug: string }) {
               <Icon className="h-8 w-8 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="mb-2 text-4xl font-bold text-foreground">{category.name}</h1>
-              <p className="text-lg text-muted-foreground">{filteredAuctions.length} phiên đấu giá đang diễn ra</p>
+              <h1 className="mb-2 text-4xl font-bold text-foreground">{category?.name || "Danh mục"}</h1>
+              <p className="text-lg text-muted-foreground">
+                {loading ? "Đang tải..." : `${totalCount} phiên đấu giá đang diễn ra`}
+              </p>
             </div>
           </div>
         </div>
@@ -143,11 +222,48 @@ export function CategoryAuctions({ categorySlug }: { categorySlug: string }) {
             </div>
           </div>
 
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredAuctions.map((auction) => (
-              <AuctionCard key={auction.id} auction={auction} />
-            ))}
-          </div>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <p>{error}</p>
+            </div>
+          ) : mappedAuctions.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <p>Không có sản phẩm nào trong danh mục này</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {mappedAuctions.map((auction) => (
+                  <AuctionCard key={auction.id} auction={auction} />
+                ))}
+              </div>
+              {totalCount > pageSize && (
+                <div className="mt-8 flex justify-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    Trước
+                  </Button>
+                  <span className="flex items-center px-4 text-sm text-muted-foreground">
+                    Trang {page} / {Math.ceil(totalCount / pageSize)}
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={() => setPage(p => p + 1)}
+                    disabled={page >= Math.ceil(totalCount / pageSize)}
+                  >
+                    Sau
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </section>
     </>

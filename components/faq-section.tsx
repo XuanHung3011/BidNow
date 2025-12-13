@@ -75,14 +75,6 @@ export function FAQSection() {
               </div>
             ))}
           </div>
-
-          <div className="mt-12 rounded-lg border border-primary/20 bg-primary/5 p-6 text-center">
-            <h3 className="mb-2 text-lg font-semibold text-foreground">Vẫn còn thắc mắc?</h3>
-            <p className="mb-4 text-muted-foreground">Đội ngũ hỗ trợ của chúng tôi luôn sẵn sàng giúp đỡ bạn 24/7</p>
-            <Button variant="outline" className="bg-card">
-              Liên hệ hỗ trợ
-            </Button>
-          </div>
         </div>
       </div>
     </section>

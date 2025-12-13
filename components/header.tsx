@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Search, Bell, User, Gavel, LogOut, Settings, Package, ShoppingBag, Shield, MessageSquare, ArrowUpDown, Loader2 } from "lucide-react"
+import Image from "next/image"
 import { useAuth } from "@/lib/auth-context"
 import {
   DropdownMenu,
@@ -441,10 +442,20 @@ export function Header() {
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <Gavel className="h-6 w-6 text-primary-foreground" />
+          <div className="relative h-12 w-32 flex-shrink-0">
+            <Image
+              src="/logobit.png"
+              alt="BIT NOW REAL-TIME AUCTIONS"
+              fill
+              className="object-contain"
+              priority
+              sizes="(max-width: 768px) 120px, 128px"
+            />
           </div>
-          <span className="text-xl font-bold text-foreground">BidNow</span>
+          <div className="hidden sm:flex flex-col">
+            <span className="text-lg font-bold text-foreground leading-tight">BIT NOW</span>
+            <span className="text-[10px] font-medium text-muted-foreground leading-tight">REAL-TIME AUCTIONS</span>
+          </div>
         </Link>
 
         {!isRestrictedRole && user?.currentRole !== "seller" && (
@@ -640,18 +651,16 @@ export function Header() {
                   </DropdownMenuItem>
 
                   {!isRestrictedRole && (
-                    <>
-                      <DropdownMenuItem onClick={() => router.push("/profile")}>
-                        <User className="mr-2 h-4 w-4" />
-                        Hồ sơ
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem onClick={() => router.push("/settings")}>
-                        <Settings className="mr-2 h-4 w-4" />
-                        Cài đặt
-                      </DropdownMenuItem>
-                    </>
+                    <DropdownMenuItem onClick={() => router.push("/settings")}>
+                      <Settings className="mr-2 h-4 w-4" />
+                      Cài đặt
+                    </DropdownMenuItem>
                   )}
+                  
+                  <DropdownMenuItem onClick={() => router.push("/profile")}>
+                    <User className="mr-2 h-4 w-4" />
+                    Hồ sơ
+                  </DropdownMenuItem>
 
                   <DropdownMenuSeparator />
 
