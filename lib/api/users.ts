@@ -152,9 +152,14 @@ export class UsersAPI {
    */
   static async update(id: number, userData: UserUpdateDto): Promise<UserResponse> {
     try {
+      const userId = localStorage.getItem("bidnow_user") ? JSON.parse(localStorage.getItem("bidnow_user")!).id : null;
       const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.UPDATE(id)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-Id': userId ? String(userId) : ''
+        },
+        credentials: 'include',
         body: JSON.stringify(userData),
       });
       return await this.handleResponse<UserResponse>(response);
@@ -189,11 +194,28 @@ export class UsersAPI {
       method: 'PUT',
       headers: { 
         'Content-Type': 'application/json',
-        'X-User-Id': userId || ''
+        'X-User-Id': userId ? String(userId) : ''
       },
+      credentials: 'include',
       body: JSON.stringify({ newPassword }),
     });
     return await this.handleResponse<{ message: string }>(response);
+  }
+
+  /**
+   * Generate and send new password via email (Support only)
+   */
+  static async generateAndSendPassword(id: number): Promise<{ message: string; password?: string }> {
+    const userId = localStorage.getItem("bidnow_user") ? JSON.parse(localStorage.getItem("bidnow_user")!).id : null;
+    const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.GENERATE_PASSWORD(id)}`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-User-Id': userId ? String(userId) : ''
+      },
+      credentials: 'include',
+    });
+    return await this.handleResponse<{ message: string; password?: string }>(response);
   }
 
   /**

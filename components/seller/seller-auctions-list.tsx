@@ -425,12 +425,21 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
     const diffDays = Math.floor(diffMs / 86400000)
 
     if (status === "active") {
-      if (diffMins < 60) {
+      // Nếu thời gian đã qua, hiển thị "Đã kết thúc"
+      if (diffMs <= 0) {
+        return "Đã kết thúc"
+      }
+      // Hiển thị thời gian còn lại
+      if (diffDays > 0) {
+        const remainingHours = Math.floor((diffMs % 86400000) / 3600000)
+        return `${diffDays} ngày ${remainingHours} giờ`
+      } else if (diffHours > 0) {
+        const remainingMins = Math.floor((diffMs % 3600000) / 60000)
+        return `${diffHours} giờ ${remainingMins} phút`
+      } else if (diffMins > 0) {
         return `${diffMins} phút`
-      } else if (diffHours < 24) {
-        return `${diffHours} giờ`
       } else {
-        return `${diffDays} ngày`
+        return "Sắp kết thúc"
       }
     } else if (status === "scheduled") {
       return date.toLocaleString("vi-VN", {
@@ -751,7 +760,7 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
                         ? "Bắt đầu:"
                         : "Ngày bán:"}{" "}
                       <span className="font-semibold text-foreground">
-                        {status === "active" || status === "scheduled" ? formatDate(auction.startTime) : formatDate(auction.endTime)}
+                        {status === "active" ? formatDate(auction.endTime) : status === "scheduled" ? formatDate(auction.startTime) : formatDate(auction.endTime)}
                       </span>
                     </span>
                   </div>

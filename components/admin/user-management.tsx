@@ -222,6 +222,23 @@ export function UserManagement({ userRole }: UserManagementProps) {
     }
   }
 
+  const handleGeneratePassword = async (userId: number) => {
+    try {
+      const result = await UsersAPI.generateAndSendPassword(userId)
+      toast({
+        title: "Thành công",
+        description: result.message || "Đã tạo mật khẩu mới và gửi qua email thành công",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể cấp lại mật khẩu",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
   const handleActivateUser = async (userId: number) => {
     try {
       await UsersAPI.activate(userId)
@@ -263,7 +280,14 @@ export function UserManagement({ userRole }: UserManagementProps) {
         title: "Thành công",
         description: `Thêm vai trò ${role} thành công`,
       })
-      fetchUsers()
+      await fetchUsers()
+      // Refresh selectedUser to show updated roles
+      if (selectedUser && selectedUser.id === userId) {
+        const updatedUser = await UsersAPI.getById(userId)
+        if (updatedUser) {
+          setSelectedUser(updatedUser)
+        }
+      }
     } catch (error: any) {
       toast({
         title: "Lỗi",
@@ -281,7 +305,14 @@ export function UserManagement({ userRole }: UserManagementProps) {
         title: "Thành công",
         description: `Xóa vai trò ${role} thành công`,
       })
-      fetchUsers()
+      await fetchUsers()
+      // Refresh selectedUser to show updated roles
+      if (selectedUser && selectedUser.id === userId) {
+        const updatedUser = await UsersAPI.getById(userId)
+        if (updatedUser) {
+          setSelectedUser(updatedUser)
+        }
+      }
     } catch (error: any) {
       toast({
         title: "Lỗi",
@@ -613,6 +644,7 @@ export function UserManagement({ userRole }: UserManagementProps) {
             open={passwordDialogOpen}
             onOpenChange={setPasswordDialogOpen}
             userId={selectedUser.id}
+            isAdminOrSupport={isAdmin || isSupport}
             onSubmit={handleChangePassword}
           />
 
@@ -621,7 +653,9 @@ export function UserManagement({ userRole }: UserManagementProps) {
             onOpenChange={setResetPasswordDialogOpen}
             userId={selectedUser.id}
             userName={selectedUser.fullName}
+            isSupport={isSupport}
             onSubmit={handleResetPassword}
+            onGeneratePassword={isSupport ? handleGeneratePassword : undefined}
           />
 
           <UserRoleDialog

@@ -11,6 +11,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Bell, Lock, CreditCard, Globe, User, Package, ShoppingBag, Upload, CheckCircle2, XCircle, Loader2, Camera } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 // LocalStorage keys
 const NOTIFICATION_PREFS_KEY = "bidnow_notification_preferences"
@@ -37,6 +47,7 @@ export function UserSettings() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const [confirmUpdateOpen, setConfirmUpdateOpen] = useState(false)
   
   // Notification preferences
   const [pushNotifications, setPushNotifications] = useState(true)
@@ -86,8 +97,13 @@ export function UserSettings() {
     }
   }, [user])
 
-  // Update profile
-  const handleUpdateProfile = async () => {
+  // Open confirm dialog
+  const handleUpdateProfile = () => {
+    setConfirmUpdateOpen(true)
+  }
+
+  // Confirm and update profile
+  const handleConfirmUpdate = async () => {
     if (!user?.id) return
     
     setIsUpdatingProfile(true)
@@ -97,6 +113,7 @@ export function UserSettings() {
         phone: phone.trim() || undefined,
       })
       
+      setConfirmUpdateOpen(false)
       toast({
         title: "Thành công",
         description: "Cập nhật thông tin tài khoản thành công",
@@ -120,6 +137,23 @@ export function UserSettings() {
     const file = e.target.files?.[0]
     if (!file || !user?.id) return
 
+    // Get file extension
+    const fileName = file.name.toLowerCase()
+    const fileExtension = fileName.substring(fileName.lastIndexOf('.') + 1)
+    const allowedExtensions = ['jpg', 'jpeg', 'png']
+
+    // Validate file extension
+    if (!allowedExtensions.includes(fileExtension)) {
+      toast({
+        title: "Lỗi",
+        description: `Định dạng file .${fileExtension} không được hỗ trợ. Vui lòng chọn file ảnh định dạng: .jpg, .jpeg, .png`,
+        variant: "destructive",
+      })
+      // Reset input
+      e.target.value = ''
+      return
+    }
+
     // Validate file type
     if (!file.type.startsWith("image/")) {
       toast({
@@ -127,6 +161,8 @@ export function UserSettings() {
         description: "Vui lòng chọn file ảnh",
         variant: "destructive",
       })
+      // Reset input
+      e.target.value = ''
       return
     }
 
@@ -137,6 +173,8 @@ export function UserSettings() {
         description: "Kích thước file không được vượt quá 10MB",
         variant: "destructive",
       })
+      // Reset input
+      e.target.value = ''
       return
     }
 
@@ -153,9 +191,16 @@ export function UserSettings() {
       // Refresh user data
       await refreshUser?.()
     } catch (error: any) {
+      let errorMessage = error.message || "Không thể tải lên avatar"
+      
+      // Check if error is about file extension
+      if (errorMessage.includes("File extension") || errorMessage.includes("not allowed") || errorMessage.includes("Allowed:")) {
+        errorMessage = "Định dạng file không được hỗ trợ. Vui lòng chọn file ảnh định dạng: .jpg, .jpeg, .png"
+      }
+      
       toast({
         title: "Lỗi",
-        description: error.message || "Không thể tải lên avatar",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
@@ -505,6 +550,29 @@ export function UserSettings() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* AlertDialog xác nhận cập nhật profile */}
+      <AlertDialog open={confirmUpdateOpen} onOpenChange={setConfirmUpdateOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận cập nhật thông tin</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn lưu các thay đổi thông tin tài khoản?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUpdatingProfile} onClick={() => setConfirmUpdateOpen(false)}>
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              disabled={isUpdatingProfile} 
+              onClick={handleConfirmUpdate}
+            >
+              {isUpdatingProfile ? "Đang cập nhật..." : "Xác nhận"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

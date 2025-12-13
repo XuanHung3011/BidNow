@@ -4,10 +4,20 @@ import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Clock, X, Loader2, AlertCircle } from "lucide-react"
+import { Clock, X, Loader2, AlertCircle, Filter } from "lucide-react"
 import Link from "next/link"
 import { WatchlistAPI, type WatchlistItemDto } from "@/lib/api/watchlist"
 import { useAuth } from "@/lib/auth-context"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export function WatchlistList() {
   const { user } = useAuth()
@@ -16,6 +26,8 @@ export function WatchlistList() {
   const [error, setError] = useState<string | null>(null)
   const [removingId, setRemovingId] = useState<number | null>(null)
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "ended" | "scheduled">("all")
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [auctionToRemove, setAuctionToRemove] = useState<number | null>(null)
 
   useEffect(() => {
     if (user) {
@@ -44,16 +56,23 @@ export function WatchlistList() {
     }
   }
 
-  const handleRemove = async (auctionId: number) => {
-    if (!user) return
+  const handleRemoveClick = (auctionId: number) => {
+    setAuctionToRemove(auctionId)
+    setDeleteConfirmOpen(true)
+  }
+
+  const handleRemoveConfirm = async () => {
+    if (!user || !auctionToRemove) return
 
     try {
-      setRemovingId(auctionId)
+      setRemovingId(auctionToRemove)
       const userId = parseInt(user.id)
-      await WatchlistAPI.remove({ userId, auctionId })
+      await WatchlistAPI.remove({ userId, auctionId: auctionToRemove })
       
       // Remove from local state
-      setWatchlist(prev => prev.filter(item => item.auctionId !== auctionId))
+      setWatchlist(prev => prev.filter(item => item.auctionId !== auctionToRemove))
+      setDeleteConfirmOpen(false)
+      setAuctionToRemove(null)
     } catch (err) {
       console.error('Error removing from watchlist:', err)
       alert('Không thể xóa khỏi danh sách theo dõi')
@@ -286,9 +305,9 @@ export function WatchlistList() {
                           : formatCurrency(item.startingBid)}
                       </span>
                     </span>
-                    {isActive && item.bidCount !== undefined && (
+                    {isActive && (
                       <span className="text-muted-foreground">
-                        Số lượt đấu: <span className="font-semibold text-foreground">{item.bidCount}</span>
+                        Số lượt đấu: <span className="font-semibold text-foreground">{item.bidCount || 0}</span>
                       </span>
                     )}
                     <span className="flex items-center text-muted-foreground">
@@ -305,17 +324,10 @@ export function WatchlistList() {
                     Xem chi tiết
                   </Button>
                 </Link>
-                {isActive && (
-                  <Link href={`/auction/${item.auctionId}`}>
-                    <Button size="sm" className="bg-primary hover:bg-primary/90">
-                      Đấu giá ngay
-                    </Button>
-                  </Link>
-                )}
                 <Button 
                   variant="ghost" 
                   size="sm"
-                  onClick={() => handleRemove(item.auctionId)}
+                  onClick={() => handleRemoveClick(item.auctionId)}
                   disabled={removingId === item.auctionId}
                 >
                   {removingId === item.auctionId ? (
@@ -331,6 +343,32 @@ export function WatchlistList() {
           })}
         </>
       )}
+
+      {/* AlertDialog xác nhận xóa */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa khỏi danh sách theo dõi</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa phiên đấu giá này khỏi danh sách theo dõi?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingId !== null} onClick={() => {
+              setDeleteConfirmOpen(false)
+              setAuctionToRemove(null)
+            }}>
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              disabled={removingId !== null} 
+              onClick={handleRemoveConfirm}
+            >
+              {removingId !== null ? "Đang xóa..." : "Xóa"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -67,6 +67,7 @@ export const API_ENDPOINTS = {
     UPDATE: (id: number) => `/api/Users/${id}`,
     CHANGE_PASSWORD: (id: number) => `/api/Users/${id}/change-password`,
     RESET_PASSWORD: (id: number) => `/api/Users/${id}/reset-password`,
+    GENERATE_PASSWORD: (id: number) => `/api/Users/${id}/generate-password`,
     ACTIVATE: (id: number) => `/api/Users/${id}/activate`,
     DEACTIVATE: (id: number) => `/api/Users/${id}/deactivate`,
     ADD_ROLE: (userId: number) => `/api/Users/${userId}/roles`,
