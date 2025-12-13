@@ -211,6 +211,59 @@ export function UserPublicProfile({ userId }: UserPublicProfileProps) {
     return { label: "Không xác định", variant: "outline" as const }
   }
 
+  // Handle toggle favorite seller
+  const handleToggleFavorite = async () => {
+    if (!userId || !profile) {
+      return
+    }
+
+    // Kiểm tra đăng nhập trước
+    if (!user?.id) {
+      setFavoriteMessage("Vui lòng đăng nhập để thêm seller vào danh sách yêu thích")
+      setTimeout(() => setFavoriteMessage(null), 3000)
+      return
+    }
+
+    // Don't allow adding self to favorites
+    if (user.id === String(userId)) {
+      setFavoriteMessage("Bạn không thể thêm chính mình vào danh sách yêu thích")
+      setTimeout(() => setFavoriteMessage(null), 3000)
+      return
+    }
+
+    setIsTogglingFavorite(true)
+    setFavoriteMessage(null)
+    
+    try {
+      let result: { success: boolean; message: string }
+      
+      if (isFavorite) {
+        // Remove from favorites
+        result = await FavoriteSellersAPI.removeFavorite(userId)
+        if (result.success) {
+          setIsFavorite(false)
+        }
+      } else {
+        // Add to favorites
+        result = await FavoriteSellersAPI.addFavorite(userId)
+        if (result.success) {
+          setIsFavorite(true)
+        }
+      }
+      
+      // Luôn hiển thị message từ API
+      setFavoriteMessage(result.message)
+      setTimeout(() => setFavoriteMessage(null), 3000)
+      
+    } catch (error: any) {
+      // Không log vào console, chỉ hiển thị message cho user
+      setFavoriteMessage(error.message || "Không thể thực hiện thao tác. Vui lòng đăng nhập.")
+      setTimeout(() => setFavoriteMessage(null), 3000)
+    } finally {
+      setIsTogglingFavorite(false)
+    }
+  }
+
   // Component để render product card
   const ProductCard = ({ auction }: { auction: SellerAuctionDto }) => {
     const imageUrls = getImageUrls(auction.itemImages)
