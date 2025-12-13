@@ -20,7 +20,19 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
       try {
         const data = await AuctionsAPI.getRecentBids(auctionId, 100)
         if (!mounted) return
-        setBids(data)
+        
+        // CRITICAL: Deduplicate bids từ API trước khi set state
+        // Tránh duplicate khi merge với SignalR updates
+        const uniqueData = data.filter((bid, index, self) => {
+          const duplicateIndex = self.findIndex(
+            (b) => b.bidderId === bid.bidderId && 
+                   b.amount === bid.amount &&
+                   Math.abs(new Date(b.bidTime).getTime() - new Date(bid.bidTime).getTime()) < 1000
+          )
+          return duplicateIndex === index
+        })
+        
+        setBids(uniqueData)
       } catch {
         // ignore
       }
@@ -47,10 +59,32 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
     connection.on("BidPlaced", (payload: BidPlacedPayload) => {
       if (!isMounted) return
       if (payload.auctionId !== auctionId) return
+      
       setBids(prev => {
-        const next = [...prev, payload.placedBid]
-        // keep last 100
-        if (next.length > 100) next.shift()
+        // CRITICAL: Kiểm tra duplicate trước khi thêm bid mới
+        // Tránh hiển thị cùng một bid nhiều lần (đặc biệt với auto bid)
+        const isDuplicate = prev.some(
+          (b) => b.bidderId === payload.placedBid.bidderId && 
+                 b.amount === payload.placedBid.amount &&
+                 Math.abs(new Date(b.bidTime).getTime() - new Date(payload.placedBid.bidTime).getTime()) < 1000
+        )
+        
+        // Nếu đã có bid này rồi, không thêm lại
+        if (isDuplicate) {
+          console.log("⚠️ BidHistory: Duplicate bid detected, skipping:", {
+            bidderId: payload.placedBid.bidderId,
+            amount: payload.placedBid.amount,
+            bidTime: payload.placedBid.bidTime
+          })
+          return prev
+        }
+        
+        // Thêm bid mới vào đầu mảng (mới nhất ở đầu)
+        const next = [payload.placedBid, ...prev]
+        // Giữ tối đa 100 bids mới nhất
+        if (next.length > 100) {
+          return next.slice(0, 100)
+        }
         return next
       })
     })
@@ -80,9 +114,25 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
 
   const rows = useMemo(() => {
     const latest = (currentBid ?? 0)
-    // newest last from API Redis ascending; show newest on top
-    const ordered = [...bids].sort((a, b) => new Date(b.bidTime).getTime() - new Date(a.bidTime).getTime())
-    return ordered.map(b => ({
+    
+    // CRITICAL: Deduplicate bids trước khi hiển thị
+    // Tránh hiển thị cùng một bid nhiều lần (đặc biệt với auto bid)
+    const uniqueBids = bids.filter((bid, index, self) => {
+      // Tìm xem có bid nào trùng với bid này không (cùng bidderId, amount, và thời gian gần nhau)
+      const duplicateIndex = self.findIndex(
+        (b) => b.bidderId === bid.bidderId && 
+               b.amount === bid.amount &&
+               Math.abs(new Date(b.bidTime).getTime() - new Date(bid.bidTime).getTime()) < 1000
+      )
+      // Chỉ giữ lại bid đầu tiên (index nhỏ hơn)
+      return duplicateIndex === index
+    })
+    
+    // Sắp xếp theo thời gian (mới nhất ở đầu)
+    const ordered = [...uniqueBids].sort((a, b) => new Date(b.bidTime).getTime() - new Date(a.bidTime).getTime())
+    
+    return ordered.map((b, index) => ({
+      id: `${b.bidderId}-${b.amount}-${b.bidTime}-${index}`, // Unique key cho React
       userLabel: b.bidderName && b.bidderName.trim().length > 0 ? b.bidderName : `User #${b.bidderId}`,
       amount: b.amount,
       bidTime: b.bidTime,
@@ -98,9 +148,9 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
       </div>
 
       <div className="space-y-2">
-        {rows.map((bid, index) => (
+        {rows.map((bid) => (
           <div
-            key={`${bid.bidTime}-${bid.amount}-${index}`}
+            key={bid.id}
             className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${
               bid.isWinning ? "border-accent bg-accent/10" : "border-border bg-card"
             }`}

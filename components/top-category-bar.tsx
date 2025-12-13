@@ -65,7 +65,7 @@ export function TopCategoryBar() {
 
             {loading && <li className="text-sm text-muted-foreground px-4 py-2">Đang tải...</li>}
 
-            {categories.map((c) => {
+            {categories.slice(0, 8).map((c) => {
               // Ensure id is string/number for URL; use Number(c.id) if needed
               const idStr = String(c.id)
               const isActive = activeCategoryId === idStr

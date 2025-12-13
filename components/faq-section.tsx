@@ -10,27 +10,23 @@ const faqs = [
   {
     question: "Làm thế nào để tham gia đấu giá?",
     answer:
-      "Để tham gia đấu giá, bạn cần đăng ký tài khoản, xác thực thông tin và nạp tiền đặt cọc. Sau đó, bạn có thể tham gia bất kỳ phiên đấu giá nào đang diễn ra.",
+      "Để tham gia đấu giá, bạn cần đăng ký tài khoản, xác thực tài khoản . Sau đó, bạn có thể tham gia bất kỳ phiên đấu giá nào đang diễn ra.",
   },
   {
     question: "Tôi có thể hủy giá thầu đã đặt không?",
     answer:
       "Giá thầu một khi đã đặt sẽ không thể hủy. Vui lòng cân nhắc kỹ trước khi đặt giá để đảm bảo bạn thực sự muốn sở hữu sản phẩm.",
   },
-  {
-    question: "Phí dịch vụ là bao nhiêu?",
-    answer:
-      "BidNow thu phí 5% trên giá trị giao dịch thành công cho người mua và 3% cho người bán. Phí này đã bao gồm bảo hiểm giao dịch và hỗ trợ khách hàng.",
-  },
+  
   {
     question: "Làm thế nào để bán sản phẩm trên BidNow?",
     answer:
-      "Bạn cần đăng ký tài khoản người bán, xác thực danh tính và tạo phiên đấu giá mới. Đội ngũ của chúng tôi sẽ xem xét và phê duyệt sản phẩm trong vòng 24 giờ.",
+      "Bạn cần đăng ký tài khoản và vào cài đặt để chuyển sang thành người bán, tạo phiên đấu giá mới. Đội ngũ của chúng tôi sẽ xem xét và phê duyệt sản phẩm trong vòng 24 giờ.",
   },
   {
-    question: "Tôi có được hoàn tiền nếu sản phẩm không đúng mô tả?",
+    question: "Tôi phải làm sao nếu sản phẩm không đúng mô tả?",
     answer:
-      "Có, BidNow có chính sách bảo vệ người mua. Nếu sản phẩm không đúng mô tả, bạn có thể yêu cầu hoàn tiền trong vòng 7 ngày kể từ khi nhận hàng.",
+      " Nếu sản phẩm không đúng mô tả, bạn có thể khiếu nại sản phẩm để đội ngũ chúng tôi xem xét và sử lí.",
   },
   {
     question: "Tính năng đặt giá tự động hoạt động như thế nào?",

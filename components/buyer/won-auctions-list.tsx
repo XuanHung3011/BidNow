@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Star, MessageSquare, Loader2, AlertCircle, CreditCard, CheckCircle2, Clock, XCircle } from "lucide-react"
+import { Star, MessageSquare, Loader2, AlertCircle, CreditCard, CheckCircle2, Clock, XCircle, Filter } from "lucide-react"
 import Link from "next/link"
 import { AuctionsAPI, type BuyerWonAuctionDto } from "@/lib/api/auctions"
 import { RatingDialog } from "@/components/rating-dialog"
@@ -21,6 +21,7 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const pageSize = 10
+  const [filterStatus, setFilterStatus] = useState<"all" | "unpaid" | "paid" | "completed">("all")
 
   const [ratingDialog, setRatingDialog] = useState<{
     open: boolean
@@ -193,6 +194,64 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
     }
   }
 
+  // Kiểm tra xem có thể hiển thị nút thanh toán không (trong vòng 24 giờ từ khi thắng)
+  const canShowPaymentButton = (auction: BuyerWonAuctionDto): boolean => {
+    if (!auction.wonDate) return false
+    
+    const wonDate = new Date(auction.wonDate)
+    const now = new Date()
+    const hoursSinceWon = (now.getTime() - wonDate.getTime()) / (1000 * 60 * 60)
+    
+    // Chỉ hiển thị nếu chưa quá 24 giờ
+    return hoursSinceWon <= 24
+  }
+
+  // Sắp xếp và lọc auctions
+  const filteredAndSortedAuctions = useMemo(() => {
+    let filtered = [...auctions]
+    
+    // Lọc theo trạng thái
+    if (filterStatus === "unpaid") {
+      // Chưa thanh toán: chưa có payment hoặc payment status không phải paid_held/released_to_seller
+      filtered = filtered.filter(a => 
+        !a.hasPayment || 
+        (a.paymentStatus !== 'paid_held' && a.paymentStatus !== 'released_to_seller')
+      )
+    } else if (filterStatus === "paid") {
+      // Đã thanh toán nhưng chưa hoàn thành: có payment nhưng order chưa completed
+      filtered = filtered.filter(a => 
+        a.hasPayment && 
+        (a.paymentStatus === 'paid_held' || a.paymentStatus === 'released_to_seller') &&
+        a.orderStatus !== 'completed'
+      )
+    } else if (filterStatus === "completed") {
+      // Đã hoàn thành: order status = completed
+      filtered = filtered.filter(a => a.orderStatus === 'completed')
+    }
+    // "all" không filter gì cả
+    
+    // Sắp xếp: chưa thanh toán lên đầu, sau đó mới đến đã thanh toán, cuối cùng là đã hoàn thành
+    filtered.sort((a, b) => {
+      const aUnpaid = !a.hasPayment || (a.paymentStatus !== 'paid_held' && a.paymentStatus !== 'released_to_seller')
+      const bUnpaid = !b.hasPayment || (b.paymentStatus !== 'paid_held' && b.paymentStatus !== 'released_to_seller')
+      const aCompleted = a.orderStatus === 'completed'
+      const bCompleted = b.orderStatus === 'completed'
+      
+      // Ưu tiên: chưa thanh toán > đã thanh toán > đã hoàn thành
+      if (aUnpaid && !bUnpaid && !bCompleted) return -1
+      if (!aUnpaid && !aCompleted && bUnpaid) return 1
+      if (aCompleted && !bCompleted) return 1
+      if (!aCompleted && bCompleted) return -1
+      
+      // Nếu cùng trạng thái, sắp xếp theo ngày thắng (mới nhất trước)
+      const aDate = new Date(a.wonDate).getTime()
+      const bDate = new Date(b.wonDate).getTime()
+      return bDate - aDate
+    })
+    
+    return filtered
+  }, [auctions, filterStatus])
+
   const handleRateClick = (auction: BuyerWonAuctionDto) => {
     setRatingDialog({
       open: true,
@@ -255,10 +314,44 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Tổng cộng: <span className="font-semibold">{totalCount}</span> phiên đã thắng
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <p className="text-sm text-muted-foreground">
+            Tổng cộng: <span className="font-semibold">{totalCount}</span> phiên đã thắng
+          </p>
+          {/* Filter buttons */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Button
+              variant={filterStatus === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("all")}
+            >
+              Tất cả
+            </Button>
+            <Button
+              variant={filterStatus === "unpaid" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("unpaid")}
+            >
+              Chưa thanh toán
+            </Button>
+            <Button
+              variant={filterStatus === "paid" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("paid")}
+            >
+              Đã thanh toán
+            </Button>
+            <Button
+              variant={filterStatus === "completed" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterStatus("completed")}
+            >
+              Đã hoàn thành
+            </Button>
+          </div>
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -276,8 +369,24 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
         </Button>
       </div>
 
-      {auctions.map((auction) => (
-        <Card key={auction.auctionId} className="p-6 hover:shadow-lg transition-shadow">
+      {filteredAndSortedAuctions.length === 0 ? (
+        <Card className="p-12">
+          <div className="text-center text-muted-foreground">
+            <p className="text-lg mb-2">
+              {filterStatus === "unpaid" 
+                ? "Không có phiên nào chưa thanh toán"
+                : filterStatus === "paid"
+                ? "Không có phiên nào đã thanh toán"
+                : filterStatus === "completed"
+                ? "Không có phiên nào đã hoàn thành"
+                : "Không có phiên đấu giá nào"}
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <>
+          {filteredAndSortedAuctions.map((auction) => (
+          <Card key={auction.auctionId} className="p-6 hover:shadow-lg transition-shadow">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-4">
               <img
@@ -324,7 +433,11 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
 
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-2">
-                {!auction.hasOrder || (!auction.hasPayment && auction.orderStatus === 'awaiting_payment') ? (
+                {/* Chỉ hiển thị nút thanh toán nếu:
+                    1. Chưa có order hoặc đang chờ thanh toán
+                    2. Và chưa quá 24 giờ từ khi thắng */}
+                {(!auction.hasOrder || (!auction.hasPayment && auction.orderStatus === 'awaiting_payment')) && 
+                 canShowPaymentButton(auction) ? (
                   <PaymentButton auctionId={auction.auctionId} />
                 ) : null}
                 
@@ -354,7 +467,9 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
             </div>
           </div>
         </Card>
-      ))}
+          ))}
+        </>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

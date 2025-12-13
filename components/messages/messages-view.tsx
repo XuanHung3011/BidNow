@@ -156,6 +156,23 @@ export function MessagesView() {
     }
   }, [])
 
+  // Check for sellerId in URL - auto open chat with seller
+  useEffect(() => {
+    const sellerIdParam = searchParams?.get("sellerId")
+    if (sellerIdParam && user?.id) {
+      const sellerId = parseInt(sellerIdParam, 10)
+      const currentUserId = Number(user.id)
+      if (!isNaN(sellerId) && sellerId !== selectedConversation && currentUserId) {
+        // Switch to personal tab and select conversation with seller
+        setActiveTab("personal")
+        setSelectedConversation(sellerId)
+        setSelectedAuctionId(null)
+        // Load messages with seller
+        loadMessages(currentUserId, sellerId, null)
+      }
+    }
+  }, [searchParams, user?.id, selectedConversation])
+
   // Check for disputeId in URL
   useEffect(() => {
     const disputeIdParam = searchParams?.get("disputeId")

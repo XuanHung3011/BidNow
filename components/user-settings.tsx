@@ -227,14 +227,10 @@ export function UserSettings() {
       </div>
 
       <Tabs defaultValue="account" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="account">
             <User className="mr-2 h-4 w-4" />
             Tài khoản
-          </TabsTrigger>
-          <TabsTrigger value="notifications">
-            <Bell className="mr-2 h-4 w-4" />
-            Thông báo
           </TabsTrigger>
           <TabsTrigger value="security">
             <Lock className="mr-2 h-4 w-4" />
@@ -423,79 +419,6 @@ export function UserSettings() {
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="notifications">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cài đặt thông báo</CardTitle>
-              <CardDescription>Quản lý cách bạn nhận thông báo từ BidNow</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="push-notifications">Thông báo đẩy</Label>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo trên trình duyệt</p>
-                </div>
-                <Switch
-                  id="push-notifications"
-                  checked={pushNotifications}
-                  onCheckedChange={async (checked) => {
-                    setPushNotifications(checked)
-                    if (checked && typeof Notification !== "undefined") {
-                      const permission = await Notification.requestPermission()
-                      if (permission !== "granted") {
-                        setPushNotifications(false)
-                        toast({
-                          title: "Thông báo bị chặn",
-                          description: "Hãy cho phép thông báo trong trình duyệt để nhận tin.",
-                          variant: "destructive",
-                        })
-                      }
-                    }
-                  }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="bid-updates">Cập nhật đấu giá</Label>
-                  <p className="text-sm text-muted-foreground">Thông báo khi bị vượt giá</p>
-                </div>
-                <Switch
-                  id="bid-updates"
-                  checked={bidUpdates}
-                  onCheckedChange={setBidUpdates}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="new-auctions">Phiên đấu giá mới</Label>
-                  <p className="text-sm text-muted-foreground">Thông báo về phiên đấu giá mới</p>
-                </div>
-                <Switch
-                  id="new-auctions"
-                  checked={newAuctions}
-                  onCheckedChange={setNewAuctions}
-                />
-              </div>
-
-              <Button
-                onClick={handleSaveNotifications}
-                disabled={isSavingNotifications}
-              >
-                {isSavingNotifications ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Đang lưu...
-                  </>
-                ) : (
-                  "Lưu cài đặt"
-                )}
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
