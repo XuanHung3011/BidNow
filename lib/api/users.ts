@@ -201,8 +201,17 @@ export class UsersAPI {
    */
   static async activate(id: number): Promise<{ message: string }> {
     try {
+      const userData = localStorage.getItem("bidnow_user");
+      const currentUserId = userData 
+        ? JSON.parse(userData).id 
+        : null;
       const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.ACTIVATE(id)}`, {
         method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-Id': currentUserId ? String(currentUserId) : ''
+        },
+        credentials: 'include',
       });
       return await this.handleResponse<{ message: string }>(response);
     } catch (error) {
@@ -216,8 +225,17 @@ export class UsersAPI {
    */
   static async deactivate(id: number): Promise<{ message: string }> {
     try {
+      const userData = localStorage.getItem("bidnow_user");
+      const currentUserId = userData 
+        ? JSON.parse(userData).id 
+        : null;
       const response = await fetch(`${API_BASE}${API_ENDPOINTS.USERS.DEACTIVATE(id)}`, {
         method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-Id': currentUserId ? String(currentUserId) : ''
+        },
+        credentials: 'include',
       });
       return await this.handleResponse<{ message: string }>(response);
     } catch (error) {

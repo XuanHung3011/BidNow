@@ -262,14 +262,49 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
     return () => clearInterval(interval)
   }, [user?.id])
 
-  const handleRateClick = (auction: SellerAuctionDto) => {
-    setRatingDialog({
-      open: true,
-      auctionId: auction.id,
-      auctionTitle: auction.itemTitle,
-      buyerName: auction.winnerName || "Người mua",
-      winnerId: auction.winnerId,
-    })
+  const handleRateClick = async (auction: SellerAuctionDto) => {
+    if (!user) return
+    
+    try {
+      // Fetch auction detail to verify seller is owner and buyer is winner
+      const sellerId = parseInt(user.id)
+      const auctionDetail = await AuctionsAPI.getDetail(auction.id, sellerId)
+      
+      // Validate: Seller must be owner of auction
+      if (auctionDetail.sellerId !== sellerId) {
+        toast({
+          title: "Lỗi",
+          description: "Bạn chỉ có thể đánh giá người mua của phiên đấu giá do bạn tạo",
+          variant: "destructive"
+        })
+        return
+      }
+      
+      // Validate: Only rate winner
+      if (!auctionDetail.winnerId) {
+        toast({
+          title: "Lỗi",
+          description: "Chỉ có thể đánh giá người thắng phiên đấu giá",
+          variant: "destructive"
+        })
+        return
+      }
+      
+      setRatingDialog({
+        open: true,
+        auctionId: auction.id,
+        auctionTitle: auction.itemTitle,
+        buyerName: auction.winnerName || "Người mua",
+        winnerId: auction.winnerId,
+      })
+    } catch (error: any) {
+      console.error("Error fetching auction detail:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải thông tin phiên đấu giá",
+        variant: "destructive"
+      })
+    }
   }
 
   const handleRatingSubmit = async (rating: number, comment: string) => {
@@ -285,6 +320,30 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
     try {
       setSubmittingRating(true)
       const sellerId = parseInt(user.id)
+      
+      // Validate: Seller must be owner and buyer must be winner
+      const auctionDetail = await AuctionsAPI.getDetail(ratingDialog.auctionId, sellerId)
+      
+      // Validate seller is owner
+      if (auctionDetail.sellerId !== sellerId) {
+        toast({
+          title: "Lỗi",
+          description: "Bạn chỉ có thể đánh giá người mua của phiên đấu giá do bạn tạo",
+          variant: "destructive"
+        })
+        return
+      }
+      
+      // Validate buyer is winner
+      if (!auctionDetail.winnerId || auctionDetail.winnerId !== ratingDialog.winnerId) {
+        toast({
+          title: "Lỗi",
+          description: "Chỉ có thể đánh giá người thắng phiên đấu giá",
+          variant: "destructive"
+        })
+        return
+      }
+      
       await RatingsAPI.create({
         auctionId: ratingDialog.auctionId,
         raterId: sellerId,
