@@ -1,4 +1,5 @@
 import type React from "react"
+import { Suspense } from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
@@ -26,9 +27,15 @@ export default function RootLayout({
     <html lang="vi">
       <body className={`font-sans antialiased`}>
         <AuthProvider>
-          <Header />
-          <TopSearchBar />
-          <TopCategoryBar />
+          <Suspense fallback={null}>
+            <Header />
+          </Suspense>
+          <Suspense fallback={null}>
+            <TopSearchBar />
+          </Suspense>
+          <Suspense fallback={null}>
+            <TopCategoryBar />
+          </Suspense>
           {children}
         </AuthProvider>
         <Analytics />
