@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/auth-context"
 import { ItemsAPI } from "@/lib/api/items"
 import { AuctionsAPI } from "@/lib/api/auctions"
 import { ItemResponseDto, CategoryDto, CreateItemDto } from "@/lib/api/types"
-import { getImageUrls } from "@/lib/api/config"
+import { getImageUrls, API_BASE } from "@/lib/api/config"
 import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, X } from "lucide-react"
@@ -393,7 +393,6 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
           let imageUrl = url
           if (url.startsWith("/")) {
             // If relative path, prepend API_BASE
-            const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5167"
             imageUrl = `${API_BASE}${url}`
           }
 
@@ -579,7 +578,6 @@ export function CreateAuctionDialog({ open, onOpenChange, draftItem, onDraftDele
           let imageUrl = url
           if (url.startsWith("/")) {
             // If relative path, prepend API_BASE
-            const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5167"
             imageUrl = `${API_BASE}${url}`
           }
 

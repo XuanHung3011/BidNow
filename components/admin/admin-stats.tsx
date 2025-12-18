@@ -97,7 +97,9 @@ export function AdminStats() {
         ])
       } catch (error) {
         isStarting = false
-        // Silently ignore connection errors
+        // Log error for debugging but don't show to user
+        console.warn("SignalR connection error (admin-stats):", error)
+        // Silently ignore connection errors - stats will still work via polling
       }
     })()
 

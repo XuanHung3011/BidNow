@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { User, Mail, Shield, Calendar, Award, Phone, Upload, X } from "lucide-react"
-import { UsersAPI, UserUpdateDto } from "@/lib/api"
+import { UsersAPI, UserUpdateDto, API_BASE, getImageUrl } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import {
   AlertDialog,
@@ -22,7 +22,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { API_BASE, getImageUrl } from "@/lib/api/config"
 
 export function UserProfile() {
   const { user } = useAuth()
@@ -130,7 +129,6 @@ export function UserProfile() {
     const formData = new FormData()
     formData.append("file", file)
 
-    const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5167"
     const response = await fetch(`${API_BASE}/api/Users/${user.id}/avatar`, {
       method: "POST",
       body: formData,

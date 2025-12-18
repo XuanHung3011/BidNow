@@ -1,4 +1,4 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5167";
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://api.bitnow.io.vn";
 
 /**
  * Tạo URL đầy đủ cho ảnh từ tên file

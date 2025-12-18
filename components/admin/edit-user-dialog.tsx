@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Upload, X } from "lucide-react"
-import { getImageUrl } from "@/lib/api/config"
+import { getImageUrl, API_BASE } from "@/lib/api/config"
 
 interface EditUserDialogProps {
   open: boolean
@@ -116,7 +116,6 @@ export function EditUserDialog({ open, onOpenChange, user, onSubmit }: EditUserD
     const formData = new FormData()
     formData.append("file", file)
 
-    const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5167"
     const response = await fetch(`${API_BASE}/api/Users/${userId}/avatar`, {
       method: "POST",
       body: formData,
