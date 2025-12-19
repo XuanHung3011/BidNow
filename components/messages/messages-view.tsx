@@ -110,42 +110,68 @@ export function MessagesView() {
 
   // Track scroll position to determine if user is near bottom
   useEffect(() => {
-    const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-    if (!scrollArea) return
+    // Wait for scrollArea to be ready
+    const setupScrollListener = () => {
+      const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
+      if (!scrollArea) {
+        // Retry after a short delay if not ready
+        setTimeout(setupScrollListener, 100)
+        return
+      }
 
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = scrollArea
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100 // 100px threshold
-      shouldAutoScrollRef.current = isNearBottom
+      const handleScroll = () => {
+        const { scrollTop, scrollHeight, clientHeight } = scrollArea
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100 // 100px threshold
+        shouldAutoScrollRef.current = isNearBottom
+      }
+
+      scrollArea.addEventListener('scroll', handleScroll)
+      return () => scrollArea.removeEventListener('scroll', handleScroll)
     }
 
-    scrollArea.addEventListener('scroll', handleScroll)
-    return () => scrollArea.removeEventListener('scroll', handleScroll)
-  }, [])
+    const cleanup = setupScrollListener()
+    return cleanup
+  }, [selectedConversation]) // Re-setup when conversation changes
 
   // Auto-scroll to bottom when messages change (only if new message added or conversation changed)
   useEffect(() => {
-    const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-    if (!scrollArea || messages.length === 0 || !selectedConversation) return
+    // Debounce scroll to prevent continuous scrolling
+    const timeoutId = setTimeout(() => {
+      const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
+      if (!scrollArea || messages.length === 0 || !selectedConversation) {
+        // Update refs even if not scrolling to prevent false positives
+        previousMessagesLengthRef.current = messages.length
+        previousSelectedConversationRef.current = selectedConversation
+        return
+      }
 
-    // Only scroll if:
-    // 1. Conversation changed (new conversation selected)
-    // 2. New message added (messages length increased)
-    // 3. User is near bottom (shouldAutoScrollRef.current is true)
-    const conversationChanged = previousSelectedConversationRef.current !== selectedConversation
-    const newMessageAdded = messages.length > previousMessagesLengthRef.current
-    const shouldScroll = conversationChanged || (newMessageAdded && shouldAutoScrollRef.current)
+      // Only scroll if:
+      // 1. Conversation changed (new conversation selected)
+      // 2. New message added (messages length increased AND we had messages before)
+      // 3. User is near bottom (shouldAutoScrollRef.current is true)
+      const conversationChanged = previousSelectedConversationRef.current !== selectedConversation
+      const currentLength = messages.length
+      const previousLength = previousMessagesLengthRef.current
+      // Only consider it a new message if we had messages before (avoid false positive on initial load)
+      const newMessageAdded = currentLength > previousLength && previousLength > 0
+      const shouldScroll = conversationChanged || (newMessageAdded && shouldAutoScrollRef.current)
 
-    if (shouldScroll) {
-      // Use requestAnimationFrame for smoother scroll
-      requestAnimationFrame(() => {
-        scrollArea.scrollTop = scrollArea.scrollHeight
-      })
-    }
+      if (shouldScroll) {
+        // Use requestAnimationFrame for smoother scroll
+        requestAnimationFrame(() => {
+          const currentScrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
+          if (currentScrollArea) {
+            currentScrollArea.scrollTop = currentScrollArea.scrollHeight
+          }
+        })
+      }
 
-    // Update refs
-    previousMessagesLengthRef.current = messages.length
-    previousSelectedConversationRef.current = selectedConversation
+      // Update refs AFTER checking to prevent false positives
+      previousMessagesLengthRef.current = currentLength
+      previousSelectedConversationRef.current = selectedConversation
+    }, 100) // Small delay to debounce and wait for DOM updates
+
+    return () => clearTimeout(timeoutId)
   }, [messages, selectedConversation])
 
   const getSupportAdminId = useCallback(async () => {
@@ -661,8 +687,11 @@ export function MessagesView() {
       
       setMessages(data || [])
       // Reset previous messages length when loading new conversation
-      previousMessagesLengthRef.current = 0
-      shouldAutoScrollRef.current = true // Always scroll when loading new conversation
+      // Use setTimeout to ensure state is updated before setting ref
+      setTimeout(() => {
+        previousMessagesLengthRef.current = data?.length ?? 0
+        shouldAutoScrollRef.current = true // Always scroll when loading new conversation
+      }, 0)
       
       // Find and set conversation info for display
       const convInfo = conversations.find(
