@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Star, MessageSquare, Loader2, AlertCircle, CreditCard, CheckCircle2, Clock, XCircle, Filter } from "lucide-react"
 import Link from "next/link"
 import { AuctionsAPI, type BuyerWonAuctionDto } from "@/lib/api/auctions"
+import { getImageUrl } from "@/lib/api/config"
 import { RatingDialog } from "@/components/rating-dialog"
 import { PaymentButton } from "@/components/payment-button"
 import { RatingsAPI } from "@/lib/api/ratings"
@@ -193,11 +194,12 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
     if (!images) return "/placeholder.svg"
     try {
       const imageArray = JSON.parse(images)
-      return Array.isArray(imageArray) && imageArray.length > 0 
-        ? imageArray[0] 
-        : "/placeholder.svg"
+      if (Array.isArray(imageArray) && imageArray.length > 0) {
+        return getImageUrl(imageArray[0])
+      }
+      return "/placeholder.svg"
     } catch {
-      return images || "/placeholder.svg"
+      return getImageUrl(images) || "/placeholder.svg"
     }
   }
 

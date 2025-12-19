@@ -92,10 +92,11 @@ export default function RegisterPage() {
       })
       
       if (result.token) {
-        setResendMessage("Đã gửi lại email xác minh thành công!")
+        setResendMessage("Đã gửi lại email xác minh thành công! Vui lòng kiểm tra hộp thư (cả thư mục Spam).")
         setTimeLeft(24 * 60) // Reset timer
       } else {
-        setResendMessage("Gửi lại email thất bại. Vui lòng thử lại sau.")
+        const errorMsg = result.message || "Gửi lại email thất bại. Vui lòng thử lại sau."
+        setResendMessage(errorMsg)
       }
     } catch (error) {
       setResendMessage("Có lỗi xảy ra. Vui lòng thử lại sau.")

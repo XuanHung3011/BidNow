@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Clock, X, Loader2, AlertCircle, Filter } from "lucide-react"
 import Link from "next/link"
 import { WatchlistAPI, type WatchlistItemDto } from "@/lib/api/watchlist"
+import { getImageUrl } from "@/lib/api/config"
 import { useAuth } from "@/lib/auth-context"
 import {
   AlertDialog,
@@ -125,11 +126,12 @@ export function WatchlistList() {
     if (!images) return "/placeholder.svg"
     try {
       const imageArray = JSON.parse(images)
-      return Array.isArray(imageArray) && imageArray.length > 0 
-        ? imageArray[0] 
-        : "/placeholder.svg"
+      if (Array.isArray(imageArray) && imageArray.length > 0) {
+        return getImageUrl(imageArray[0])
+      }
+      return "/placeholder.svg"
     } catch {
-      return images || "/placeholder.svg"
+      return getImageUrl(images) || "/placeholder.svg"
     }
   }
 

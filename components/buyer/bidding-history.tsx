@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TrendingUp, TrendingDown, Trophy, X, Loader2, Star, Filter } from "lucide-react"
 import { AuctionsAPI, type BiddingHistoryDto, AuctionDetailDto } from "@/lib/api/auctions"
+import { getImageUrl } from "@/lib/api/config"
 import { RatingsAPI } from "@/lib/api/ratings"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
@@ -93,11 +94,12 @@ export function BiddingHistory() {
     if (!images) return "/placeholder.svg"
     try {
       const imageArray = JSON.parse(images)
-      return Array.isArray(imageArray) && imageArray.length > 0 
-        ? imageArray[0] 
-        : "/placeholder.svg"
-    } catch {
+      if (Array.isArray(imageArray) && imageArray.length > 0) {
+        return getImageUrl(imageArray[0])
+      }
       return "/placeholder.svg"
+    } catch {
+      return getImageUrl(images) || "/placeholder.svg"
     }
   }
 

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Clock, TrendingUp, AlertCircle, Loader2, Filter } from "lucide-react"
 import Link from "next/link"
 import { AuctionsAPI, type BuyerActiveBidDto } from "@/lib/api/auctions"
+import { getImageUrl } from "@/lib/api/config"
 
 interface ActiveBidsListProps {
   bidderId: number
@@ -77,11 +78,12 @@ export function ActiveBidsList({ bidderId }: ActiveBidsListProps) {
     if (!images) return "/placeholder.svg"
     try {
       const imageArray = JSON.parse(images)
-      return Array.isArray(imageArray) && imageArray.length > 0 
-        ? imageArray[0] 
-        : "/placeholder.svg"
+      if (Array.isArray(imageArray) && imageArray.length > 0) {
+        return getImageUrl(imageArray[0])
+      }
+      return "/placeholder.svg"
     } catch {
-      return images || "/placeholder.svg"
+      return getImageUrl(images) || "/placeholder.svg"
     }
   }
 

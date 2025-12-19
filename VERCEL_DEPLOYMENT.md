@@ -67,3 +67,4 @@ Sau khi deploy:
 - **Cookies**: Đảm bảo cookies được gửi với requests (đã được cấu hình trong code)
 - **HTTPS**: Vercel tự động cung cấp HTTPS, backend cũng cần HTTPS
 
+
