@@ -49,8 +49,6 @@ export function MessagesView() {
   const [disputeConversations, setDisputeConversations] = useState<Array<{disputeId: number, orderId: number, title: string, lastMessageTime: string, createdAt: string, buyerId: number, sellerId: number, adminId: number | null}>>([])
   const [disputeParticipantPairs, setDisputeParticipantPairs] = useState<Set<string>>(new Set())
   const [disputesLoaded, setDisputesLoaded] = useState(false)
-  // Cache to track which conversations have been checked for pre-dispute messages
-  const conversationPreDisputeCache = useRef<Map<string, boolean>>(new Map())
   const [messages, setMessages] = useState<MessageResponseDto[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -76,8 +74,6 @@ export function MessagesView() {
   const userIdRef = useRef<number | null>(null)
   const supportAdminIdRef = useRef<number | null>(null)
   const disputeIdRef = useRef<number | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement | null>(null)
-  const scrollAreaRef = useRef<HTMLDivElement | null>(null)
 
   const emitUnreadSync = useCallback((count?: number) => {
     if (typeof window === "undefined") return
@@ -104,19 +100,6 @@ export function MessagesView() {
       userIdRef.current = null
     }
   }, [user?.id])
-
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (messages.length > 0 && selectedConversation) {
-      setTimeout(() => {
-        const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-        if (scrollArea) {
-          scrollArea.scrollTop = scrollArea.scrollHeight
-        }
-      }, 100)
-    }
-  }, [messages, selectedConversation])
-
   const getSupportAdminId = useCallback(async () => {
     if (supportAdminIdRef.current) {
       return supportAdminIdRef.current
@@ -195,11 +178,6 @@ export function MessagesView() {
   // Load dispute info when disputeId is set
   useEffect(() => {
     if (disputeId) {
-      // Close personal chat when opening dispute chat
-      setSelectedConversation(null)
-      setSelectedAuctionId(null)
-      setSelectedConversationInfo(null)
-      setMessages([])
       setActiveTab("dispute")
       // Support role không được xử lý chat khiếu nại
       if (user?.currentRole === "support") {
@@ -222,19 +200,18 @@ export function MessagesView() {
     try {
       const data = await disputesAPI.getById(disputeId!)
       setDisputeInfo(data)
-      // REMOVED: Auto-select conversations when opening dispute
-      // Dispute chat is shown separately, no need to auto-select personal conversations
-      // if (data && userIdRef.current) {
-      //   // For admin/staff/support, show both conversations
-      //   if (user?.currentRole === "admin" || user?.currentRole === "staff" || user?.currentRole === "support") {
-      //     // Select buyer conversation first
-      //     setSelectedConversation(data.buyerId)
-      //   } else {
-      //     // For buyer/seller, select the other party
-      //     const otherPartyId = userIdRef.current === data.buyerId ? data.sellerId : data.buyerId
-      //     setSelectedConversation(otherPartyId)
-      //   }
-      // }
+      // Auto-select conversations with buyer and seller
+      if (data && userIdRef.current) {
+        // For admin/staff/support, show both conversations
+        if (user?.currentRole === "admin" || user?.currentRole === "staff" || user?.currentRole === "support") {
+          // Select buyer conversation first
+          setSelectedConversation(data.buyerId)
+        } else {
+          // For buyer/seller, select the other party
+          const otherPartyId = userIdRef.current === data.buyerId ? data.sellerId : data.buyerId
+          setSelectedConversation(otherPartyId)
+        }
+      }
     } catch (error: any) {
       toast({
         title: "Lỗi",
@@ -446,9 +423,9 @@ export function MessagesView() {
         if (!adminId) {
           try {
             const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
-            adminId = adminUser?.id ?? undefined
+            adminId = adminUser?.id ?? null
           } catch {
-            adminId = undefined
+            adminId = null
           }
         }
         // Create pairs for filtering: "buyerId-sellerId", "buyerId-adminId", "sellerId-adminId"
@@ -468,45 +445,56 @@ export function MessagesView() {
       const disputeConvs = await Promise.all(
         activeDisputes.map(async (dispute) => {
           try {
-            // Get last message from dispute chat using the dedicated endpoint
-            // This endpoint handles authorization properly for staff/admin
-            let lastMessageTime = dispute.createdAt
-            
-            try {
-              const disputeMessages = await MessagesAPI.getDisputeMessages(dispute.id)
-              if (disputeMessages && disputeMessages.length > 0) {
-                // Get the most recent message
-                const sortedMessages = disputeMessages.sort((a, b) => {
-                  const timeA = a.sentAt ? new Date(a.sentAt).getTime() : 0
-                  const timeB = b.sentAt ? new Date(b.sentAt).getTime() : 0
-                  return timeB - timeA
-                })
-                lastMessageTime = sortedMessages[0]?.sentAt || dispute.createdAt
-              }
-            } catch (error) {
-              // If we can't load messages (e.g., user doesn't have access), use dispute creation time
-              console.warn(`Could not load messages for dispute ${dispute.id}:`, error)
-            }
-            
+            // Get last message from dispute chat
+            const { buyerId, sellerId } = dispute
             let adminId = dispute.resolvedBy
             if (!adminId) {
               try {
                 const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
-                adminId = adminUser?.id ?? undefined
+                adminId = adminUser?.id ?? null
               } catch {
-                adminId = undefined
+                adminId = null
               }
             }
+            
+            // Load messages between participants
+            const allMessagePromises: Promise<MessageResponseDto[]>[] = []
+            allMessagePromises.push(
+              MessagesAPI.getConversation(buyerId, sellerId, null)
+            )
+            if (adminId) {
+              allMessagePromises.push(
+                MessagesAPI.getConversation(buyerId, adminId, null),
+                MessagesAPI.getConversation(sellerId, adminId, null)
+              )
+            }
+            
+            const allMessageArrays = await Promise.all(allMessagePromises)
+            const allMessages = allMessageArrays.flat()
+            
+            // Filter messages after dispute created
+            const disputeCreatedAt = new Date(dispute.createdAt).getTime()
+            const relevantMessages = allMessages.filter(msg => {
+              const msgTime = msg.sentAt ? new Date(msg.sentAt).getTime() : 0
+              return msgTime >= disputeCreatedAt - 60000
+            })
+            
+            // Get last message time
+            const lastMessage = relevantMessages.sort((a, b) => {
+              const timeA = a.sentAt ? new Date(a.sentAt).getTime() : 0
+              const timeB = b.sentAt ? new Date(b.sentAt).getTime() : 0
+              return timeB - timeA
+            })[0]
             
             return {
               disputeId: dispute.id,
               orderId: dispute.orderId,
               title: `Khiếu nại đơn hàng #${dispute.orderId}`,
-              lastMessageTime: lastMessageTime,
+              lastMessageTime: lastMessage?.sentAt || dispute.createdAt,
               createdAt: dispute.createdAt,
               buyerId: dispute.buyerId,
               sellerId: dispute.sellerId,
-              adminId: adminId ?? null
+              adminId: adminId
             }
           } catch (error) {
             console.error(`Error loading messages for dispute ${dispute.id}:`, error)
@@ -568,13 +556,13 @@ export function MessagesView() {
         }
       }
       
-      // REMOVED: Auto-select first conversation when loading
-      // User should manually select which conversation to view
-      // if (showLoading && data && data.length > 0 && !selectedConversation) {
-      //   setSelectedConversation(data[0].otherUserId)
-      //   setSelectedAuctionId(data[0].auctionId || null)
-      //   setSelectedConversationInfo(data[0])
-      // }
+      // Auto-select first conversation ONLY on initial load (when showLoading is true)
+      // Don't auto-select on silent refresh to prevent jumping
+      if (showLoading && data && data.length > 0 && !selectedConversation) {
+        setSelectedConversation(data[0].otherUserId)
+        setSelectedAuctionId(data[0].auctionId || null)
+        setSelectedConversationInfo(data[0])
+      }
     } catch (error) {
       console.error("Error loading conversations:", error)
       if (showLoading) {
@@ -624,11 +612,35 @@ export function MessagesView() {
   const loadMessages = async (userId1: number, userId2: number, auctionId: number | null) => {
     try {
       setLoadingMessages(true)
-      // Backend now automatically filters out dispute messages when no date range is specified
-      // So we can just call the API without additional filtering
       const data = await MessagesAPI.getConversation(userId1, userId2, auctionId || undefined)
       
-      setMessages(data || [])
+      // Filter out messages that belong to active dispute chats
+      // (to avoid showing dispute chat messages in regular 1-1 conversations)
+      let filteredData = data || []
+      
+      if (!auctionId && disputeConversations.length > 0) {
+        // Check if this conversation is between dispute participants
+        const matchingDisputes = disputeConversations.filter(disputeConv => {
+          const { buyerId, sellerId, adminId } = disputeConv
+          const participants = [buyerId, sellerId]
+          if (adminId) participants.push(adminId)
+          return participants.includes(userId1) && participants.includes(userId2)
+        })
+        
+        if (matchingDisputes.length > 0) {
+          // Filter out messages sent after dispute was created
+          filteredData = (data || []).filter(msg => {
+            const msgTime = msg.sentAt ? new Date(msg.sentAt).getTime() : 0
+            // Keep message only if it was sent before ALL matching disputes were created
+            return matchingDisputes.every(dispute => {
+              const disputeCreatedAt = new Date(dispute.createdAt).getTime()
+              return msgTime < disputeCreatedAt - 60000 // Before dispute (with 1 minute buffer)
+            })
+          })
+        }
+      }
+      
+      setMessages(filteredData)
       
       // Find and set conversation info for display
       const convInfo = conversations.find(
@@ -651,23 +663,15 @@ export function MessagesView() {
       }
       
       // Mark messages as read when loading conversation
-      if (data && data.length > 0) {
+      if (filteredData && filteredData.length > 0) {
         // Mark all unread messages in this conversation as read
-        const unreadMessages = data.filter((m: MessageResponseDto) => !m.isRead && m.receiverId === userId1)
+        const unreadMessages = filteredData.filter(m => !m.isRead && m.receiverId === userId1)
         for (const message of unreadMessages) {
           await MessagesAPI.markAsRead(message.id)
         }
         // Reload conversations to update unread count (silent refresh)
         loadConversations(false)
       }
-      
-      // Scroll to bottom after loading messages
-      setTimeout(() => {
-        const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-        if (scrollArea) {
-          scrollArea.scrollTop = scrollArea.scrollHeight
-        }
-      }, 100)
     } catch (error) {
       console.error("Error loading messages:", error)
       toast({
@@ -684,8 +688,6 @@ export function MessagesView() {
   // Filter out conversations that are part of active disputes
   // (to avoid showing buyer-seller, buyer-admin, seller-admin conversations separately)
   // BUT keep regular 1-1 conversations that are NOT part of disputes
-  // IMPORTANT: Only filter if conversation has NO messages before dispute was created
-  // This ensures personal chats that existed before dispute are preserved
   const filteredRegularConversations = conversations.filter(conv => {
     if (!conv || !user?.id) return true
     
@@ -728,47 +730,43 @@ export function MessagesView() {
     })
     
     if (matchingDisputes.length > 0) {
-      // CRITICAL FIX: Check if conversation has messages BEFORE any matching dispute
-      // If it has messages before dispute, it's a personal chat - KEEP IT
-      // Only filter if conversation appears to be dispute-only (started after dispute)
+      // Check if conversation's last message is after dispute was created
+      // Only filter if last message is after dispute (meaning it's part of dispute chat)
+      // Keep conversations with messages before dispute (regular 1-1 chats)
       const convLastMessageTime = conv.lastMessageTime ? new Date(conv.lastMessageTime).getTime() : 0
       
       if (convLastMessageTime === 0) {
         // No last message time - be conservative and keep it (don't filter)
+        console.log("Keeping conversation (no lastMessageTime):", conv.otherUserId)
         return true
       }
       
-      // Find the EARLIEST dispute creation time among matching disputes
-      const earliestDisputeTime = Math.min(
-        ...matchingDisputes.map(d => new Date(d.createdAt).getTime())
-      )
+      // Check against all matching disputes
+      // Only filter if last message is CLEARLY after dispute was created
+      const isAfterAnyDispute = matchingDisputes.some(dispute => {
+        const disputeCreatedAt = new Date(dispute.createdAt).getTime()
+        // Only filter if last message is clearly after dispute (with 1 minute buffer to account for timing)
+        const isAfter = convLastMessageTime >= disputeCreatedAt - 60000
+        if (isAfter) {
+          console.log("Filtering conversation (after dispute):", {
+            otherUserId: conv.otherUserId,
+            lastMessageTime: new Date(convLastMessageTime).toISOString(),
+            disputeCreatedAt: new Date(disputeCreatedAt).toISOString(),
+            disputeId: dispute.disputeId
+          })
+        }
+        return isAfter
+      })
       
-      // KEY FIX: If lastMessage is before earliest dispute, definitely keep it
-      // This means the conversation existed before any dispute - it's a personal chat
-      if (convLastMessageTime < earliestDisputeTime - 60000) {
-        // Last message is clearly before any dispute - it's a personal chat, keep it
-        console.log("Keeping personal conversation (before dispute):", {
-          otherUserId,
-          lastMessageTime: new Date(convLastMessageTime).toISOString(),
-          earliestDisputeTime: new Date(earliestDisputeTime).toISOString()
-        })
-        return true
+      if (isAfterAnyDispute) {
+        return false // Filter out - it's part of a dispute chat
       }
       
-      // If lastMessage is after dispute, we need to check if there are pre-dispute messages
-      // Check cache first to avoid repeated API calls
-      const cacheKey = `${currentUserId}-${otherUserId}`
-      const cachedResult = conversationPreDisputeCache.current.get(cacheKey)
-      if (cachedResult !== undefined) {
-        console.log("Using cached result for conversation:", cacheKey, cachedResult)
-        return cachedResult
-      }
-      
-      // IMPORTANT: If we don't have cache, we need to be conservative
-      // Default to KEEPING the conversation - we'll filter messages when loading
-      // This ensures personal chats are not lost
-      console.log("No cache for conversation, keeping it (will filter messages on load):", cacheKey)
-      conversationPreDisputeCache.current.set(cacheKey, true)
+      // Last message is before dispute - it's a regular conversation, keep it
+      console.log("Keeping conversation (before dispute):", {
+        otherUserId: conv.otherUserId,
+        lastMessageTime: new Date(convLastMessageTime).toISOString()
+      })
       return true
     }
     
@@ -825,18 +823,13 @@ export function MessagesView() {
 
   // Get conversations for active tab
   const getConversationsForTab = () => {
-    type ConversationItem = 
-      | (typeof personalConversations)[number]
-      | (typeof disputeConversationsList)[number]
-      | (typeof supportConversations)[number]
-    
-    let tabConversations: ConversationItem[] = []
+    let tabConversations: typeof personalConversations = []
     if (activeTab === "personal") {
-      tabConversations = personalConversations as ConversationItem[]
+      tabConversations = personalConversations
     } else if (activeTab === "dispute") {
-      tabConversations = disputeConversationsList as ConversationItem[]
+      tabConversations = disputeConversationsList
     } else if (activeTab === "support") {
-      tabConversations = supportConversations as ConversationItem[]
+      tabConversations = supportConversations
     }
     
     return tabConversations
@@ -876,14 +869,6 @@ export function MessagesView() {
       }
       // Reload conversations to update last message (silent refresh)
       await loadConversations(false)
-      
-      // Scroll to bottom after sending message
-      setTimeout(() => {
-        const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-        if (scrollArea) {
-          scrollArea.scrollTop = scrollArea.scrollHeight
-        }
-      }, 200)
     } catch (error) {
       console.error("Error sending message:", error)
       toast({
@@ -914,11 +899,6 @@ export function MessagesView() {
   const handleConversationSelect = (otherUserId: number, auctionId: number | null, disputeId?: number) => {
     // If it's a dispute conversation, open dispute chat
     if (disputeId) {
-      // Close personal chat when opening dispute chat
-      setSelectedConversation(null)
-      setSelectedAuctionId(null)
-      setSelectedConversationInfo(null)
-      setMessages([])
       router.push(`/messages?disputeId=${disputeId}`)
       return
     }
@@ -1555,7 +1535,7 @@ export function MessagesView() {
 
               {/* Messages */}
               <div className="flex-1 min-h-0 overflow-hidden">
-                <ScrollArea ref={scrollAreaRef} className="h-full">
+                <ScrollArea className="h-full">
                   <div className="p-4">
                     {loadingMessages ? (
                       <div className="flex items-center justify-center py-20">
@@ -1604,7 +1584,6 @@ export function MessagesView() {
                         })}
                       </div>
                     )}
-                    <div ref={messagesEndRef} />
                   </div>
                 </ScrollArea>
               </div>
@@ -1656,7 +1635,7 @@ export function MessagesView() {
 
               {/* Messages List by UserId */}
               <div className="flex-1 min-h-0 overflow-hidden">
-                <ScrollArea ref={scrollAreaRef} className="h-full">
+                <ScrollArea className="h-full">
                   <div className="p-4">
                     {loadingMessages ? (
                       <div className="flex items-center justify-center py-20">
@@ -1769,21 +1748,7 @@ export function MessagesView() {
               <h3 className="font-semibold mb-2">Thông tin khiếu nại</h3>
               <div className="text-sm space-y-1 text-muted-foreground">
                 <p><span className="font-medium text-foreground">Lý do:</span> {disputeInfo.reason}</p>
-                <p><span className="font-medium text-foreground">Trạng thái:</span> {
-                  disputeInfo.status === "pending"
-                    ? "Chờ xử lý"
-                    : disputeInfo.status === "in_review"
-                    ? "Đang xử lý"
-                    : disputeInfo.status === "buyer_won"
-                    ? "Người mua thắng"
-                    : disputeInfo.status === "seller_won"
-                    ? "Người bán thắng"
-                    : disputeInfo.status === "resolved"
-                    ? "Đã giải quyết"
-                    : disputeInfo.status === "closed"
-                    ? "Đã đóng"
-                    : disputeInfo.status
-                }</p>
+                <p><span className="font-medium text-foreground">Trạng thái:</span> {disputeInfo.status}</p>
                 <p><span className="font-medium text-foreground">Người mua:</span> {disputeInfo.buyerName}</p>
                 <p><span className="font-medium text-foreground">Người bán:</span> {disputeInfo.sellerName}</p>
               </div>
