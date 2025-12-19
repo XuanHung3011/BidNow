@@ -78,6 +78,9 @@ export function MessagesView() {
   const disputeIdRef = useRef<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
+  const previousMessagesLengthRef = useRef<number>(0)
+  const previousSelectedConversationRef = useRef<number | null>(null)
+  const shouldAutoScrollRef = useRef<boolean>(true)
 
   const emitUnreadSync = useCallback((count?: number) => {
     if (typeof window === "undefined") return
@@ -105,16 +108,44 @@ export function MessagesView() {
     }
   }, [user?.id])
 
-  // Auto-scroll to bottom when messages change
+  // Track scroll position to determine if user is near bottom
   useEffect(() => {
-    if (messages.length > 0 && selectedConversation) {
-      setTimeout(() => {
-        const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-        if (scrollArea) {
-          scrollArea.scrollTop = scrollArea.scrollHeight
-        }
-      }, 100)
+    const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
+    if (!scrollArea) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollArea
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100 // 100px threshold
+      shouldAutoScrollRef.current = isNearBottom
     }
+
+    scrollArea.addEventListener('scroll', handleScroll)
+    return () => scrollArea.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Auto-scroll to bottom when messages change (only if new message added or conversation changed)
+  useEffect(() => {
+    const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
+    if (!scrollArea || messages.length === 0 || !selectedConversation) return
+
+    // Only scroll if:
+    // 1. Conversation changed (new conversation selected)
+    // 2. New message added (messages length increased)
+    // 3. User is near bottom (shouldAutoScrollRef.current is true)
+    const conversationChanged = previousSelectedConversationRef.current !== selectedConversation
+    const newMessageAdded = messages.length > previousMessagesLengthRef.current
+    const shouldScroll = conversationChanged || (newMessageAdded && shouldAutoScrollRef.current)
+
+    if (shouldScroll) {
+      // Use requestAnimationFrame for smoother scroll
+      requestAnimationFrame(() => {
+        scrollArea.scrollTop = scrollArea.scrollHeight
+      })
+    }
+
+    // Update refs
+    previousMessagesLengthRef.current = messages.length
+    previousSelectedConversationRef.current = selectedConversation
   }, [messages, selectedConversation])
 
   const getSupportAdminId = useCallback(async () => {
@@ -629,6 +660,9 @@ export function MessagesView() {
       const data = await MessagesAPI.getConversation(userId1, userId2, auctionId || undefined)
       
       setMessages(data || [])
+      // Reset previous messages length when loading new conversation
+      previousMessagesLengthRef.current = 0
+      shouldAutoScrollRef.current = true // Always scroll when loading new conversation
       
       // Find and set conversation info for display
       const convInfo = conversations.find(
@@ -661,13 +695,7 @@ export function MessagesView() {
         loadConversations(false)
       }
       
-      // Scroll to bottom after loading messages
-      setTimeout(() => {
-        const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-        if (scrollArea) {
-          scrollArea.scrollTop = scrollArea.scrollHeight
-        }
-      }, 100)
+      // Note: Auto-scroll is handled by useEffect above, no need to scroll here manually
     } catch (error) {
       console.error("Error loading messages:", error)
       toast({
@@ -877,13 +905,8 @@ export function MessagesView() {
       // Reload conversations to update last message (silent refresh)
       await loadConversations(false)
       
-      // Scroll to bottom after sending message
-      setTimeout(() => {
-        const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-        if (scrollArea) {
-          scrollArea.scrollTop = scrollArea.scrollHeight
-        }
-      }, 200)
+      // Note: Auto-scroll is handled by useEffect when messages state updates
+      // No need to scroll manually here
     } catch (error) {
       console.error("Error sending message:", error)
       toast({

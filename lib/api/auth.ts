@@ -121,7 +121,7 @@ export class AuthAPI {
     }
   }
 
-  static async resendVerification(request: ResendVerificationRequest): Promise<{ token?: string }> {
+  static async resendVerification(request: ResendVerificationRequest): Promise<{ token?: string; message?: string }> {
     try {
       const response = await fetch(`${API_BASE}${API_ENDPOINTS.AUTH.RESEND_VERIFICATION}`, {
         method: 'POST',
@@ -130,12 +130,17 @@ export class AuthAPI {
       });
       
       if (response.ok) {
-        return await response.json();
+        const data = await response.json();
+        return { token: data.token, message: data.message };
       }
-      return { token: undefined };
+      
+      // Handle error response
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.error('Resend verification failed:', response.status, errorText);
+      return { token: undefined, message: errorText };
     } catch (error) {
       console.error('Resend verification error:', error);
-      return { token: undefined };
+      return { token: undefined, message: 'Network error' };
     }
   }
 }
