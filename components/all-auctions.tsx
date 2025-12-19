@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, useRef } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -10,11 +10,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ItemsAPI } from "@/lib/api/items"
-import { AuctionsAPI, AuctionListItemDto, AuctionFilterParams } from "@/lib/api/auctions"
-import type { ItemFilterDto, CategoryDto } from "@/lib/api/types"
+import type { ItemResponseDto, ItemFilterDto, CategoryDto } from "@/lib/api/types"
 import { useSearchParams } from "next/navigation"
-import { getImageUrls, getImageUrl } from "@/lib/api/config"
-import { useAuth } from "@/lib/auth-context"
 
 // helper nhỏ
 const formatCurrency = (v?: number) =>
@@ -23,41 +20,67 @@ const formatCurrency = (v?: number) =>
 export function AllAuctions() {
   const searchParams = useSearchParams()
   const qParam = searchParams?.get("q") ?? ""
-  const categoryIdParam = searchParams?.get("categoryId")
-  const { user } = useAuth()
 
   // search
   const [searchQuery, setSearchQuery] = useState<string>(qParam)
   const [debouncedQuery, setDebouncedQuery] = useState<string>(qParam)
-  
-  // Track last logged query to prevent duplicate logging
-  const lastLoggedQueryRef = useRef<string>("")
 
   // filter states (form values inside sheet)
-  // Note: Category and price filters are not yet supported by auctions API
+  // <-- CHANGED: store category IDs as numbers
   const [selectedCategories, setSelectedCategories] = useState<number[]>([])
   const [minPriceStr, setMinPriceStr] = useState<string>("")
   const [maxPriceStr, setMaxPriceStr] = useState<string>("")
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
   const [categories, setCategories] = useState<CategoryDto[]>([])
 
+  // activeFilter = filter đã nhấn "Áp dụng"
+  const [activeFilter, setActiveFilter] = useState<ItemFilterDto | null>(null)
+
   const [sortBy, setSortBy] = useState("ending-soon")
   const [page, setPage] = useState(1)
   const [pageSize] = useState(12)
 
-  const [auctions, setAuctions] = useState<AuctionListItemDto[]>([])
+  const [items, setItems] = useState<ItemResponseDto[]>([])
   const [totalCount, setTotalCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-
-// sync q param and categoryId -> searchQuery, reset page
+// sync q param & categoryId param -> searchQuery, reset page
 useEffect(() => {
   const newQ = searchParams?.get("q") ?? ""
-  const newCategoryId = searchParams?.get("categoryId")
   setSearchQuery(newQ)
   setDebouncedQuery(newQ)
-  setPage(1) // Reset page when query or category changes
+  setPage(1)
+
+  // NEW: check categoryId param and auto-apply or clear
+  const catIdParam = searchParams?.get("categoryId")
+
+  if (catIdParam) {
+    const parsed = Number(catIdParam)
+    if (!Number.isNaN(parsed)) {
+      // if categoryId exists -> set selection + apply filter for that single category
+      setSelectedCategories([parsed])
+      const newFilter: ItemFilterDto = {
+        categoryIds: [parsed],
+        // keep searchTerm if present
+        searchTerm: newQ || undefined
+      }
+      setActiveFilter(newFilter)
+      setPage(1)
+    } else {
+      // malformed param -> clear filters
+      setSelectedCategories([])
+      setActiveFilter(null)
+      setPage(1)
+    }
+  } else {
+    // NO categoryId param -> clear category filter so "Tất cả" shows everything
+    setSelectedCategories([])
+    // Only clear activeFilter if it was set by URL category. 
+    // For simplicity and to match "All" behavior, we clear activeFilter here.
+    setActiveFilter(null)
+    setPage(1)
+  }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [searchParams?.toString()])
@@ -78,34 +101,6 @@ useEffect(() => {
     return () => { mounted = false }
   }, [])
 
-  // Log search keyword when URL query changes (only once per search)
-  useEffect(() => {
-    const queryFromUrl = searchParams?.get("q")?.trim() ?? ""
-    // Only log if query changed and user is logged in
-    if (queryFromUrl && queryFromUrl !== lastLoggedQueryRef.current && user?.id) {
-      try {
-        const userId = Number(user.id)
-        if (userId > 0) {
-          // Update ref before logging to prevent duplicate logs
-          lastLoggedQueryRef.current = queryFromUrl
-          // Call searchPaged API to log search keyword (fire and forget)
-          ItemsAPI.searchPaged(queryFromUrl, 1, 1, userId).catch(err => {
-            console.error('Failed to log search keyword:', err)
-            // Reset ref on error so it can be retried if needed
-            lastLoggedQueryRef.current = ""
-          })
-        }
-      } catch (err) {
-        console.error('Error logging search keyword:', err)
-        lastLoggedQueryRef.current = ""
-      }
-    } else if (!queryFromUrl) {
-      // Reset ref when query is cleared
-      lastLoggedQueryRef.current = ""
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams?.toString(), user?.id])
-
   // debounce search
   useEffect(() => {
     const id = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300)
@@ -116,20 +111,38 @@ useEffect(() => {
   const toggleArrayItemNum = (arr: number[], value: number) =>
     arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value]
 
+  // Apply filter: build ItemFilterDto and set activeFilter
+  const applyFilter = () => {
+    const filter: ItemFilterDto = {}
+
+    // <-- CHANGED: send categoryIds as number[] to match backend DTO
+    if (selectedCategories.length) filter.categoryIds = selectedCategories
+
+    // <-- CHANGED: send auctionStatuses (backend expects auctionStatuses)
+    if (selectedStatuses.length) filter.auctionStatuses = selectedStatuses
+
+    const min = Number(minPriceStr)
+    const max = Number(maxPriceStr)
+    if (!Number.isNaN(min) && min > 0) filter.minPrice = min
+    if (!Number.isNaN(max) && max > 0) filter.maxPrice = max
+    // include search term if present (optional)
+    if (debouncedQuery) filter.searchTerm = debouncedQuery
+
+    setActiveFilter(filter)
+    setPage(1)
+  }
+
   const resetFilter = () => {
     setSelectedCategories([])
     setSelectedStatuses([])
     setMinPriceStr("")
     setMaxPriceStr("")
+    setActiveFilter(null)
+    // optionally refetch unfiltered results; page already set to 1
     setPage(1)
   }
 
-  // Auto-apply filter when category or price changes
-  useEffect(() => {
-    setPage(1)
-  }, [selectedCategories, minPriceStr, maxPriceStr])
-
-  // fetch whenever page / debouncedQuery / activeFilter / sortBy changes
+  // fetch whenever page / debouncedQuery / activeFilter changes
   useEffect(() => {
     let isMounted = true
     setLoading(true)
@@ -137,43 +150,27 @@ useEffect(() => {
 
     const fetchData = async () => {
       try {
-        // Map sortBy to backend sortBy values
-        let backendSortBy = "EndTime"
-        if (sortBy === 'ending-soon') backendSortBy = "EndTime"
-        else if (sortBy === 'newest') backendSortBy = "EndTime" // Use EndTime as proxy for newest
-        else if (sortBy === 'price-low' || sortBy === 'price-high') backendSortBy = "CurrentBid"
-        else if (sortBy === 'most-bids') backendSortBy = "BidCount"
-
-        const backendSortOrder = (sortBy === 'price-low' || sortBy === 'newest') ? "asc" : "desc"
-
-        const params: AuctionFilterParams = {
-          page,
-          pageSize,
-          sortBy: backendSortBy,
-          sortOrder: backendSortOrder
+        if (activeFilter) {
+          const res = await ItemsAPI.filterPaged(activeFilter, page, pageSize)
+          if (!isMounted) return
+          setItems(res.items)
+          setTotalCount(res.pagination?.totalCount ?? res.items.length)
+        } else if (debouncedQuery) {
+          const res = await ItemsAPI.searchPaged(debouncedQuery, page, pageSize)
+          if (!isMounted) return
+          setItems(res.items)
+          setTotalCount(res.pagination?.totalCount ?? res.items.length)
+        } else {
+          const res = await ItemsAPI.getPaged(page, pageSize)
+          if (!isMounted) return
+          setItems(res.items)
+          setTotalCount(res.pagination?.totalCount ?? res.items.length)
         }
-
-        if (debouncedQuery) {
-          params.searchTerm = debouncedQuery
-        }
-
-        // Add category filter if categoryId is in URL
-        if (categoryIdParam) {
-          const catId = Number(categoryIdParam)
-          if (!isNaN(catId) && catId > 0) {
-            params.categoryId = catId
-          }
-        }
-
-        const res = await AuctionsAPI.getAll(params)
-        if (!isMounted) return
-        setAuctions(res.data)
-        setTotalCount(res.totalCount)
       } catch (err: any) {
-        console.error('Fetch auctions error', err)
+        console.error('Fetch items error', err)
         if (!isMounted) return
         setError(err.message || 'Lỗi khi tải dữ liệu')
-        setAuctions([])
+        setItems([])
         setTotalCount(null)
       } finally {
         if (!isMounted) return
@@ -183,64 +180,32 @@ useEffect(() => {
 
     fetchData()
     return () => { isMounted = false }
-  }, [debouncedQuery, page, pageSize, sortBy, user?.id, categoryIdParam])
+  }, [debouncedQuery, activeFilter, page, pageSize])
 
-  // Sort is now handled by backend, but we can do additional client-side sorting if needed
-  const sortedAuctions = useMemo(() => {
-    // Backend already sorts, but we can apply additional sorting if needed
-    return [...auctions]
-  }, [auctions])
-
-  // Apply client-side filters (category and price)
-  const filteredAuctions = useMemo(() => {
-    let filtered = [...sortedAuctions]
-
-    // Filter by category
-    if (selectedCategories.length > 0) {
-      // Get selected category names
-      const selectedCategoryNames = categories
-        .filter(c => selectedCategories.includes(Number(c.id)))
-        .map(c => c.name)
-      
-      filtered = filtered.filter((auction) => {
-        // Match by category name
-        if (auction.categoryName) {
-          return selectedCategoryNames.includes(auction.categoryName)
-        }
-        return false
+  // sort client-side unchanged
+  const sortedItems = useMemo(() => {
+    const copy = [...items]
+    if (sortBy === 'ending-soon') {
+      return copy.sort((a, b) => {
+        const at = a.auctionEndTime ? new Date(a.auctionEndTime).getTime() : Infinity
+        const bt = b.auctionEndTime ? new Date(b.auctionEndTime).getTime() : Infinity
+        return at - bt
       })
     }
-
-    // Filter by price range
-    if (minPriceStr.trim() || maxPriceStr.trim()) {
-      const minPrice = minPriceStr.trim() ? parseFloat(minPriceStr) : 0
-      const maxPrice = maxPriceStr.trim() ? parseFloat(maxPriceStr) : Infinity
-
-      filtered = filtered.filter((auction) => {
-        const currentPrice = auction.currentBid ?? auction.startingBid ?? 0
-        return currentPrice >= minPrice && currentPrice <= maxPrice
-      })
+    if (sortBy === 'newest') {
+      return copy.sort((a,b)=> new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime())
     }
-
-    return filtered
-  }, [sortedAuctions, selectedCategories, minPriceStr, maxPriceStr, categories])
-
-  // Hiển thị tất cả auctions (bao gồm cả đã kết thúc), chỉ ẩn những phiên đã bị hủy
-  const visibleItems = useMemo(() => {
-    const isVisibleStatus = (status?: string | null) => {
-      const s = status?.toLowerCase() ?? ""
-      // Chỉ ẩn các phiên đã bị hủy, hiển thị cả những phiên đã kết thúc (completed/ended)
-      if (s === "cancelled" || s === "canceled") {
-        return false
-      }
-      return true
+    if (sortBy === 'price-low') {
+      return copy.sort((a,b)=>(a.currentBid ?? a.startingBid ?? a.basePrice ?? 0) - (b.currentBid ?? b.startingBid ?? b.basePrice ?? 0))
     }
-
-    return filteredAuctions.filter((auction) => {
-      if (!auction.id) return false
-      return isVisibleStatus(auction.status)
-    })
-  }, [filteredAuctions])
+    if (sortBy === 'price-high') {
+      return copy.sort((a,b)=>(b.currentBid ?? b.startingBid ?? b.basePrice ?? 0) - (a.currentBid ?? a.startingBid ?? a.basePrice ?? 0))
+    }
+    if (sortBy === 'most-bids') {
+      return copy.sort((a,b)=> (b.bidCount ?? 0) - (a.bidCount ?? 0))
+    }
+    return copy
+  }, [items, sortBy])
 
   const totalPages = totalCount ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1
 
@@ -256,16 +221,13 @@ useEffect(() => {
 
           <div className="flex gap-2">
             <div className="relative flex-1">
-              {/*
               <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-              
               <Input
                 placeholder="Tìm kiếm sản phẩm..."
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
                 className="pl-10"
               />
-              */}
             </div>
             
           </div>
@@ -276,7 +238,7 @@ useEffect(() => {
   <div className="container mx-auto px-4">
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
       <p className="text-sm text-muted-foreground">
-        {loading ? "Đang tải..." : `Hiển thị ${visibleItems.length} kết quả`}
+        {loading ? 'Đang tải...' : `Hiển thị ${totalCount ?? 0} kết quả`}
       </p>
 
       <Select value={sortBy} onValueChange={setSortBy}>
@@ -345,8 +307,39 @@ useEffect(() => {
           </div>
         </div>
 
+       {/*
+  <div className="space-y-3 mb-6">
+    <Label className="text-base font-semibold">Trạng thái</Label>
+    <div className="space-y-2">
+      {statusOptions.map((status) => (
+        <div key={status} className="flex items-center space-x-2">
+          <Checkbox
+            id={`status-${status}`}
+            checked={selectedStatuses.includes(status)}
+            onCheckedChange={() =>
+              setSelectedStatuses(
+                selectedStatuses.includes(status)
+                  ? selectedStatuses.filter((s) => s !== status)
+                  : [...selectedStatuses, status]
+              )
+            }
+          />
+          <label
+            htmlFor={`status-${status}`}
+            className="text-sm leading-none capitalize"
+          >
+            {status}
+          </label>
+        </div>
+      ))}
+    </div>
+  </div>
+*/}
+
+
         <div className="flex gap-2">
-          <Button variant="ghost" className="flex-1" onClick={resetFilter}>Xóa bộ lọc</Button>
+          <Button className="flex-1" onClick={applyFilter}>Áp dụng</Button>
+          <Button variant="ghost" className="flex-1" onClick={resetFilter}>Xóa</Button>
         </div>
       </aside>
 
@@ -359,38 +352,29 @@ useEffect(() => {
             ? Array.from({ length: pageSize }).map((_, i) => (
                 <div key={i} className="h-80 animate-pulse rounded-lg bg-gray-100" />
               ))
-            : visibleItems.map((auction, index) => {
-                // Parse images from itemImages
-                let firstImage = "/placeholder.jpg"
-                if (auction.itemImages) {
-                  try {
-                    const imageUrls = getImageUrls(auction.itemImages)
-                    firstImage = imageUrls[0] || "/placeholder.jpg"
-                  } catch {
-                    // If not JSON, try comma-separated or direct URL
-                    firstImage = getImageUrl(auction.itemImages) || "/placeholder.jpg"
-                  }
-                }
-
-                return (
-                  <AuctionCard
-                    key={`auction-${auction.id}-${index}`}
-                    auction={{
-                      id: String(auction.id),
-                      title: auction.itemTitle,
-                      image: firstImage,
-                      currentBid: auction.currentBid ?? auction.startingBid ?? 0,
-                      startingBid: auction.startingBid ?? 0,
-                      startTime: auction.startTime ? new Date(auction.startTime) : undefined,
-                      endTime: auction.endTime ? new Date(auction.endTime) : new Date(0),
-                      bidCount: auction.bidCount ?? 0,
-                      category: auction.categoryName ?? "Chưa phân loại",
-                      status: auction.displayStatus ?? auction.status ?? undefined,
-                      pausedAt: auction.pausedAt ?? undefined,
-                    }}
-                  />
-                )
-              })}
+            : sortedItems.map((auction) => (
+                <AuctionCard
+                  key={auction.id}
+                  auction={{
+                    id: auction.id,
+                    title: auction.title,
+                    image:
+                      (auction.images && auction.images[0]) || "/placeholder.jpg",
+                    currentBid:
+                      auction.currentBid ??
+                      auction.startingBid ??
+                      auction.basePrice ??
+                      0,
+                    startingBid:
+                      auction.startingBid ?? auction.basePrice ?? 0,
+                    endTime: auction.auctionEndTime
+                      ? new Date(auction.auctionEndTime)
+                      : new Date(0),
+                    bidCount: auction.bidCount ?? 0,
+                    category: auction.categoryName ?? "Chưa phân loại",
+                  }}
+                />
+              ))}
         </div>
 
         {/* Phân trang */}

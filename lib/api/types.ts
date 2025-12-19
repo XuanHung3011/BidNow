@@ -48,7 +48,6 @@ export interface ItemResponseDto {
   id: number;
   title: string;
   description?: string;
-  itemSpecifics?: string;
   basePrice?: number;
   condition?: string;
   images?: string | string[];
@@ -64,22 +63,8 @@ export interface ItemResponseDto {
   startingBid?: number | null;
   currentBid?: number | null;
   bidCount?: number | null;
-  auctionStartTime?: string | null;
   auctionEndTime?: string | null;
   auctionStatus?: string | null;
-  pausedAt?: string | null;
-}
-
-export interface CreateItemDto {
-  sellerId: number;
-  categoryId: number;
-  title: string;
-  description?: string;
-  itemSpecifics?: string;
-  condition?: string;
-  location?: string;
-  basePrice: number;
-  // Images are uploaded separately as File[] in FormData
 }
 export interface CategoryDto {
   id: number;
@@ -101,7 +86,6 @@ export interface ItemFilterDto {
 export interface ItemFilterAllDto {
   statuses?: string[] | null;
   categoryId?: number | null;
-  sellerId?: number | null;
   sortBy?: string;
   sortOrder?: string;
   page?: number;
@@ -230,40 +214,4 @@ export interface ConversationDto {
   unreadCount: number;
   auctionId?: number | null;
   auctionTitle?: string | null;
-}
-
-// Notification Types
-export interface NotificationResponseDto {
-  id: number;
-  userId: number;
-  type?: string | null;
-  message: string;
-  link?: string | null;
-  isRead: boolean;
-  createdAt: string;
-}
-
-export interface CreateNotificationDto {
-  userId: number;
-  type?: string | null;
-  message: string;
-  link?: string | null;
-}
-
-export interface UnreadNotificationCountDto {
-  count: number;
-}
-
-export interface AuctionChatMessageDto {
-  id: number;
-  alias: string;
-  content: string;
-  sentAt?: string;
-  isMine: boolean;
-}
-
-export interface CreateAuctionChatMessageRequest {
-  auctionId: number;
-  senderId: number;
-  content: string;
 }
