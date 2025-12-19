@@ -228,25 +228,29 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
         if (!prev) return prev
 
         // Dùng giá hiện tại với fallback về startingBid (tránh undefined)
-        const prevCurrent = prev.currentBid ?? prev.startingBid
+        const prevCurrent = prev.currentBid ?? prev.startingBid ?? 0
+        const newBid = payload.currentBid ?? prevCurrent
 
         // Chỉ update nếu currentBid mới >= currentBid hiện tại
-        if (payload.currentBid >= prevCurrent) {
+        // Hoặc nếu bidCount tăng (có bid mới) thì cũng update để đảm bảo sync
+        if (newBid >= prevCurrent || (payload.bidCount > (prev.bidCount ?? 0))) {
           console.log("✅ Updating auction with new bid:", {
             oldBid: prevCurrent,
-            newBid: payload.currentBid,
+            newBid: newBid,
+            oldBidCount: prev.bidCount,
+            newBidCount: payload.bidCount,
             isAutoBid: payload.placedBid?.isAutoBid
           })
           return {
             ...prev,
-            currentBid: payload.currentBid,
-            bidCount: payload.bidCount,
+            currentBid: Math.max(prevCurrent, newBid), // Luôn lấy giá cao hơn
+            bidCount: payload.bidCount ?? prev.bidCount,
           }
         }
         // Nếu giá mới thấp hơn, có thể là update cũ đến muộn, bỏ qua
         console.log("⚠️ Ignoring older bid:", {
           prevCurrent,
-          newBid: payload.currentBid
+          newBid: newBid
         })
         return prev
       })
@@ -282,6 +286,19 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       if (payload.auctionId !== Number(auctionId)) return
       
       console.log("🔔 AuctionStatusUpdated event received:", payload)
+      
+      const normalizedStatus = payload.status?.toLowerCase() ?? ""
+      
+      // CRITICAL: Update auctionStatus state immediately để UI cập nhật realtime
+      if (normalizedStatus === "paused") {
+        setAuctionStatus("paused")
+      } else if (normalizedStatus === "cancelled") {
+        setAuctionStatus("cancelled")
+      } else if (normalizedStatus === "completed") {
+        setAuctionStatus("ended")
+      } else if (normalizedStatus === "active") {
+        setAuctionStatus("active")
+      }
       
       // CRITICAL: Chỉ update status và winnerId, KHÔNG refresh toàn bộ để tránh mất giá mới từ auto bid
       setAuction((prev) => {
@@ -366,6 +383,53 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auctionId, auction?.id])
+
+  // Periodic refresh cho giá tiền để đảm bảo realtime (fallback nếu SignalR miss)
+  useEffect(() => {
+    if (!auction?.id) return
+    if (isAuctionEnded || isAuctionLocked) return // Không refresh nếu auction đã kết thúc hoặc bị khóa
+    
+    let isMounted = true
+    let intervalId: NodeJS.Timeout | null = null
+    
+    const refreshPrice = async () => {
+      try {
+        // Chỉ fetch giá hiện tại từ API (nhẹ hơn fetch toàn bộ auction)
+        const data = await AuctionsAPI.getDetail(Number(auctionId))
+        if (!isMounted) return
+        
+        // Chỉ update giá nếu giá mới >= giá hiện tại (tránh override giá mới từ SignalR)
+        setAuction((prev) => {
+          if (!prev) return data
+          const prevCurrent = prev.currentBid ?? prev.startingBid ?? 0
+          const dataCurrent = data.currentBid ?? data.startingBid ?? 0
+          
+          // Chỉ update nếu giá mới >= giá hiện tại hoặc status thay đổi
+          if (dataCurrent >= prevCurrent || data.status !== prev.status) {
+            return {
+              ...prev,
+              currentBid: Math.max(prevCurrent, dataCurrent),
+              bidCount: data.bidCount ?? prev.bidCount,
+              status: data.status ?? prev.status
+            }
+          }
+          return prev
+        })
+      } catch (err) {
+        console.error('Failed to refresh price:', err)
+      }
+    }
+    
+    // Refresh mỗi 5 giây để đảm bảo giá luôn realtime
+    intervalId = setInterval(refreshPrice, 5000)
+    
+    return () => {
+      isMounted = false
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [auction?.id, auctionId, isAuctionEnded, isAuctionLocked])
 
   // Fetch recent bid timeline for chart/ticker
   useEffect(() => {
