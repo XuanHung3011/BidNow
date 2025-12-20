@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { NotificationsAPI } from "@/lib/api/notifications"
@@ -24,6 +24,7 @@ import { createMessageHubConnection } from "@/lib/realtime/messageHub"
 import type { MessageResponseDto } from "@/lib/api/types"
 import { useToast } from "@/hooks/use-toast"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { getImageUrl } from "@/lib/api/config"
 
 export function Header() {
   const { user, logout, switchRole } = useAuth()
@@ -594,6 +595,9 @@ export function Header() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                     <Avatar>
+                      {user.avatar || user.avatarUrl ? (
+                        <AvatarImage src={getImageUrl(user.avatar || user.avatarUrl || "")} alt={user.name} />
+                      ) : null}
                       <AvatarFallback className="bg-primary text-primary-foreground">
                         {user.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
