@@ -204,7 +204,7 @@ export function AuctionCard({ auction }: AuctionCardProps) {
               <span>{auction.bidCount} lượt đấu giá</span>
             </div>
             <Button size="sm" className="group/btn">
-              Đặt giá
+              Đấu giá
               <TrendingUp className="ml-1 h-3 w-3 transition-transform group-hover/btn:translate-y-[-2px]" />
             </Button>
           </div>
