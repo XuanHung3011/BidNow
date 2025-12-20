@@ -30,7 +30,7 @@ interface UserManagementProps {
 }
 
 export function UserManagement({ userRole }: UserManagementProps) {
-  const [users, setUsers] = useState<UserResponse[]>([])
+  const [allUsers, setAllUsers] = useState<UserResponse[]>([]) // Store all users
   const [loading, setLoading] = useState(true)
   const [isSearching, setIsSearching] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -59,7 +59,7 @@ export function UserManagement({ userRole }: UserManagementProps) {
 
   const { toast } = useToast()
 
-  const fetchUsers = async (search: string = searchTerm, currentPage: number = page, showLoading: boolean = true) => {
+  const fetchUsers = async (search: string = searchTerm, showLoading: boolean = true) => {
     try {
       if (showLoading) {
         if (search.trim()) {
@@ -72,15 +72,38 @@ export function UserManagement({ userRole }: UserManagementProps) {
       let data: UserResponse[]
       
       if (search.trim()) {
-        data = await UsersAPI.search(search.trim(), currentPage, pageSize)
+        // For search, fetch with pagination (limited results)
+        data = await UsersAPI.search(search.trim(), 1, 1000) // Fetch up to 1000 results
       } else {
-        data = await UsersAPI.getAll(currentPage, pageSize)
+        // Fetch all users with large pageSize to get all users at once
+        // Fetch multiple pages if needed
+        const allFetched: UserResponse[] = []
+        let currentPage = 1
+        let hasMore = true
+        
+        while (hasMore) {
+          const pageData = await UsersAPI.getAll(currentPage, 100) // Fetch 100 per page
+          if (pageData.length === 0) {
+            hasMore = false
+          } else {
+            allFetched.push(...pageData)
+            // If we got less than 100, we've reached the end
+            if (pageData.length < 100) {
+              hasMore = false
+            } else {
+              currentPage++
+            }
+          }
+        }
+        
+        data = allFetched
       }
 
+      // Filter out admin users
       data = data.filter((user) => !user.roles?.includes("admin"))
       
-      // Chỉ update nếu search term vẫn khớp (tránh race condition)
-      setUsers(data)
+      // Store all users
+      setAllUsers(data)
     } catch (error: any) {
       toast({
         title: "Lỗi",
@@ -97,22 +120,17 @@ export function UserManagement({ userRole }: UserManagementProps) {
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (searchTerm.trim()) {
-        setPage(1) // Reset về trang 1 khi search
-        fetchUsers(searchTerm, 1, true)
-      } else {
-        fetchUsers("", page, true)
-      }
+      setPage(1) // Reset về trang 1 khi search
+      fetchUsers(searchTerm, true)
     }, searchTerm.trim() ? 700 : 0) // Debounce search để mượt hơn
 
     return () => clearTimeout(timeoutId)
   }, [searchTerm])
 
+  // Initial load
   useEffect(() => {
-    if (!searchTerm.trim()) {
-      fetchUsers("", page, true)
-    }
-  }, [page])
+    fetchUsers("", true)
+  }, [])
 
   const handleCreateUser = async (userData: UserCreateDto, role?: string): Promise<UserResponse> => {
     try {
@@ -344,7 +362,16 @@ export function UserManagement({ userRole }: UserManagementProps) {
 
   // Filter và sắp xếp users - Phải đặt trước các early returns
   const filteredUsers = useMemo(() => {
-    let filtered = [...users]
+    let filtered = [...allUsers]
+    
+    // Filter theo search term (if not already filtered by API search)
+    if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase()
+      filtered = filtered.filter(user => 
+        user.fullName?.toLowerCase().includes(searchLower) ||
+        user.email?.toLowerCase().includes(searchLower)
+      )
+    }
     
     // Filter theo role
     if (filterRole !== "all") {
@@ -371,7 +398,21 @@ export function UserManagement({ userRole }: UserManagementProps) {
     })
     
     return filtered
-  }, [users, filterRole, filterStatus])
+  }, [allUsers, searchTerm, filterRole, filterStatus])
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1)
+  }, [filterRole, filterStatus])
+
+  // Paginate filtered users
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (page - 1) * pageSize
+    const endIndex = startIndex + pageSize
+    return filteredUsers.slice(startIndex, endIndex)
+  }, [filteredUsers, page, pageSize])
+
+  const totalPages = Math.ceil(filteredUsers.length / pageSize)
 
   return (
     <div className="space-y-4">
@@ -485,9 +526,9 @@ export function UserManagement({ userRole }: UserManagementProps) {
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                Hiển thị <span className="font-semibold">{filteredUsers.length}</span> người dùng
+                Hiển thị <span className="font-semibold">{paginatedUsers.length}</span> / <span className="font-semibold">{filteredUsers.length}</span> người dùng
               </p>
-              {filteredUsers.map((user) => (
+              {paginatedUsers.map((user) => (
                 <Card key={user.id} className="p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex gap-4">
@@ -611,11 +652,13 @@ export function UserManagement({ userRole }: UserManagementProps) {
                 >
                   Trước
                 </Button>
-                <span className="text-sm text-muted-foreground">Trang {page}</span>
+                <span className="text-sm text-muted-foreground">
+                  Trang {page} / {totalPages} ({filteredUsers.length} người dùng)
+                </span>
                 <Button
                   variant="outline"
                   onClick={() => setPage((p) => p + 1)}
-                  disabled={users.length < pageSize}
+                  disabled={page >= totalPages}
                 >
                   Sau
                 </Button>
