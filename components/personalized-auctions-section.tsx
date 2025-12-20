@@ -64,6 +64,74 @@ export function PersonalizedAuctionsSection() {
     fetchRecommendations()
   }, [user])
 
+  // Realtime updates: Polling nhẹ mỗi 20 giây (chỉ khi tab active và user đã đăng nhập)
+  useEffect(() => {
+    if (!user || auctions.length === 0) return
+
+    let intervalId: NodeJS.Timeout | null = null
+    let isMounted = true
+
+    const updateAuctions = async () => {
+      // Chỉ update khi tab đang active
+      if (document.hidden) return
+
+      try {
+        const items = await RecommendationsAPI.getPersonalized(Number(user.id), 4)
+        if (!isMounted) return
+
+        const mapped: CardAuction[] = items
+          .filter((i) => i.auctionStatus === "active" && i.auctionId)
+          .map((i) => ({
+            id: String(i.auctionId!),
+            title: i.title,
+            image: getImageUrls(i.images as any)[0] || "/placeholder.jpg",
+            currentBid: Number(i.currentBid || i.startingBid || i.basePrice || 0),
+            startingBid: Number(i.startingBid || i.basePrice || 0),
+            startTime: i.auctionStartTime ? (new Date(i.auctionStartTime) as any) : undefined,
+            endTime: i.auctionEndTime ? (new Date(i.auctionEndTime) as any) : new Date(),
+            bidCount: Number(i.bidCount || 0),
+            category: i.categoryName || "Khác",
+            sellerName: i.sellerName,
+          }))
+
+        setAuctions((prev) => {
+          // Merge với auctions hiện tại, chỉ update giá và bidCount
+          return mapped.map((newAuction) => {
+            const existing = prev.find((a) => a.id === newAuction.id)
+            if (existing) {
+              // Giữ nguyên nếu giá không thay đổi
+              if (
+                existing.currentBid === newAuction.currentBid &&
+                existing.bidCount === newAuction.bidCount
+              ) {
+                return existing
+              }
+              // Update giá và bidCount
+              return {
+                ...existing,
+                currentBid: newAuction.currentBid,
+                bidCount: newAuction.bidCount,
+              }
+            }
+            return newAuction
+          })
+        })
+      } catch (e) {
+        // Silently fail - không làm gián đoạn UI
+      }
+    }
+
+    // Polling mỗi 20 giây (lâu hơn một chút vì đây là recommendations)
+    intervalId = setInterval(updateAuctions, 20000)
+
+    return () => {
+      isMounted = false
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [user, auctions.length])
+
   // Nếu chưa đăng nhập thì không hiển thị section
   if (!user) {
     return null

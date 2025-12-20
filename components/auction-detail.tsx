@@ -209,6 +209,28 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       }
     }
 
+    // Handle reconnection when tab becomes visible again
+    const handleVisibilityChange = async () => {
+      if (!document.hidden && isMounted) {
+        // Tab became visible - ensure connection is active and rejoin group
+        try {
+          if (connection.state === "Disconnected") {
+            console.log("🔄 Tab visible, reconnecting SignalR...")
+            await connection.start()
+            await connection.invoke("JoinAuctionGroup", String(auctionId))
+          } else if (connection.state === "Connected") {
+            // Connection is active, just rejoin group to be safe
+            await connection.invoke("JoinAuctionGroup", String(auctionId)).catch(() => {})
+          }
+        } catch (err) {
+          console.error("Failed to reconnect SignalR on visibility change:", err)
+        }
+      }
+    }
+
+    // Listen for visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     connection.on("BidPlaced", (payload: BidPlacedPayload) => {
       if (!isMounted) return
       if (payload.auctionId !== Number(auctionId)) return
@@ -351,6 +373,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
 
     return () => {
       isMounted = false
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       connection.off("BidPlaced")
       connection.off("AuctionStatusUpdated")
       const leaveAndStop = async () => {
@@ -384,6 +407,41 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auctionId, auction?.id])
 
+  // Handle tab visibility change - refresh when tab becomes active again
+  useEffect(() => {
+    if (!auction?.id) return
+    if (isAuctionEnded || isAuctionLocked) return
+
+    const handleVisibilityChange = async () => {
+      // Khi tab trở lại active, refresh auction data để sync lại
+      if (!document.hidden) {
+        console.log("🔄 Tab became visible, refreshing auction data...")
+        try {
+          const data = await AuctionsAPI.getDetail(Number(auctionId))
+          setAuction((prev) => {
+            if (!prev) return data
+            const prevCurrent = prev.currentBid ?? prev.startingBid ?? 0
+            const dataCurrent = data.currentBid ?? data.startingBid ?? 0
+            return {
+              ...data,
+              // Luôn lấy giá cao hơn để đảm bảo sync đúng
+              currentBid: Math.max(prevCurrent, dataCurrent),
+              bidCount: Math.max(prev.bidCount ?? 0, data.bidCount ?? 0),
+            }
+          })
+        } catch (err) {
+          console.error('Failed to refresh auction on visibility change:', err)
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [auction?.id, auctionId, isAuctionEnded, isAuctionLocked])
+
   // Periodic refresh cho giá tiền để đảm bảo realtime (fallback nếu SignalR miss)
   useEffect(() => {
     if (!auction?.id) return
@@ -393,6 +451,9 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     let intervalId: NodeJS.Timeout | null = null
     
     const refreshPrice = async () => {
+      // Chỉ refresh khi tab đang active (tránh waste resources khi tab không active)
+      if (document.hidden) return
+      
       try {
         // Chỉ fetch giá hiện tại từ API (nhẹ hơn fetch toàn bộ auction)
         const data = await AuctionsAPI.getDetail(Number(auctionId))

@@ -208,12 +208,15 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
       let isRelevant = false
       
       if (isAdminOrStaff) {
-        // Admin/Staff can see all messages between participants
+        // Admin/Staff can see ALL messages in this dispute
+        // Any message where sender or receiver is a participant (buyer, seller, or admin)
         const participants = [buyerId, sellerId]
         if (adminId) {
           participants.push(adminId)
         }
-        isRelevant = participants.includes(message.senderId) && participants.includes(message.receiverId)
+        // Message is relevant if sender OR receiver is a participant
+        // This ensures staff sees all messages: buyer->seller, seller->buyer, buyer->admin, seller->admin, admin->buyer, admin->seller
+        isRelevant = participants.includes(message.senderId) || participants.includes(message.receiverId)
       } else if (isBuyer) {
         // Buyer: only see messages where they are sender or receiver
         isRelevant = message.senderId === buyerId || message.receiverId === buyerId
@@ -297,13 +300,27 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
           }, 5000)
         }
         
-        // For messages received from others, also check for duplicates by content + sender + time
-        // (in case of any edge cases)
+        // For messages received from others, check for duplicates
+        // CRITICAL FIX: For admin/staff, we may receive the same message multiple times
+        // (one for each recipient: buyer->seller and buyer->admin are separate message records)
+        // But we should show it only ONCE in the chat
         if (currentUserId && message.senderId !== currentUserId) {
           const msgTime = message.sentAt ? new Date(message.sentAt).getTime() : 0
           const isDuplicate = prev.some((m) => {
-            if (m.id === message.id) return true // Same ID
+            if (m.id === message.id) return true // Same ID - definitely duplicate
             if (m.disputeId !== message.disputeId) return false // Different dispute
+            // For admin/staff: same content + same sender + same time = same message (even if different receiverId)
+            // This handles the case where buyer sends to seller and admin separately
+            if (isAdminOrStaff) {
+              const mTime = m.sentAt ? new Date(m.sentAt).getTime() : 0
+              const timeDiff = Math.abs(msgTime - mTime)
+              return (
+                m.content === message.content &&
+                m.senderId === message.senderId &&
+                timeDiff < 2000 // Within 2 seconds
+              )
+            }
+            // For buyer/seller: check by ID and content + sender + time
             const mTime = m.sentAt ? new Date(m.sentAt).getTime() : 0
             const timeDiff = Math.abs(msgTime - mTime)
             return (
@@ -313,7 +330,12 @@ export function DisputeChat({ disputeId }: DisputeChatProps) {
             )
           })
           if (isDuplicate) {
-            console.log("🔔 Duplicate received message detected, skipping:", message.id)
+            console.log("🔔 Duplicate received message detected, skipping:", {
+              id: message.id,
+              senderId: message.senderId,
+              receiverId: message.receiverId,
+              content: message.content.substring(0, 30)
+            })
             return prev
           }
         }

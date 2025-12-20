@@ -50,6 +50,62 @@ export function LiveAuctionsSection() {
     fetchHot()
   }, [])
 
+  // Realtime updates: Polling nhẹ mỗi 15 giây (chỉ khi tab active)
+  useEffect(() => {
+    if (auctions.length === 0) return
+
+    let intervalId: NodeJS.Timeout | null = null
+    let isMounted = true
+
+    const updateAuctions = async () => {
+      // Chỉ update khi tab đang active
+      if (document.hidden) return
+
+      try {
+        const items = await ItemsAPI.getHot(8)
+        if (!isMounted) return
+
+        setAuctions((prev) => {
+          const updated = prev.map((prevAuction) => {
+            const newItem = items.find(
+              (i) => i.auctionId && String(i.auctionId) === String(prevAuction.id)
+            )
+            if (!newItem) return prevAuction
+
+            // Chỉ update giá và bidCount nếu có thay đổi
+            const newCurrentBid = Number(newItem.currentBid || newItem.startingBid || 0)
+            const newBidCount = Number(newItem.bidCount || 0)
+
+            if (
+              newCurrentBid !== prevAuction.currentBid ||
+              newBidCount !== prevAuction.bidCount
+            ) {
+              return {
+                ...prevAuction,
+                currentBid: newCurrentBid,
+                bidCount: newBidCount,
+              }
+            }
+            return prevAuction
+          })
+          return updated
+        })
+      } catch (e) {
+        // Silently fail - không làm gián đoạn UI
+      }
+    }
+
+    // Polling mỗi 15 giây
+    intervalId = setInterval(updateAuctions, 15000)
+
+    return () => {
+      isMounted = false
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [auctions.length])
+
   return (
     <section className="bg-background py-16">
       <div className="container mx-auto px-4">
