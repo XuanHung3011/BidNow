@@ -266,8 +266,22 @@ export function DisputeManagement() {
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="in_review">Đang xử lý</TabsTrigger>
-          <TabsTrigger value="resolved">Đã giải quyết</TabsTrigger>
+          <TabsTrigger value="in_review">
+            Đang xử lý
+            {inReviewDisputes.length > 0 && (
+              <Badge variant="default" className="ml-2">
+                {inReviewDisputes.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="resolved">
+            Đã giải quyết
+            {resolvedDisputes.length > 0 && (
+              <Badge variant="outline" className="ml-2">
+                {resolvedDisputes.length}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="pending" className="space-y-4">
