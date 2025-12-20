@@ -165,6 +165,12 @@ useEffect(() => {
           }
         }
 
+        // Add category filter from advanced filter (use first selected category)
+        // Backend only supports single categoryId, so we use the first one
+        if (selectedCategories.length > 0 && !categoryIdParam) {
+          params.categoryId = selectedCategories[0]
+        }
+
         const res = await AuctionsAPI.getAll(params)
         if (!isMounted) return
         setAuctions(res.data)
@@ -183,7 +189,7 @@ useEffect(() => {
 
     fetchData()
     return () => { isMounted = false }
-  }, [debouncedQuery, page, pageSize, sortBy, user?.id, categoryIdParam])
+  }, [debouncedQuery, page, pageSize, sortBy, user?.id, categoryIdParam, selectedCategories])
 
   // Sort is now handled by backend, but we can do additional client-side sorting if needed
   const sortedAuctions = useMemo(() => {
@@ -191,27 +197,12 @@ useEffect(() => {
     return [...auctions]
   }, [auctions])
 
-  // Apply client-side filters (category and price)
+  // Apply client-side filters (only price, category is now handled by backend)
   const filteredAuctions = useMemo(() => {
     let filtered = [...sortedAuctions]
 
-    // Filter by category
-    if (selectedCategories.length > 0) {
-      // Get selected category names
-      const selectedCategoryNames = categories
-        .filter(c => selectedCategories.includes(Number(c.id)))
-        .map(c => c.name)
-      
-      filtered = filtered.filter((auction) => {
-        // Match by category name
-        if (auction.categoryName) {
-          return selectedCategoryNames.includes(auction.categoryName)
-        }
-        return false
-      })
-    }
-
-    // Filter by price range
+    // Note: Category filtering is now done on backend via selectedCategories[0]
+    // Only filter by price range on client-side
     if (minPriceStr.trim() || maxPriceStr.trim()) {
       const minPrice = minPriceStr.trim() ? parseFloat(minPriceStr) : 0
       const maxPrice = maxPriceStr.trim() ? parseFloat(maxPriceStr) : Infinity
@@ -223,7 +214,7 @@ useEffect(() => {
     }
 
     return filtered
-  }, [sortedAuctions, selectedCategories, minPriceStr, maxPriceStr, categories])
+  }, [sortedAuctions, minPriceStr, maxPriceStr])
 
   // Hiển thị tất cả auctions (bao gồm cả đã kết thúc), chỉ ẩn những phiên đã bị hủy
   const visibleItems = useMemo(() => {

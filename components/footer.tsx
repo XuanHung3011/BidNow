@@ -47,7 +47,7 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>Email: bidnowvn@gmail.com</li>              
               <li>Địa chỉ: Khu Công nghệ cao Hòa Lạc, Km29 Đại lộ Thăng Long, xã Hòa Lạc, huyện Thạch Thất, TP. Hà Nội.</li>
-              <li>Giờ làm việc: 8:00 - 22:00</li>
+              <li>Giờ làm việc: 8:00 - 17:00</li>
             </ul>
           </div>
         </div>

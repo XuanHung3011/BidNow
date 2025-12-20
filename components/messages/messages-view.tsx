@@ -449,19 +449,18 @@ export function MessagesView() {
     return () => clearInterval(interval)
   }, [user?.id])
 
-  // Load messages when conversation is selected
+  // Load messages when conversation is selected (like Facebook Messenger)
   useEffect(() => {
     if (selectedConversation && user?.id) {
+      // Load messages for selected conversation
       const userId = Number(user.id)
       if (!isNaN(userId)) {
         loadMessages(userId, selectedConversation, selectedAuctionId)
       }
     } else if (!selectedConversation && user?.id) {
-      // Load all messages by userId when no conversation is selected
-      const userId = Number(user.id)
-      if (!isNaN(userId)) {
-        loadAllMessagesByUserId(userId)
-      }
+      // Clear messages when no conversation is selected
+      setMessages([])
+      setSelectedConversationInfo(null)
     }
   }, [selectedConversation, selectedAuctionId, user?.id])
 
@@ -1694,95 +1693,13 @@ export function MessagesView() {
             </>
           ) : (
             <>
-              {/* All Messages Header - when no conversation selected */}
-              <div className="flex items-center justify-between border-b p-4 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="font-semibold">Tất cả tin nhắn</p>
-                    <p className="text-xs text-muted-foreground">
-                      {messages.length > 0 ? `${messages.length} tin nhắn (đã gửi và đã nhận)` : "Chưa có tin nhắn nào"}
-                    </p>
-                  </div>
+              {/* Empty state - when no conversation selected (like Facebook Messenger) */}
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center text-muted-foreground">
+                  <MessageSquare className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-semibold mb-2">Chọn một cuộc trò chuyện</p>
+                  <p className="text-sm">Chọn một cuộc trò chuyện từ danh sách bên trái để bắt đầu</p>
                 </div>
-              </div>
-
-              {/* Messages List by UserId */}
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <ScrollArea ref={scrollAreaRef} className="h-full">
-                  <div className="p-4">
-                    {loadingMessages ? (
-                      <div className="flex items-center justify-center py-20">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                      </div>
-                    ) : messages.length === 0 ? (
-                      <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
-                        Chưa có tin nhắn nào. Hãy chọn một cuộc trò chuyện để bắt đầu!
-                      </div>
-                    ) : (
-                      <div className="space-y-4 pb-4">
-                    {messages.map((message) => {
-                      const isOwnMessage = message.senderId === Number(user?.id)
-                      const displayName = isOwnMessage 
-                        ? (user?.name || message.senderName) 
-                        : message.senderName
-                      const displayAvatar = isOwnMessage 
-                        ? (user?.avatar || message.senderAvatarUrl) 
-                        : message.senderAvatarUrl
-                      
-                      // Group messages by conversation (other user + auction)
-                      const otherUserId = isOwnMessage ? message.receiverId : message.senderId
-                      const otherUserName = isOwnMessage ? message.receiverName : message.senderName
-                      const otherUserAvatar = isOwnMessage ? message.receiverAvatarUrl : message.senderAvatarUrl
-                      
-                      return (
-                        <div 
-                          key={message.id} 
-                          className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} cursor-pointer hover:opacity-80 transition-opacity`}
-                          onClick={() => {
-                            setSelectedConversation(otherUserId)
-                            setSelectedAuctionId(message.auctionId || null)
-                          }}
-                        >
-                          <div className={`flex gap-2 max-w-[70%] ${isOwnMessage ? "flex-row-reverse" : "flex-row"}`}>
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage src={displayAvatar || undefined} />
-                              <AvatarFallback className="text-xs">
-                                {displayName?.charAt(0) || "U"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <div className="mb-1 flex items-center gap-2">
-                                <p className="text-xs font-medium text-muted-foreground">
-                                  {isOwnMessage ? `Đến: ${otherUserName}` : `Từ: ${displayName}`}
-                                </p>
-                                {message.auctionTitle && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {message.auctionTitle}
-                                  </Badge>
-                                )}
-                              </div>
-                              <div
-                                className={`rounded-lg px-4 py-2 ${
-                                  isOwnMessage ? "bg-primary text-primary-foreground" : "bg-muted"
-                                }`}
-                              >
-                                <p className="text-sm">{message.content}</p>
-                              </div>
-                              <p className="mt-1 text-xs text-muted-foreground">{formatTime(message.sentAt)}</p>
-                              {!message.isRead && !isOwnMessage && (
-                                <Badge variant="destructive" className="mt-1 text-xs">
-                                  Chưa đọc
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
               </div>
             </>
           )}
