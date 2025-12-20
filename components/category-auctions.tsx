@@ -100,6 +100,7 @@ export function CategoryAuctions({ categorySlug }: { categorySlug: string }) {
 
         const result = await AuctionsAPI.getAll(params)
         setAuctions(result.data || [])
+        // Store totalCount from backend (before price filter)
         setTotalCount(result.totalCount || 0)
       } catch (err) {
         console.error("Error loading auctions:", err)
@@ -112,32 +113,58 @@ export function CategoryAuctions({ categorySlug }: { categorySlug: string }) {
     loadAuctions()
   }, [category, sortBy, page])
 
-  // Map AuctionListItemDto to AuctionCard format
-  const mappedAuctions = auctions.map((auction) => {
-    const images = auction.itemImages 
-      ? (typeof auction.itemImages === 'string' 
-          ? (auction.itemImages.includes('[') 
-              ? JSON.parse(auction.itemImages) 
-              : auction.itemImages.split(','))
-          : [])
-      : []
-    const firstImage = images.length > 0 ? images[0] : "/placeholder.png"
-    
-    return {
-      id: auction.id,
-      title: auction.itemTitle,
-      image: getImageUrl(firstImage),
-      currentBid: auction.currentBid || auction.startingBid,
-      startingBid: auction.startingBid,
-      endTime: new Date(auction.endTime),
-      startTime: auction.startTime ? new Date(auction.startTime) : undefined,
-      bidCount: auction.bidCount || 0,
-      category: auction.categoryName || category?.name || "",
-      sellerName: auction.sellerName,
-      status: auction.status,
-      pausedAt: auction.pausedAt ? new Date(auction.pausedAt) : null,
-    }
-  })
+  // Reset page when priceRange or sortBy changes
+  useEffect(() => {
+    setPage(1)
+  }, [priceRange, sortBy])
+
+  // Map AuctionListItemDto to AuctionCard format and filter by price range
+  const mappedAuctions = auctions
+    .filter((auction) => {
+      // Filter by price range
+      if (priceRange === "all") return true
+      
+      const currentPrice = auction.currentBid || auction.startingBid || 0
+      const priceInMillions = currentPrice / 1000000 // Convert to millions
+      
+      switch (priceRange) {
+        case "0-10m":
+          return priceInMillions < 10
+        case "10m-50m":
+          return priceInMillions >= 10 && priceInMillions < 50
+        case "50m-100m":
+          return priceInMillions >= 50 && priceInMillions < 100
+        case "100m+":
+          return priceInMillions >= 100
+        default:
+          return true
+      }
+    })
+    .map((auction) => {
+      const images = auction.itemImages 
+        ? (typeof auction.itemImages === 'string' 
+            ? (auction.itemImages.includes('[') 
+                ? JSON.parse(auction.itemImages) 
+                : auction.itemImages.split(','))
+            : [])
+        : []
+      const firstImage = images.length > 0 ? images[0] : "/placeholder.png"
+      
+      return {
+        id: auction.id,
+        title: auction.itemTitle,
+        image: getImageUrl(firstImage),
+        currentBid: auction.currentBid || auction.startingBid,
+        startingBid: auction.startingBid,
+        endTime: new Date(auction.endTime),
+        startTime: auction.startTime ? new Date(auction.startTime) : undefined,
+        bidCount: auction.bidCount || 0,
+        category: auction.categoryName || category?.name || "",
+        sellerName: auction.sellerName,
+        status: auction.status,
+        pausedAt: auction.pausedAt ? new Date(auction.pausedAt) : null,
+      }
+    })
 
   if (loading && !category) {
     return (
@@ -241,12 +268,12 @@ export function CategoryAuctions({ categorySlug }: { categorySlug: string }) {
                   <AuctionCard key={auction.id} auction={auction} />
                 ))}
               </div>
-              {totalCount > pageSize && (
+              {mappedAuctions.length > 0 && (
                 <div className="mt-8 flex justify-center gap-2">
                   <Button
                     variant="outline"
                     onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
+                    disabled={page === 1 || loading}
                   >
                     Trước
                   </Button>
@@ -256,7 +283,7 @@ export function CategoryAuctions({ categorySlug }: { categorySlug: string }) {
                   <Button
                     variant="outline"
                     onClick={() => setPage(p => p + 1)}
-                    disabled={page >= Math.ceil(totalCount / pageSize)}
+                    disabled={page >= Math.ceil(totalCount / pageSize) || loading}
                   >
                     Sau
                   </Button>
