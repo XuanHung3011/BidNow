@@ -204,22 +204,7 @@ export function CategoryAuctions({ categorySlug }: { categorySlug: string }) {
 
       <section className="py-8">
         <div className="container mx-auto px-4">
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm">
-                Tất cả
-              </Button>
-              <Button variant="ghost" size="sm">
-                Đang diễn ra
-              </Button>
-              <Button variant="ghost" size="sm">
-                Sắp kết thúc
-              </Button>
-              <Button variant="ghost" size="sm">
-                Mới nhất
-              </Button>
-            </div>
-
+          <div className="mb-6 flex flex-wrap items-center justify-end gap-4">
             <div className="flex gap-2">
               <Select value={priceRange} onValueChange={setPriceRange}>
                 <SelectTrigger className="w-[180px]">
