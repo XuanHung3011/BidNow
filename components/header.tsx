@@ -79,7 +79,7 @@ export function Header() {
     try {
       setLoadingNotifications(true)
       // Fetch all notifications (both read and unread) instead of only unread
-      const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 10)
+      const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 20)
       // CRITICAL: Merge với notifications hiện tại thay vì replace
       // Để tránh mất notifications từ real-time updates
       setNotifications((prev) => {
@@ -173,7 +173,14 @@ export function Header() {
     return () => clearInterval(interval)
   }, [user, fetchUnreadNotificationsCount])
 
-  // Load notifications khi mở dropdown
+  // Fetch notifications khi có user (ngay khi mount hoặc user thay đổi)
+  useEffect(() => {
+    if (user) {
+      fetchNotifications()
+    }
+  }, [user, fetchNotifications])
+
+  // Refresh notifications khi mở dropdown (để đảm bảo data mới nhất)
   useEffect(() => {
     if (notificationDropdownOpen && user) {
       fetchNotifications()
