@@ -23,8 +23,17 @@ export const NotificationsAPI = {
     const url = new URL(`${API_BASE}${API_ENDPOINTS.NOTIFICATIONS.GET_ALL(userId)}`)
     url.searchParams.set('page', String(page))
     url.searchParams.set('pageSize', String(pageSize))
+    // Thêm timestamp để tránh cache
+    url.searchParams.set('_t', String(Date.now()))
     
-    const res = await fetch(url.toString(), { cache: 'no-store' })
+    const res = await fetch(url.toString(), { 
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    })
     const data = await handleResponse<NotificationResponseDto[]>(res)
     return data || []
   },

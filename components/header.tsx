@@ -80,23 +80,38 @@ export function Header() {
       setLoadingNotifications(true)
       // Fetch all notifications (both read and unread) instead of only unread
       const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 20)
-      // CRITICAL: Merge với notifications hiện tại thay vì replace
-      // Để tránh mất notifications từ real-time updates
+      
+      // Debug: Log để kiểm tra
+      console.log("📥 Fetched notifications from API:", data.length, "items")
+      if (data.length > 0) {
+        console.log("📥 First notification:", data[0].id, data[0].createdAt, data[0].message)
+      }
+      
+      // CRITICAL: Khi fetch từ API, replace hoàn toàn với data từ API
+      // API đã có tất cả notifications mới nhất (sorted by CreatedAt DESC)
+      // Chỉ merge với notifications từ real-time mà chưa có trong API response
       setNotifications((prev) => {
+        // Debug: Log prev state
+        console.log("📥 Previous notifications:", prev.length, "items")
+        
+        // Lấy data từ API làm base (đã sorted mới nhất trước)
         const merged = [...data]
-        // Thêm các notifications từ real-time mà chưa có trong data
+        // Thêm các notifications từ real-time mà chưa có trong API response
+        // (trường hợp real-time notification chưa được lưu vào DB hoặc chưa có trong page 1)
         prev.forEach(prevNotif => {
           if (!merged.some(n => n.id === prevNotif.id)) {
             merged.push(prevNotif)
           }
         })
-        // Sắp xếp theo thời gian (mới nhất trước)
+        // Sắp xếp lại theo thời gian (mới nhất trước) để đảm bảo thứ tự đúng
         merged.sort((a, b) => {
           const aTime = new Date(a.createdAt).getTime()
           const bTime = new Date(b.createdAt).getTime()
           return bTime - aTime
         })
-        return merged.slice(0, 20) // Giới hạn 20 notifications
+        const result = merged.slice(0, 20) // Giới hạn 20 notifications
+        console.log("📥 Final notifications:", result.length, "items")
+        return result
       })
     } catch (error) {
       console.error("Error fetching notifications:", error)
