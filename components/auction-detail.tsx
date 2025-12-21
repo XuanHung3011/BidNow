@@ -57,6 +57,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const { toast } = useToast()
   const [timeLeft, setTimeLeft] = useState("")
   const [auctionStatus, setAuctionStatus] = useState<"scheduled" | "active" | "ended" | "paused" | "cancelled">("active")
+  const [signalRConnected, setSignalRConnected] = useState(false) // Track SignalR connection status
   const [bidAmount, setBidAmount] = useState("")
   const [placing, setPlacing] = useState(false)
   const [placeError, setPlaceError] = useState<string | null>(null)
@@ -203,11 +204,31 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
         started = true
         isStarting = false
         await connection.invoke("JoinAuctionGroup", String(auctionId))
+        setSignalRConnected(true) // Mark as connected
+        console.log("✅ SignalR connected")
       } catch (e) {
         isStarting = false
+        setSignalRConnected(false) // Mark as disconnected
+        console.error("❌ SignalR connection failed:", e)
         // ignore transient connection errors
       }
     }
+    
+    // Track connection state changes
+    connection.onclose(() => {
+      setSignalRConnected(false)
+      console.log("🔴 SignalR disconnected")
+    })
+    
+    connection.onreconnecting(() => {
+      setSignalRConnected(false)
+      console.log("🔄 SignalR reconnecting...")
+    })
+    
+    connection.onreconnected(() => {
+      setSignalRConnected(true)
+      console.log("✅ SignalR reconnected")
+    })
 
     // Handle reconnection when tab becomes visible again
     const handleVisibilityChange = async () => {
@@ -520,60 +541,109 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     }
   }, [auctionId])
 
-  // Periodic refresh cho auction data để đảm bảo "Bảng giao dịch" luôn real-time (fallback nếu SignalR disconnect)
+  // CRITICAL: Aggressive polling cho "Giá hiện tại" - KHÔNG PHỤ THUỘC SignalR
+  // Polling mỗi 1-3 giây để đảm bảo giá luôn cập nhật ngay lập tức ngay cả khi SignalR disconnect
+  // Khi SignalR disconnected: Poll mỗi 1s (tối đa 1 giây delay)
   useEffect(() => {
     let isMounted = true
     let intervalId: NodeJS.Timeout | null = null
+    let intervalUpdateId: NodeJS.Timeout | null = null
+    let lastBidCount = auction?.bidCount ?? 0
+    let lastCurrentBid = auction?.currentBid ?? auction?.startingBid ?? 0
     
-    const refreshAuction = async () => {
+    const refreshAuctionPrice = async () => {
       // Chỉ refresh khi tab đang active (tránh waste resources)
       if (document.hidden) return
       if (!isMounted) return
       if (!auctionId) return
+      if (isAuctionEnded || isAuctionLocked) return // Không cần refresh nếu đã kết thúc
       
       try {
         const data = await AuctionsAPI.getDetail(Number(auctionId), user?.id ? Number(user.id) : undefined)
         if (!isMounted) return
         
-        // CRITICAL: Merge với auction hiện tại, ưu tiên giá cao hơn (tránh race condition)
-        setAuction((prev) => {
-          if (!prev) return data
+        const dataCurrentBid = data.currentBid ?? data.startingBid ?? 0
+        const dataBidCount = data.bidCount ?? 0
+        
+        // CRITICAL: Update ngay lập tức nếu có thay đổi (giá tăng hoặc bidCount tăng)
+        // Không cần đợi SignalR - polling này đảm bảo giá luôn real-time
+        if (dataCurrentBid > lastCurrentBid || dataBidCount > lastBidCount) {
+          console.log("✅ Aggressive polling (no SignalR): Price updated immediately", {
+            oldBid: lastCurrentBid,
+            newBid: dataCurrentBid,
+            oldBidCount: lastBidCount,
+            newBidCount: dataBidCount,
+            timestamp: new Date().toISOString()
+          })
           
-          const prevCurrent = prev.currentBid ?? prev.startingBid ?? 0
-          const dataCurrent = data.currentBid ?? data.startingBid ?? 0
-          
-          // Chỉ update nếu giá mới >= giá hiện tại hoặc bidCount tăng
-          if (dataCurrent >= prevCurrent || (data.bidCount ?? 0) > (prev.bidCount ?? 0)) {
-            console.log("✅ Periodic refresh: Updated auction data", {
-              oldBid: prevCurrent,
-              newBid: dataCurrent,
-              oldBidCount: prev.bidCount,
-              newBidCount: data.bidCount
-            })
+          // Update state ngay lập tức
+          setAuction((prev) => {
+            if (!prev) return data
+            
+            const prevCurrent = prev.currentBid ?? prev.startingBid ?? 0
+            
+            // Update ngay với giá mới - không cần đợi SignalR
             return {
-              ...data,
-              // Luôn lấy giá cao hơn để tránh rollback
-              currentBid: Math.max(prevCurrent, dataCurrent)
+              ...prev,
+              currentBid: Math.max(prevCurrent, dataCurrentBid),
+              bidCount: dataBidCount,
             }
-          }
-          return prev
-        })
+          })
+          
+          // Update tracking variables
+          lastCurrentBid = Math.max(lastCurrentBid, dataCurrentBid)
+          lastBidCount = dataBidCount
+        }
       } catch (err) {
-        console.error("Error refreshing auction data:", err)
+        console.error("Error refreshing auction price:", err)
       }
     }
     
-    // Refresh mỗi 15 giây để đảm bảo "Bảng giao dịch" luôn real-time
-    // Interval này là fallback nếu SignalR bị disconnect
-    intervalId = setInterval(refreshAuction, 15000) // 15 seconds
+    // CRITICAL: Polling frequency dựa trên SignalR connection status
+    // - Nếu SignalR connected: Poll mỗi 3s (backup, SignalR sẽ update nhanh hơn)
+    // - Nếu SignalR disconnected: Poll mỗi 1s (aggressive để đảm bảo real-time - tối đa 1 giây)
+    // Đây là backup mechanism hoàn toàn độc lập với SignalR
+    const getPollingInterval = () => {
+      // Nếu SignalR disconnect, poll mỗi 1s (tối đa 1 giây delay)
+      // Nếu SignalR connect, poll chậm hơn (3s) vì SignalR sẽ update nhanh hơn
+      return signalRConnected ? 3000 : 1000 // 3s nếu connected, 1s nếu disconnected
+    }
+    
+    const startPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+      const interval = getPollingInterval()
+      console.log(`🔄 Starting polling with interval: ${interval}ms (SignalR: ${signalRConnected ? 'connected' : 'disconnected'})`)
+      intervalId = setInterval(refreshAuctionPrice, interval)
+    }
+    
+    // Start polling với interval ban đầu
+    startPolling()
+    
+    // Update polling interval khi SignalR connection status thay đổi
+    intervalUpdateId = setInterval(() => {
+      const currentIntervalMs = signalRConnected ? 3000 : 1000 // 3s nếu connected, 1s nếu disconnected
+      if (intervalId) {
+        clearInterval(intervalId)
+        intervalId = setInterval(refreshAuctionPrice, currentIntervalMs)
+        console.log(`🔄 Updated polling interval to ${currentIntervalMs}ms (SignalR: ${signalRConnected ? 'connected' : 'disconnected'})`)
+      }
+    }, 5000) // Check và update interval mỗi 5s
+    
+    // Initial refresh ngay lập tức để đảm bảo data fresh
+    refreshAuctionPrice()
     
     return () => {
       isMounted = false
       if (intervalId) {
         clearInterval(intervalId)
       }
+      if (intervalUpdateId) {
+        clearInterval(intervalUpdateId)
+      }
     }
-  }, [auctionId])
+  }, [auctionId, isAuctionEnded, isAuctionLocked, user?.id, signalRConnected])
 
   // Fetch recent bid timeline for chart/ticker
   useEffect(() => {
