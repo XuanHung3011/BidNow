@@ -181,54 +181,60 @@ export function Header() {
     }
 
     const handleNotificationReceived = (notification: NotificationResponseDto) => {
-      if (notification.userId === userIdNumber && !notification.isRead) {
-        // Tôn trọng cài đặt: nếu tắt pushNotifications => bỏ qua hoàn toàn
-        if (!pushEnabled) {
-          return
-        }
+      if (notification.userId !== userIdNumber) return
+      
+      // Tôn trọng cài đặt: nếu tắt pushNotifications => bỏ qua hoàn toàn
+      if (!pushEnabled) {
+        return
+      }
 
-        // Tôn trọng cài đặt: nếu tắt bidUpdates và là outbid => bỏ qua
-        if (!prefBidUpdates && notification.type === "bid_outbid") {
-          return
-        }
+      // Tôn trọng cài đặt: nếu tắt bidUpdates và là outbid => bỏ qua
+      if (!prefBidUpdates && notification.type === "bid_outbid") {
+        return
+      }
 
-        // Tôn trọng cài đặt: nếu tắt newAuctions và là auction_new => bỏ qua
-        if (!prefNewAuctions && notification.type === "auction_new") {
-          return
-        }
+      // Tôn trọng cài đặt: nếu tắt newAuctions và là auction_new => bỏ qua
+      if (!prefNewAuctions && notification.type === "auction_new") {
+        return
+      }
 
-        // Tăng unread count
+      // CRITICAL: Chỉ tăng unread count nếu notification chưa đọc
+      if (!notification.isRead) {
         setUnreadCount((prev) => prev + 1)
+      }
+      
+      // CRITICAL: Thêm notification vào danh sách (cả read và unread)
+      // Để đảm bảo tất cả notifications đều được hiển thị
+      setNotifications((prev) => {
+        // Kiểm tra xem notification đã có chưa (tránh duplicate)
+        const exists = prev.some(n => n.id === notification.id)
+        if (exists) {
+          // Nếu đã có, update notification (có thể đã thay đổi isRead status)
+          return prev.map(n => n.id === notification.id ? notification : n)
+        }
         
-        // Nếu đang mở dropdown, thêm notification vào danh sách
-        setNotifications((prev) => {
-          // Kiểm tra xem notification đã có chưa (tránh duplicate)
-          const exists = prev.some(n => n.id === notification.id)
-          if (exists) return prev
-          
-          // Thêm vào đầu danh sách
-          return [notification, ...prev]
-        })
+        // Thêm vào đầu danh sách
+        return [notification, ...prev]
+      })
 
-        // Hiển thị thông báo đẩy nếu được bật
-        if (pushEnabled && typeof Notification !== "undefined") {
-          const showBrowserNotification = () => {
-            try {
-              new Notification(notification.message || "Bạn có thông báo mới", {
-                body: notification.type,
-              })
-            } catch (err) {
-              console.error("Browser notification error:", err)
-            }
-          }
-
-          if (Notification.permission === "granted") {
-            showBrowserNotification()
-          } else if (Notification.permission === "default") {
-            Notification.requestPermission().then((perm) => {
-              if (perm === "granted") showBrowserNotification()
+      // Hiển thị thông báo đẩy nếu được bật và notification chưa đọc
+      if (!notification.isRead && pushEnabled && typeof Notification !== "undefined") {
+        const showBrowserNotification = () => {
+          try {
+            new Notification(notification.message || "Bạn có thông báo mới", {
+              body: notification.type,
             })
+          } catch (err) {
+            console.error("Browser notification error:", err)
           }
+        }
+
+        if (Notification.permission === "granted") {
+          showBrowserNotification()
+        } else if (Notification.permission === "default") {
+          Notification.requestPermission().then((perm) => {
+            if (perm === "granted") showBrowserNotification()
+          })
         }
       }
     }

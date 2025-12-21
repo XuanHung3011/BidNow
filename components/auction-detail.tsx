@@ -391,22 +391,50 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       // CHỈ refresh auction data khi status thay đổi sang completed/paused/cancelled
       // KHÔNG refresh khi status vẫn là "active" để tránh mất giá mới từ auto bid
       if (payload.status === "completed" || payload.status === "paused" || payload.status === "cancelled") {
+        // CRITICAL: Đợi một chút để backend kịp update WinnerId trong DB
+        // (Background service có thể đang xử lý finalization)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
         try {
           const data = await AuctionsAPI.getDetail(Number(auctionId))
           if (!isMounted) return
-          // Merge với state hiện tại, ưu tiên giá cao hơn
+          // Merge với state hiện tại, ưu tiên giá cao hơn và giữ winnerId từ payload
           setAuction((prev) => {
             if (!prev) return data
-            const prevCurrent = prev.currentBid ?? prev.startingBid
-            const dataCurrent = data.currentBid ?? data.startingBid
+            const prevCurrent = prev.currentBid ?? prev.startingBid ?? 0
+            const dataCurrent = data.currentBid ?? data.startingBid ?? 0
+            const payloadPrice = payload.finalPrice && payload.finalPrice > 0 ? payload.finalPrice : 0
+            
             return {
               ...data,
-              // Giữ giá cao hơn nếu có
-              currentBid: Math.max(prevCurrent, dataCurrent)
+              // CRITICAL: Ưu tiên finalPrice từ payload, sau đó là giá cao nhất
+              currentBid: payloadPrice > 0 
+                ? Math.max(prevCurrent, payloadPrice, dataCurrent)
+                : Math.max(prevCurrent, dataCurrent),
+              // CRITICAL: Ưu tiên winnerId từ payload (real-time) nếu có, nếu không thì dùng từ API
+              winnerId: payload.winnerId ?? data.winnerId ?? prev.winnerId,
+              // CRITICAL: Ưu tiên winnerName từ API nếu có winnerId
+              winnerName: payload.winnerId && data.winnerId === payload.winnerId 
+                ? data.winnerName 
+                : prev.winnerName
             }
           })
         } catch (err) {
           console.error('Failed to refresh auction after status update:', err)
+          // Nếu refresh fail, vẫn giữ winnerId từ payload
+          if (payload.status === "completed" && payload.winnerId) {
+            setAuction((prev) => {
+              if (!prev) return prev
+              return {
+                ...prev,
+                status: "completed",
+                winnerId: payload.winnerId,
+                currentBid: payload.finalPrice && payload.finalPrice > 0 
+                  ? Math.max(prev.currentBid ?? prev.startingBid ?? 0, payload.finalPrice)
+                  : prev.currentBid
+              }
+            })
+          }
         }
       }
     })
