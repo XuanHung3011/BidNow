@@ -240,8 +240,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
         currentBid: payload.currentBid,
         bidCount: payload.bidCount,
         bidderId: payload.placedBid?.bidderId,
-        amount: payload.placedBid?.amount,
-        isAutoBid: payload.placedBid?.isAutoBid
+        amount: payload.placedBid?.amount
       })
       
       // CRITICAL: Luôn update với giá mới nhất từ SignalR (ưu tiên SignalR hơn API response)
@@ -260,8 +259,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
             oldBid: prevCurrent,
             newBid: newBid,
             oldBidCount: prev.bidCount,
-            newBidCount: payload.bidCount,
-            isAutoBid: payload.placedBid?.isAutoBid
+            newBidCount: payload.bidCount
           })
           return {
             ...prev,
@@ -278,6 +276,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
       })
       
       // Luôn thêm bid mới vào history (để track tất cả bids)
+      // CRITICAL: Update recentBids để chart "Biểu đồ giá trực tuyến" và "Bảng giao dịch" real-time
       setRecentBids((prev) => {
         // Kiểm tra xem bid này đã có chưa (tránh duplicate)
         const isDuplicate = prev.some(
@@ -285,7 +284,20 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                  b.amount === payload.placedBid.amount &&
                  Math.abs(new Date(b.bidTime).getTime() - new Date(payload.placedBid.bidTime).getTime()) < 1000
         )
-        if (isDuplicate) return prev
+        if (isDuplicate) {
+          console.log("⚠️ Duplicate bid in recentBids, skipping:", {
+            bidderId: payload.placedBid.bidderId,
+            amount: payload.placedBid.amount,
+            bidTime: payload.placedBid.bidTime
+          })
+          return prev
+        }
+        
+        console.log("✅ Adding new bid to recentBids:", {
+          bidderId: payload.placedBid.bidderId,
+          amount: payload.placedBid.amount,
+          bidTime: payload.placedBid.bidTime
+        })
         
         const next: BidDto[] = [
           ...prev,
@@ -293,6 +305,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
             bidderId: payload.placedBid.bidderId,
             amount: payload.placedBid.amount,
             bidTime: payload.placedBid.bidTime,
+            // bidderName sẽ được fetch từ API khi cần
           },
         ]
         // Sắp xếp theo thời gian và lấy 120 bid mới nhất
@@ -500,6 +513,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
         const data = await AuctionsAPI.getRecentBids(Number(auctionId), 120)
         if (!active) return
         setRecentBids(data)
+        console.log("✅ Fetched recentBids for chart:", data.length, "bids")
       } catch (err) {
         console.error("Không thể tải lịch sử đấu giá gần đây", err)
       }
@@ -509,6 +523,64 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     }
     return () => {
       active = false
+    }
+  }, [auctionId])
+
+  // Periodic refresh cho recentBids để đảm bảo chart real-time (fallback nếu SignalR timeout)
+  useEffect(() => {
+    let isMounted = true
+    let intervalId: NodeJS.Timeout | null = null
+    
+    const refreshRecentBids = async () => {
+      // Chỉ refresh khi tab đang active (tránh waste resources)
+      if (document.hidden) return
+      if (!isMounted) return
+      if (!auctionId) return
+      
+      try {
+        const data = await AuctionsAPI.getRecentBids(Number(auctionId), 120)
+        if (!isMounted) return
+        
+        // Merge với bids hiện tại (ưu tiên bids mới hơn)
+        setRecentBids(prev => {
+          const bidMap = new Map<string, BidDto>()
+          
+          // Thêm bids hiện tại vào map
+          prev.forEach(bid => {
+            const key = `${bid.bidderId}-${bid.amount}-${Math.floor(new Date(bid.bidTime).getTime() / 1000)}`
+            const existing = bidMap.get(key)
+            if (!existing || new Date(bid.bidTime).getTime() > new Date(existing.bidTime).getTime()) {
+              bidMap.set(key, bid)
+            }
+          })
+          
+          // Thêm bids mới từ API (sẽ override nếu trùng key)
+          data.forEach(bid => {
+            const key = `${bid.bidderId}-${bid.amount}-${Math.floor(new Date(bid.bidTime).getTime() / 1000)}`
+            const existing = bidMap.get(key)
+            if (!existing || new Date(bid.bidTime).getTime() > new Date(existing.bidTime).getTime()) {
+              bidMap.set(key, bid)
+            }
+          })
+          
+          // Convert về array và sort
+          const merged = Array.from(bidMap.values())
+          return merged.sort((a, b) => new Date(b.bidTime).getTime() - new Date(a.bidTime).getTime()).slice(0, 120)
+        })
+      } catch (err) {
+        console.error("Error refreshing recentBids:", err)
+      }
+    }
+    
+    // Refresh mỗi 15 giây để đảm bảo chart luôn real-time
+    // Interval này là fallback nếu SignalR bị timeout sau 60s
+    intervalId = setInterval(refreshRecentBids, 15000) // 15 seconds
+    
+    return () => {
+      isMounted = false
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
     }
   }, [auctionId])
 
