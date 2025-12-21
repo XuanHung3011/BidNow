@@ -89,9 +89,10 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
       await fetchBids(false)
     }
     
-    // Refresh mỗi 30 giây để đảm bảo data luôn realtime
+    // Refresh mỗi 15 giây để đảm bảo data luôn realtime
     // Interval này là fallback nếu SignalR bị timeout sau 60s
-    intervalId = setInterval(refreshBids, 30000) // 30 seconds
+    // Refresh nhanh hơn để đảm bảo không bỏ lỡ bids mới
+    intervalId = setInterval(refreshBids, 15000) // 15 seconds
     
     return () => {
       isMounted = false
@@ -106,18 +107,68 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
     let isMounted = true
     const connection = createAuctionHubConnection()
     let started = false
+    let isStarting = false
+    let reconnectTimeoutId: NodeJS.Timeout | null = null
+
     const start = async () => {
+      if (isStarting) return
       try {
+        isStarting = true
         await connection.start()
         started = true
+        isStarting = false
         await connection.invoke("JoinAuctionGroup", String(auctionId))
-      } catch {
-        // ignore
+        console.log("✅ BidHistory: SignalR connected and joined group", auctionId)
+      } catch (e) {
+        isStarting = false
+        console.error("❌ BidHistory: Failed to start SignalR:", e)
       }
     }
+
+    // Handle connection close - reconnect automatically
+    connection.onclose((error) => {
+      console.log("🔴 BidHistory: SignalR connection closed", error)
+      if (!isMounted) return
+      
+      // Try to reconnect after a delay
+      reconnectTimeoutId = setTimeout(async () => {
+        if (!isMounted) return
+        if (connection.state === "Disconnected") {
+          console.log("🔄 BidHistory: Attempting to reconnect SignalR...")
+          try {
+            await start()
+          } catch (err) {
+            console.error("❌ BidHistory: Reconnection failed:", err)
+          }
+        }
+      }, 2000) // Retry after 2 seconds
+    })
+
+    // Handle reconnecting state
+    connection.onreconnecting((error) => {
+      console.log("🔄 BidHistory: SignalR reconnecting...", error)
+    })
+
+    // Handle reconnected state
+    connection.onreconnected((connectionId) => {
+      console.log("✅ BidHistory: SignalR reconnected:", connectionId)
+      if (isMounted) {
+        // Rejoin group after reconnection
+        connection.invoke("JoinAuctionGroup", String(auctionId)).catch((err) => {
+          console.error("❌ BidHistory: Failed to rejoin group after reconnect:", err)
+        })
+      }
+    })
+
     connection.on("BidPlaced", (payload: BidPlacedPayload) => {
       if (!isMounted) return
       if (payload.auctionId !== auctionId) return
+      
+      console.log("🔔 BidHistory: BidPlaced event received:", {
+        auctionId: payload.auctionId,
+        bidderId: payload.placedBid?.bidderId,
+        amount: payload.placedBid?.amount,
+      })
       
       setBids(prev => {
         // CRITICAL: Kiểm tra duplicate trước khi thêm bid mới
@@ -147,14 +198,42 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
         return next
       })
     })
+
+    // Handle reconnection when tab becomes visible
+    const handleVisibilityChange = async () => {
+      if (!document.hidden && isMounted) {
+        // Tab became visible - ensure connection is active and rejoin group
+        try {
+          if (connection.state === "Disconnected") {
+            console.log("🔄 BidHistory: Tab visible, reconnecting SignalR...")
+            await start()
+          } else if (connection.state === "Connected") {
+            // Connection is active, just rejoin group to be safe
+            await connection.invoke("JoinAuctionGroup", String(auctionId)).catch(() => {})
+          }
+        } catch (err) {
+          console.error("❌ BidHistory: Failed to reconnect on visibility change:", err)
+        }
+      }
+    }
+
+    // Listen for visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    // Start connection
     start()
+
     return () => {
       isMounted = false
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (reconnectTimeoutId) {
+        clearTimeout(reconnectTimeoutId)
+      }
       const leaveAndStop = async () => {
         try {
           if (started) {
-            await connection.invoke("LeaveAuctionGroup", String(auctionId))
-            await connection.stop()
+            await connection.invoke("LeaveAuctionGroup", String(auctionId)).catch(() => {})
+            await connection.stop().catch(() => {})
           }
         } catch {
           // ignore
