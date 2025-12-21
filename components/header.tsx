@@ -80,9 +80,7 @@ export function Header() {
       setLoadingNotifications(true)
       // Fetch all notifications (both read and unread) instead of only unread
       const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 10)
-      console.log("📬 Fetched notifications from API:", data.length, "notifications")
-      console.log("📬 Notification types:", data.map(n => ({ id: n.id, type: n.type, message: n.message?.substring(0, 50) })))
-      // CRITICAL: Merge với notifications hiện tại thay vì replace hoàn toàn
+      // CRITICAL: Merge với notifications hiện tại thay vì replace
       // Để tránh mất notifications từ real-time updates
       setNotifications((prev) => {
         const merged = [...data]
@@ -222,8 +220,8 @@ export function Header() {
         setUnreadCount((prev) => prev + 1)
       }
       
-      // CRITICAL: Thêm notification vào danh sách (cả read và unread)
-      // Để đảm bảo tất cả notifications đều được hiển thị
+      // CRITICAL: Luôn thêm notification vào danh sách (cả read và unread)
+      // Để đảm bảo khi mở dropdown sẽ thấy notifications
       setNotifications((prev) => {
         // Kiểm tra xem notification đã có chưa (tránh duplicate)
         const exists = prev.some(n => n.id === notification.id)
@@ -637,35 +635,27 @@ export function Header() {
                       </div>
                     ) : (
                       <div className="py-1">
-                        {notifications.length > 0 && (
-                          <div className="px-3 py-1 text-xs text-muted-foreground border-b">
-                            Tổng: {notifications.length} thông báo ({notifications.filter(n => !n.isRead).length} chưa đọc)
-                          </div>
-                        )}
-                        {notifications.map((notification) => {
-                          console.log("🔔 Rendering notification:", { id: notification.id, type: notification.type, message: notification.message?.substring(0, 50) })
-                          return (
-                            <DropdownMenuItem
-                              key={notification.id}
-                              className="flex flex-col items-start p-3 cursor-pointer hover:bg-accent"
-                              onClick={() => handleNotificationClick(notification)}
-                            >
-                              <div className="flex items-start justify-between w-full gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <p className={`text-sm ${!notification.isRead ? "font-semibold" : ""}`}>
-                                    {notification.message}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    {formatTime(notification.createdAt)} • {notification.type}
-                                  </p>
-                                </div>
-                                {!notification.isRead && (
-                                  <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1" />
-                                )}
+                        {notifications.map((notification) => (
+                          <DropdownMenuItem
+                            key={notification.id}
+                            className="flex flex-col items-start p-3 cursor-pointer hover:bg-accent"
+                            onClick={() => handleNotificationClick(notification)}
+                          >
+                            <div className="flex items-start justify-between w-full gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-sm ${!notification.isRead ? "font-semibold" : ""}`}>
+                                  {notification.message}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {formatTime(notification.createdAt)}
+                                </p>
                               </div>
-                            </DropdownMenuItem>
-                          )
-                        })}
+                              {!notification.isRead && (
+                                <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1" />
+                              )}
+                            </div>
+                          </DropdownMenuItem>
+                        ))}
                       </div>
                     )}
                   </ScrollArea>
