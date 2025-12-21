@@ -14,13 +14,12 @@ export function HeroSection() {
             <span>Nền tảng đấu giá trực tuyến hàng đầu Việt Nam</span>
           </div>
 
-          <h1 className="mb-6 text-balance text-4xl font-extrabold tracking-tight text-foreground md:text-6xl lg:text-7xl">
-            <span className="font-serif italic text-foreground/90">Đấu giá</span>{" "}
-            <span className="bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent font-bold">
-              thời gian thực
-            </span>
-            <br className="hidden sm:block" />
-            <span className="text-foreground/80">kết nối niềm tin và giá trị</span>
+          <h1 className="mb-6 text-balance text-4xl font-bold tracking-tight text-foreground md:text-6xl">
+            Đấu giá thời gian thực,{" "}
+            <span className="bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent">
+              kết nối niềm tin
+            </span>{" "}
+            và giá trị
           </h1>
 
           <p className="mb-8 text-pretty text-lg text-muted-foreground md:text-xl">
