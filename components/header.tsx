@@ -187,20 +187,30 @@ export function Header() {
           return
         }
 
-        // Tôn trọng cài đặt: nếu tắt bidUpdates và là outbid => bỏ qua
-        if (!prefBidUpdates && notification.type === "bid_outbid") {
+        // CRITICAL: Luôn xử lý các notifications quan trọng (item_pending, item_approved, item_rejected)
+        // Không bị filter bởi preferences
+        const isImportantNotification = 
+          notification.type === "item_pending" || 
+          notification.type === "item_approved" || 
+          notification.type === "item_rejected" ||
+          notification.type === "order_payment_received" ||
+          notification.type === "rating_received"
+
+        // Tôn trọng cài đặt: nếu tắt bidUpdates và là outbid => bỏ qua (trừ khi là important)
+        if (!isImportantNotification && !prefBidUpdates && notification.type === "bid_outbid") {
           return
         }
 
-        // Tôn trọng cài đặt: nếu tắt newAuctions và là auction_new => bỏ qua
-        if (!prefNewAuctions && notification.type === "auction_new") {
+        // Tôn trọng cài đặt: nếu tắt newAuctions và là auction_new => bỏ qua (trừ khi là important)
+        if (!isImportantNotification && !prefNewAuctions && notification.type === "auction_new") {
           return
         }
 
         // Tăng unread count
         setUnreadCount((prev) => prev + 1)
         
-        // Nếu đang mở dropdown, thêm notification vào danh sách
+        // CRITICAL: Luôn thêm notification vào danh sách (không chỉ khi mở dropdown)
+        // Để đảm bảo khi mở dropdown sẽ thấy notifications
         setNotifications((prev) => {
           // Kiểm tra xem notification đã có chưa (tránh duplicate)
           const exists = prev.some(n => n.id === notification.id)
