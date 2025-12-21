@@ -80,7 +80,26 @@ export function Header() {
       setLoadingNotifications(true)
       // Fetch all notifications (both read and unread) instead of only unread
       const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 10)
-      setNotifications(data)
+      console.log("📬 Fetched notifications from API:", data.length, "notifications")
+      console.log("📬 Notification types:", data.map(n => ({ id: n.id, type: n.type, message: n.message?.substring(0, 50) })))
+      // CRITICAL: Merge với notifications hiện tại thay vì replace hoàn toàn
+      // Để tránh mất notifications từ real-time updates
+      setNotifications((prev) => {
+        const merged = [...data]
+        // Thêm các notifications từ real-time mà chưa có trong data
+        prev.forEach(prevNotif => {
+          if (!merged.some(n => n.id === prevNotif.id)) {
+            merged.push(prevNotif)
+          }
+        })
+        // Sắp xếp theo thời gian (mới nhất trước)
+        merged.sort((a, b) => {
+          const aTime = new Date(a.createdAt).getTime()
+          const bTime = new Date(b.createdAt).getTime()
+          return bTime - aTime
+        })
+        return merged.slice(0, 20) // Giới hạn 20 notifications
+      })
     } catch (error) {
       console.error("Error fetching notifications:", error)
       toast({
@@ -397,32 +416,26 @@ export function Header() {
     if (!value) return new Date()
     
     // Backend trả về UTC datetime (sysutcdatetime()), có thể có hoặc không có timezone info
-    // Format có thể là: "2025-12-22T01:39:31.3739166" (không có timezone)
-    // Hoặc: "2025-12-22T01:39:31.3739166Z" (có Z)
-    // Hoặc: "2025-12-22T01:39:31.3739166+07:00" (có timezone offset)
-    
-    // Kiểm tra xem có timezone indicator không (Z hoặc +/-offset ở cuối)
-    // Pattern: Z hoặc +HH:MM hoặc -HH:MM hoặc +HHMM hoặc -HHMM ở cuối string
-    const timezonePattern = /[zZ]|[+\-]\d{2}:?\d{2}$/
-    const hasTimezoneInfo = timezonePattern.test(value.trim())
+    // Format có thể là: "2025-12-22T01:39:31.3739166" (không có timezone) - CRITICAL: Đây là UTC
+    // Hoặc: "2025-12-22T01:39:31.3739166Z" (có Z) - UTC
+    // Hoặc: "2025-12-22T01:39:31.3739166+07:00" (có timezone offset) - Local time với offset
     
     let normalizedValue = value.trim()
     
-    if (!hasTimezoneInfo) {
-      // Nếu không có timezone info, giả sử là UTC và thêm 'Z'
-      // Xử lý các format khác nhau:
-      
+    // CRITICAL: Kiểm tra xem có timezone indicator ở cuối string không
+    // Pattern: Z hoặc +HH:MM hoặc -HH:MM hoặc +HHMM hoặc -HHMM ở cuối string
+    // Phải kiểm tra ở cuối string để tránh false positive với dấu - trong date
+    const endsWithZ = /[zZ]$/.test(normalizedValue)
+    const endsWithOffset = /[+\-]\d{2}:?\d{2}$/.test(normalizedValue)
+    const hasTimezone = endsWithZ || endsWithOffset
+    
+    if (!hasTimezone) {
+      // Nếu không có timezone info, backend đã gửi UTC datetime nhưng không có Z
+      // CRITICAL: Phải thêm Z để JavaScript parse như UTC, không phải local time
       if (normalizedValue.includes('T')) {
-        // ISO format với T: "2025-12-22T01:39:31.3739166"
-        // Kiểm tra xem có dấu - hoặc + sau T không (timezone offset)
-        const tIndex = normalizedValue.indexOf('T')
-        const afterT = normalizedValue.substring(tIndex + 1)
-        const hasOffsetAfterT = /[+\-]\d{2}:?\d{2}$/.test(afterT)
-        
-        if (!hasOffsetAfterT) {
-          // Không có timezone offset sau T, thêm Z
-          normalizedValue = normalizedValue + 'Z'
-        }
+        // ISO format với T: "2025-12-22T02:06:53.5836155"
+        // Đảm bảo thêm Z vào cuối để parse như UTC
+        normalizedValue = normalizedValue + 'Z'
       } else if (normalizedValue.includes(' ')) {
         // Format với space: "2025-12-22 01:39:31.3739166"
         normalizedValue = normalizedValue.replace(' ', 'T') + 'Z'
@@ -433,9 +446,24 @@ export function Header() {
     }
 
     // Parse date với normalized value
-    const parsedUtc = new Date(normalizedValue)
-    if (!Number.isNaN(parsedUtc.getTime())) {
-      return parsedUtc
+    // Nếu có Z, JavaScript sẽ parse như UTC
+    const parsedDate = new Date(normalizedValue)
+    if (!Number.isNaN(parsedDate.getTime())) {
+      // Verify: parsed date phải hợp lý (không quá xa trong tương lai)
+      // Nếu parsed date > 1 giờ trong tương lai so với now, có thể là parse sai
+      const now = new Date()
+      const diffMs = parsedDate.getTime() - now.getTime()
+      
+      // Nếu date trong tương lai > 1 giờ và không có timezone indicator ban đầu
+      // Có thể là parse sai (parse như local time thay vì UTC)
+      if (diffMs > 3600000 && !hasTimezone) {
+        // Log warning để debug
+        console.warn("⚠️ Parsed date is in the future, original value:", value, "normalized:", normalizedValue, "parsed:", parsedDate)
+        // Vẫn return parsed date vì đã thêm Z, nên nó phải là UTC
+        // Nếu vẫn sai, có thể backend đang gửi local time thay vì UTC
+      }
+      
+      return parsedDate
     }
 
     // Fallback: thử parse trực tiếp với value gốc
@@ -609,27 +637,35 @@ export function Header() {
                       </div>
                     ) : (
                       <div className="py-1">
-                        {notifications.map((notification) => (
-                          <DropdownMenuItem
-                            key={notification.id}
-                            className="flex flex-col items-start p-3 cursor-pointer hover:bg-accent"
-                            onClick={() => handleNotificationClick(notification)}
-                          >
-                            <div className="flex items-start justify-between w-full gap-2">
-                              <div className="flex-1 min-w-0">
-                                <p className={`text-sm ${!notification.isRead ? "font-semibold" : ""}`}>
-                                  {notification.message}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {formatTime(notification.createdAt)}
-                                </p>
+                        {notifications.length > 0 && (
+                          <div className="px-3 py-1 text-xs text-muted-foreground border-b">
+                            Tổng: {notifications.length} thông báo ({notifications.filter(n => !n.isRead).length} chưa đọc)
+                          </div>
+                        )}
+                        {notifications.map((notification) => {
+                          console.log("🔔 Rendering notification:", { id: notification.id, type: notification.type, message: notification.message?.substring(0, 50) })
+                          return (
+                            <DropdownMenuItem
+                              key={notification.id}
+                              className="flex flex-col items-start p-3 cursor-pointer hover:bg-accent"
+                              onClick={() => handleNotificationClick(notification)}
+                            >
+                              <div className="flex items-start justify-between w-full gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm ${!notification.isRead ? "font-semibold" : ""}`}>
+                                    {notification.message}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {formatTime(notification.createdAt)} • {notification.type}
+                                  </p>
+                                </div>
+                                {!notification.isRead && (
+                                  <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1" />
+                                )}
                               </div>
-                              {!notification.isRead && (
-                                <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1" />
-                              )}
-                            </div>
-                          </DropdownMenuItem>
-                        ))}
+                            </DropdownMenuItem>
+                          )
+                        })}
                       </div>
                     )}
                   </ScrollArea>
