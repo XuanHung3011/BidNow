@@ -192,20 +192,6 @@ export function RealTimePriceChart({
             strokeWidth={1.5}
             strokeDasharray="5 5"
           />
-          {buyNowPrice && (
-            <ReferenceLine
-              y={buyNowPrice}
-              stroke="#0f172a"
-              strokeWidth={1.5}
-              strokeDasharray="5 5"
-              label={{
-                value: "Giá mua ngay",
-                position: "left",
-                fill: "#0f172a",
-                fontSize: 11,
-              }}
-            />
-          )}
           {axisTicks.map((tick) => (
             <ReferenceLine
               key={`tick-${tick}`}

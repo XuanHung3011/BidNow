@@ -210,24 +210,25 @@ export function Header() {
           return [notification, ...prev]
         })
 
-      // Hiển thị thông báo đẩy nếu được bật và notification chưa đọc
-      if (!notification.isRead && pushEnabled && typeof Notification !== "undefined") {
-        const showBrowserNotification = () => {
-          try {
-            new Notification(notification.message || "Bạn có thông báo mới", {
-              body: notification.type,
-            })
-          } catch (err) {
-            console.error("Browser notification error:", err)
+        // Hiển thị thông báo đẩy nếu được bật và notification chưa đọc
+        if (pushEnabled && typeof Notification !== "undefined") {
+          const showBrowserNotification = () => {
+            try {
+              new Notification(notification.message || "Bạn có thông báo mới", {
+                body: notification.type,
+              })
+            } catch (err) {
+              console.error("Browser notification error:", err)
+            }
           }
-        }
 
-        if (Notification.permission === "granted") {
-          showBrowserNotification()
-        } else if (Notification.permission === "default") {
-          Notification.requestPermission().then((perm) => {
-            if (perm === "granted") showBrowserNotification()
-          })
+          if (Notification.permission === "granted") {
+            showBrowserNotification()
+          } else if (Notification.permission === "default") {
+            Notification.requestPermission().then((perm) => {
+              if (perm === "granted") showBrowserNotification()
+            })
+          }
         }
       }
     }
@@ -263,7 +264,7 @@ export function Header() {
       }
       void cleanup()
     }
-  }, [userIdNumber])
+  }, [userIdNumber, pushEnabled, prefBidUpdates, prefNewAuctions])
 
   useEffect(() => {
     if (typeof window === "undefined") return
