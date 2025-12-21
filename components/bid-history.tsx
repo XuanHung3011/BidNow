@@ -14,31 +14,90 @@ interface BidHistoryProps {
 export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
   const [bids, setBids] = useState<BidDto[]>([])
 
+  const fetchBids = async (isInitial = false) => {
+    try {
+      const data = await AuctionsAPI.getRecentBids(auctionId, 100)
+      
+      // CRITICAL: Deduplicate bids từ API trước khi set state
+      // Tránh duplicate khi merge với SignalR updates
+      const uniqueData = data.filter((bid, index, self) => {
+        const duplicateIndex = self.findIndex(
+          (b) => b.bidderId === bid.bidderId && 
+                 b.amount === bid.amount &&
+                 Math.abs(new Date(b.bidTime).getTime() - new Date(bid.bidTime).getTime()) < 1000
+        )
+        return duplicateIndex === index
+      })
+      
+      if (isInitial) {
+        // Initial load: replace toàn bộ
+        setBids(uniqueData)
+      } else {
+        // Periodic refresh: merge với bids hiện tại (ưu tiên bids mới hơn)
+        setBids(prev => {
+          const bidMap = new Map<string, BidDto>()
+          
+          // Thêm bids hiện tại vào map
+          prev.forEach(bid => {
+            const key = `${bid.bidderId}-${bid.amount}-${Math.floor(new Date(bid.bidTime).getTime() / 1000)}`
+            const existing = bidMap.get(key)
+            if (!existing || new Date(bid.bidTime).getTime() > new Date(existing.bidTime).getTime()) {
+              bidMap.set(key, bid)
+            }
+          })
+          
+          // Thêm bids mới từ API (sẽ override nếu trùng key)
+          uniqueData.forEach(bid => {
+            const key = `${bid.bidderId}-${bid.amount}-${Math.floor(new Date(bid.bidTime).getTime() / 1000)}`
+            const existing = bidMap.get(key)
+            if (!existing || new Date(bid.bidTime).getTime() > new Date(existing.bidTime).getTime()) {
+              bidMap.set(key, bid)
+            }
+          })
+          
+          // Convert về array và sort
+          const merged = Array.from(bidMap.values())
+          return merged.sort((a, b) => new Date(b.bidTime).getTime() - new Date(a.bidTime).getTime())
+        })
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Initial fetch
   useEffect(() => {
     let mounted = true
-    ;(async () => {
-      try {
-        const data = await AuctionsAPI.getRecentBids(auctionId, 100)
-        if (!mounted) return
-        
-        // CRITICAL: Deduplicate bids từ API trước khi set state
-        // Tránh duplicate khi merge với SignalR updates
-        const uniqueData = data.filter((bid, index, self) => {
-          const duplicateIndex = self.findIndex(
-            (b) => b.bidderId === bid.bidderId && 
-                   b.amount === bid.amount &&
-                   Math.abs(new Date(b.bidTime).getTime() - new Date(bid.bidTime).getTime()) < 1000
-          )
-          return duplicateIndex === index
-        })
-        
-        setBids(uniqueData)
-      } catch {
-        // ignore
-      }
-    })()
+    fetchBids(true).then(() => {
+      if (!mounted) return
+    })
     return () => {
       mounted = false
+    }
+  }, [auctionId])
+
+  // Periodic refresh để đảm bảo realtime (fallback nếu SignalR timeout)
+  useEffect(() => {
+    let isMounted = true
+    let intervalId: NodeJS.Timeout | null = null
+    
+    const refreshBids = async () => {
+      // Chỉ refresh khi tab đang active (tránh waste resources)
+      if (document.hidden) return
+      if (!isMounted) return
+      
+      await fetchBids(false)
+    }
+    
+    // Refresh mỗi 30 giây để đảm bảo data luôn realtime
+    // Interval này là fallback nếu SignalR bị timeout sau 60s
+    intervalId = setInterval(refreshBids, 30000) // 30 seconds
+    
+    return () => {
+      isMounted = false
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
     }
   }, [auctionId])
 
