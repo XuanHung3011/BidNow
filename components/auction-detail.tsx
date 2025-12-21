@@ -505,6 +505,68 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
     }
   }, [auction?.id, auctionId, isAuctionEnded, isAuctionLocked])
 
+  // Fetch auction data (initial load)
+  useEffect(() => {
+    if (auctionId) {
+      fetchAuction()
+    }
+  }, [auctionId])
+
+  // Periodic refresh cho auction data để đảm bảo "Bảng giao dịch" luôn real-time (fallback nếu SignalR disconnect)
+  useEffect(() => {
+    let isMounted = true
+    let intervalId: NodeJS.Timeout | null = null
+    
+    const refreshAuction = async () => {
+      // Chỉ refresh khi tab đang active (tránh waste resources)
+      if (document.hidden) return
+      if (!isMounted) return
+      if (!auctionId) return
+      
+      try {
+        const data = await AuctionsAPI.getDetail(Number(auctionId), user?.id ? Number(user.id) : undefined)
+        if (!isMounted) return
+        
+        // CRITICAL: Merge với auction hiện tại, ưu tiên giá cao hơn (tránh race condition)
+        setAuction((prev) => {
+          if (!prev) return data
+          
+          const prevCurrent = prev.currentBid ?? prev.startingBid ?? 0
+          const dataCurrent = data.currentBid ?? data.startingBid ?? 0
+          
+          // Chỉ update nếu giá mới >= giá hiện tại hoặc bidCount tăng
+          if (dataCurrent >= prevCurrent || (data.bidCount ?? 0) > (prev.bidCount ?? 0)) {
+            console.log("✅ Periodic refresh: Updated auction data", {
+              oldBid: prevCurrent,
+              newBid: dataCurrent,
+              oldBidCount: prev.bidCount,
+              newBidCount: data.bidCount
+            })
+            return {
+              ...data,
+              // Luôn lấy giá cao hơn để tránh rollback
+              currentBid: Math.max(prevCurrent, dataCurrent)
+            }
+          }
+          return prev
+        })
+      } catch (err) {
+        console.error("Error refreshing auction data:", err)
+      }
+    }
+    
+    // Refresh mỗi 15 giây để đảm bảo "Bảng giao dịch" luôn real-time
+    // Interval này là fallback nếu SignalR bị disconnect
+    intervalId = setInterval(refreshAuction, 15000) // 15 seconds
+    
+    return () => {
+      isMounted = false
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [auctionId])
+
   // Fetch recent bid timeline for chart/ticker
   useEffect(() => {
     let active = true
