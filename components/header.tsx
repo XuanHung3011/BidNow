@@ -79,40 +79,8 @@ export function Header() {
     try {
       setLoadingNotifications(true)
       // Fetch all notifications (both read and unread) instead of only unread
-      const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 20)
-      
-      // Debug: Log để kiểm tra
-      console.log("📥 Fetched notifications from API:", data.length, "items")
-      if (data.length > 0) {
-        console.log("📥 First notification:", data[0].id, data[0].createdAt, data[0].message)
-      }
-      
-      // CRITICAL: Khi fetch từ API, replace hoàn toàn với data từ API
-      // API đã có tất cả notifications mới nhất (sorted by CreatedAt DESC)
-      // Chỉ merge với notifications từ real-time mà chưa có trong API response
-      setNotifications((prev) => {
-        // Debug: Log prev state
-        console.log("📥 Previous notifications:", prev.length, "items")
-        
-        // Lấy data từ API làm base (đã sorted mới nhất trước)
-        const merged = [...data]
-        // Thêm các notifications từ real-time mà chưa có trong API response
-        // (trường hợp real-time notification chưa được lưu vào DB hoặc chưa có trong page 1)
-        prev.forEach(prevNotif => {
-          if (!merged.some(n => n.id === prevNotif.id)) {
-            merged.push(prevNotif)
-          }
-        })
-        // Sắp xếp lại theo thời gian (mới nhất trước) để đảm bảo thứ tự đúng
-        merged.sort((a, b) => {
-          const aTime = new Date(a.createdAt).getTime()
-          const bTime = new Date(b.createdAt).getTime()
-          return bTime - aTime
-        })
-        const result = merged.slice(0, 20) // Giới hạn 20 notifications
-        console.log("📥 Final notifications:", result.length, "items")
-        return result
-      })
+      const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 10)
+      setNotifications(data)
     } catch (error) {
       console.error("Error fetching notifications:", error)
       toast({
@@ -188,14 +156,7 @@ export function Header() {
     return () => clearInterval(interval)
   }, [user, fetchUnreadNotificationsCount])
 
-  // Fetch notifications khi có user (ngay khi mount hoặc user thay đổi)
-  useEffect(() => {
-    if (user) {
-      fetchNotifications()
-    }
-  }, [user, fetchNotifications])
-
-  // Refresh notifications khi mở dropdown (để đảm bảo data mới nhất)
+  // Load notifications khi mở dropdown
   useEffect(() => {
     if (notificationDropdownOpen && user) {
       fetchNotifications()
@@ -220,41 +181,34 @@ export function Header() {
     }
 
     const handleNotificationReceived = (notification: NotificationResponseDto) => {
-      if (notification.userId !== userIdNumber) return
-      
-      // Tôn trọng cài đặt: nếu tắt pushNotifications => bỏ qua hoàn toàn
-      if (!pushEnabled) {
-        return
-      }
-
-      // Tôn trọng cài đặt: nếu tắt bidUpdates và là outbid => bỏ qua
-      if (!prefBidUpdates && notification.type === "bid_outbid") {
-        return
-      }
-
-      // Tôn trọng cài đặt: nếu tắt newAuctions và là auction_new => bỏ qua
-      if (!prefNewAuctions && notification.type === "auction_new") {
-        return
-      }
-
-      // CRITICAL: Chỉ tăng unread count nếu notification chưa đọc
-      if (!notification.isRead) {
-        setUnreadCount((prev) => prev + 1)
-      }
-      
-      // CRITICAL: Luôn thêm notification vào danh sách (cả read và unread)
-      // Để đảm bảo khi mở dropdown sẽ thấy notifications
-      setNotifications((prev) => {
-        // Kiểm tra xem notification đã có chưa (tránh duplicate)
-        const exists = prev.some(n => n.id === notification.id)
-        if (exists) {
-          // Nếu đã có, update notification (có thể đã thay đổi isRead status)
-          return prev.map(n => n.id === notification.id ? notification : n)
+      if (notification.userId === userIdNumber && !notification.isRead) {
+        // Tôn trọng cài đặt: nếu tắt pushNotifications => bỏ qua hoàn toàn
+        if (!pushEnabled) {
+          return
         }
+
+        // Tôn trọng cài đặt: nếu tắt bidUpdates và là outbid => bỏ qua
+        if (!prefBidUpdates && notification.type === "bid_outbid") {
+          return
+        }
+
+        // Tôn trọng cài đặt: nếu tắt newAuctions và là auction_new => bỏ qua
+        if (!prefNewAuctions && notification.type === "auction_new") {
+          return
+        }
+
+        // Tăng unread count
+        setUnreadCount((prev) => prev + 1)
         
-        // Thêm vào đầu danh sách
-        return [notification, ...prev]
-      })
+        // Nếu đang mở dropdown, thêm notification vào danh sách
+        setNotifications((prev) => {
+          // Kiểm tra xem notification đã có chưa (tránh duplicate)
+          const exists = prev.some(n => n.id === notification.id)
+          if (exists) return prev
+          
+          // Thêm vào đầu danh sách
+          return [notification, ...prev]
+        })
 
       // Hiển thị thông báo đẩy nếu được bật và notification chưa đọc
       if (!notification.isRead && pushEnabled && typeof Notification !== "undefined") {
