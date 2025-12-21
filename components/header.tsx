@@ -391,33 +391,55 @@ export function Header() {
     if (!value) return new Date()
     
     // Backend trả về UTC datetime (sysutcdatetime()), có thể có hoặc không có timezone info
-    // Nếu không có timezone info, giả sử là UTC và thêm 'Z'
-    const timezonePattern = /([zZ])|([+\-]\d{2}:?\d{2}$)/
-    const hasTimezoneInfo = timezonePattern.test(value)
+    // Format có thể là: "2025-12-22T01:39:31.3739166" (không có timezone)
+    // Hoặc: "2025-12-22T01:39:31.3739166Z" (có Z)
+    // Hoặc: "2025-12-22T01:39:31.3739166+07:00" (có timezone offset)
     
-    let normalizedValue = value
+    // Kiểm tra xem có timezone indicator không (Z hoặc +/-offset ở cuối)
+    // Pattern: Z hoặc +HH:MM hoặc -HH:MM hoặc +HHMM hoặc -HHMM ở cuối string
+    const timezonePattern = /[zZ]|[+\-]\d{2}:?\d{2}$/
+    const hasTimezoneInfo = timezonePattern.test(value.trim())
+    
+    let normalizedValue = value.trim()
+    
     if (!hasTimezoneInfo) {
-      // Nếu không có timezone, thêm 'Z' để đánh dấu là UTC
-      // Nhưng chỉ nếu không có space và không có 'T' (đã là ISO format)
-      if (!value.includes('T') && !value.includes(' ')) {
-        // Format: "2025-12-21 18:00:00" -> "2025-12-21T18:00:00Z"
-        normalizedValue = value.replace(' ', 'T') + 'Z'
-      } else if (value.includes('T') && !value.includes('Z') && !value.includes('+') && !value.includes('-', value.indexOf('T'))) {
-        // Format: "2025-12-21T18:00:00" -> "2025-12-21T18:00:00Z"
-        normalizedValue = value + 'Z'
+      // Nếu không có timezone info, giả sử là UTC và thêm 'Z'
+      // Xử lý các format khác nhau:
+      
+      if (normalizedValue.includes('T')) {
+        // ISO format với T: "2025-12-22T01:39:31.3739166"
+        // Kiểm tra xem có dấu - hoặc + sau T không (timezone offset)
+        const tIndex = normalizedValue.indexOf('T')
+        const afterT = normalizedValue.substring(tIndex + 1)
+        const hasOffsetAfterT = /[+\-]\d{2}:?\d{2}$/.test(afterT)
+        
+        if (!hasOffsetAfterT) {
+          // Không có timezone offset sau T, thêm Z
+          normalizedValue = normalizedValue + 'Z'
+        }
+      } else if (normalizedValue.includes(' ')) {
+        // Format với space: "2025-12-22 01:39:31.3739166"
+        normalizedValue = normalizedValue.replace(' ', 'T') + 'Z'
       } else {
-        normalizedValue = value
+        // Format khác, thử thêm Z
+        normalizedValue = normalizedValue + 'Z'
       }
     }
 
+    // Parse date với normalized value
     const parsedUtc = new Date(normalizedValue)
     if (!Number.isNaN(parsedUtc.getTime())) {
       return parsedUtc
     }
 
-    // Fallback: thử parse trực tiếp
+    // Fallback: thử parse trực tiếp với value gốc
     const fallback = new Date(value)
-    return Number.isNaN(fallback.getTime()) ? new Date() : fallback
+    if (!Number.isNaN(fallback.getTime())) {
+      return fallback
+    }
+
+    // Nếu vẫn fail, trả về current time
+    return new Date()
   }
 
   const formatTime = (dateString: string) => {
