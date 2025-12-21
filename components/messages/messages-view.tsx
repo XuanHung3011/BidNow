@@ -949,9 +949,44 @@ export function MessagesView() {
 
   const formatTime = (dateString: string | null | undefined) => {
     if (!dateString) return ""
-    const date = new Date(dateString)
+    
+    // Parse date - handle UTC datetime từ backend
+    let date: Date
+    try {
+      // Backend trả về UTC datetime, có thể có hoặc không có timezone info
+      const timezonePattern = /([zZ])|([+\-]\d{2}:?\d{2}$)/
+      const hasTimezoneInfo = timezonePattern.test(dateString)
+      
+      let normalizedValue = dateString
+      if (!hasTimezoneInfo) {
+        // Nếu không có timezone, thêm 'Z' để đánh dấu là UTC
+        if (dateString.includes('T') && !dateString.includes('Z') && !dateString.includes('+') && !dateString.includes('-', dateString.indexOf('T'))) {
+          normalizedValue = dateString + 'Z'
+        } else if (!dateString.includes('T') && dateString.includes(' ')) {
+          normalizedValue = dateString.replace(' ', 'T') + 'Z'
+        }
+      }
+      
+      date = new Date(normalizedValue)
+      if (Number.isNaN(date.getTime())) {
+        date = new Date(dateString) // Fallback
+      }
+    } catch {
+      date = new Date(dateString)
+    }
+    
+    if (Number.isNaN(date.getTime())) {
+      return "Vừa xong"
+    }
+    
     const now = new Date()
     const diff = now.getTime() - date.getTime()
+    
+    // Nếu diff < 0, có nghĩa là date trong tương lai (timezone issue)
+    if (diff < 0) {
+      return "Vừa xong"
+    }
+    
     const minutes = Math.floor(diff / 60000)
     const hours = Math.floor(diff / 3600000)
     const days = Math.floor(diff / 86400000)

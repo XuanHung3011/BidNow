@@ -262,7 +262,7 @@ export function PendingAuctions() {
     
     try {
       setProcessingIds((prev) => new Set(prev).add(itemToApprove))
-      await ItemsAPI.approveItem(itemToApprove, user?.id)
+      await ItemsAPI.approveItem(itemToApprove, user?.id ? Number(user.id) : undefined)
       toast({
         title: "Thành công",
         description: "Đã phê duyệt sản phẩm",
@@ -307,7 +307,7 @@ export function PendingAuctions() {
 
     try {
       setProcessingIds((prev) => new Set(prev).add(itemToReject))
-      await ItemsAPI.rejectItem(itemToReject, rejectReason, user?.id)
+      await ItemsAPI.rejectItem(itemToReject, rejectReason, user?.id ? Number(user.id) : undefined)
       toast({
         title: "Thành công",
         description: "Đã từ chối sản phẩm",

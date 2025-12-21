@@ -389,23 +389,51 @@ export function Header() {
 
   const parseNotificationDate = (value: string) => {
     if (!value) return new Date()
+    
+    // Backend trả về UTC datetime (sysutcdatetime()), có thể có hoặc không có timezone info
+    // Nếu không có timezone info, giả sử là UTC và thêm 'Z'
     const timezonePattern = /([zZ])|([+\-]\d{2}:?\d{2}$)/
     const hasTimezoneInfo = timezonePattern.test(value)
-    const normalizedValue = hasTimezoneInfo ? value : `${value}Z`
+    
+    let normalizedValue = value
+    if (!hasTimezoneInfo) {
+      // Nếu không có timezone, thêm 'Z' để đánh dấu là UTC
+      // Nhưng chỉ nếu không có space và không có 'T' (đã là ISO format)
+      if (!value.includes('T') && !value.includes(' ')) {
+        // Format: "2025-12-21 18:00:00" -> "2025-12-21T18:00:00Z"
+        normalizedValue = value.replace(' ', 'T') + 'Z'
+      } else if (value.includes('T') && !value.includes('Z') && !value.includes('+') && !value.includes('-', value.indexOf('T'))) {
+        // Format: "2025-12-21T18:00:00" -> "2025-12-21T18:00:00Z"
+        normalizedValue = value + 'Z'
+      } else {
+        normalizedValue = value
+      }
+    }
 
     const parsedUtc = new Date(normalizedValue)
     if (!Number.isNaN(parsedUtc.getTime())) {
       return parsedUtc
     }
 
+    // Fallback: thử parse trực tiếp
     const fallback = new Date(value)
     return Number.isNaN(fallback.getTime()) ? new Date() : fallback
   }
 
   const formatTime = (dateString: string) => {
+    if (!dateString) return "Vừa xong"
+    
     const date = parseNotificationDate(dateString)
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
+    
+    // Nếu diffMs < 0, có nghĩa là date trong tương lai (có thể do timezone issue)
+    // Trong trường hợp này, hiển thị "Vừa xong" thay vì số âm
+    if (diffMs < 0) {
+      console.warn("Notification date is in the future, possible timezone issue:", dateString, "parsed as:", date)
+      return "Vừa xong"
+    }
+    
     const diffMins = Math.floor(diffMs / 60000)
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)

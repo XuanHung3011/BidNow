@@ -28,10 +28,42 @@ const buildAliasFromUserId = (userId?: string | number | null) => {
 
 const formatRelativeTime = (value?: string) => {
   if (!value) return "Vừa xong"
-  const date = new Date(value)
+  
+  // Parse date - handle UTC datetime từ backend
+  let date: Date
+  try {
+    // Backend trả về UTC datetime, có thể có hoặc không có timezone info
+    const timezonePattern = /([zZ])|([+\-]\d{2}:?\d{2}$)/
+    const hasTimezoneInfo = timezonePattern.test(value)
+    
+    let normalizedValue = value
+    if (!hasTimezoneInfo) {
+      // Nếu không có timezone, thêm 'Z' để đánh dấu là UTC
+      if (value.includes('T') && !value.includes('Z') && !value.includes('+') && !value.includes('-', value.indexOf('T'))) {
+        normalizedValue = value + 'Z'
+      } else if (!value.includes('T') && value.includes(' ')) {
+        normalizedValue = value.replace(' ', 'T') + 'Z'
+      }
+    }
+    
+    date = new Date(normalizedValue)
+    if (Number.isNaN(date.getTime())) {
+      date = new Date(value) // Fallback
+    }
+  } catch {
+    date = new Date(value)
+  }
+  
   if (Number.isNaN(date.getTime())) return "Vừa xong"
+  
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
+  
+  // Nếu diffMs < 0, có nghĩa là date trong tương lai (timezone issue)
+  if (diffMs < 0) {
+    return "Vừa xong"
+  }
+  
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMs / 3600000)
   const diffDays = Math.floor(diffMs / 86400000)
