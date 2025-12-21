@@ -80,13 +80,29 @@ export function Header() {
       setLoadingNotifications(true)
       // Fetch all notifications (both read and unread) - lấy 10 notifications mới nhất
       const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 10)
-      // Đảm bảo sắp xếp theo thời gian (mới nhất trước) và chỉ lấy 10 cái
-      const sorted = [...data].sort((a, b) => {
-        const aTime = new Date(a.createdAt).getTime()
-        const bTime = new Date(b.createdAt).getTime()
-        return bTime - aTime
+      
+      // CRITICAL: Merge với notifications từ real-time để không mất notifications mới
+      setNotifications((prev) => {
+        // Lấy data từ API làm base
+        const merged = [...data]
+        
+        // Thêm các notifications từ real-time mà chưa có trong API response
+        // (trường hợp notification mới chưa được lưu vào DB hoặc chưa có trong page 1)
+        prev.forEach(prevNotif => {
+          if (!merged.some(n => n.id === prevNotif.id)) {
+            merged.push(prevNotif)
+          }
+        })
+        
+        // Sắp xếp theo thời gian (mới nhất trước) và chỉ lấy 10 cái
+        merged.sort((a, b) => {
+          const aTime = new Date(a.createdAt).getTime()
+          const bTime = new Date(b.createdAt).getTime()
+          return bTime - aTime
+        })
+        
+        return merged.slice(0, 10)
       })
-      setNotifications(sorted.slice(0, 10))
     } catch (error) {
       console.error("Error fetching notifications:", error)
       toast({
@@ -187,7 +203,7 @@ export function Header() {
     }
 
     const handleNotificationReceived = (notification: NotificationResponseDto) => {
-      if (notification.userId === userIdNumber && !notification.isRead) {
+      if (notification.userId === userIdNumber) {
         // Tôn trọng cài đặt: nếu tắt pushNotifications => bỏ qua hoàn toàn
         if (!pushEnabled) {
           return
@@ -203,9 +219,13 @@ export function Header() {
           return
         }
 
-        // Tăng unread count
-        setUnreadCount((prev) => prev + 1)
+        // Tăng unread count nếu notification chưa đọc
+        if (!notification.isRead) {
+          setUnreadCount((prev) => prev + 1)
+        }
         
+        // CRITICAL: Luôn thêm notification vào danh sách (cả read và unread)
+        // Để đảm bảo khi mở dropdown sẽ thấy notifications
         // Thêm notification vào danh sách và sắp xếp lại, chỉ giữ 10 notifications mới nhất
         setNotifications((prev) => {
           // Kiểm tra xem notification đã có chưa (tránh duplicate)

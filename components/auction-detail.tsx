@@ -93,6 +93,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
   const normalizedStatus = useMemo(() => auction?.status?.toLowerCase() ?? "", [auction?.status])
   const isAuctionLocked = useMemo(() => ["paused", "cancelled", "completed"].includes(normalizedStatus), [normalizedStatus])
   const isAuctionEnded = useMemo(() => auctionStatus === "ended" || normalizedStatus === "completed", [auctionStatus, normalizedStatus])
+  const isAuctionNotStarted = useMemo(() => auctionStatus === "scheduled", [auctionStatus])
 
   const handleBuyNow = async () => {
     if (!auction?.buyNowPrice) {
@@ -1279,7 +1280,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
             </div>
           </Card>
 
-          <Card className={`border border-border bg-card p-6 shadow-lg ${isAuctionEnded ? "opacity-60" : ""}`}>
+          <Card className={`border border-border bg-card p-6 shadow-lg ${isAuctionEnded || isAuctionNotStarted ? "opacity-60" : ""}`}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.35em] text-muted-foreground">Đặt giá</p>
@@ -1296,7 +1297,16 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                   </AlertDescription>
                 </Alert>
               )}
-              <div className={`mt-6 space-y-4 ${isAuctionEnded ? "pointer-events-none" : ""}`}>
+              {isAuctionNotStarted && (
+                <Alert variant="default" className="mt-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Phiên đấu giá chưa bắt đầu</AlertTitle>
+                  <AlertDescription>
+                    Phiên đấu giá này chưa bắt đầu. Vui lòng đợi đến thời gian bắt đầu để đặt giá.
+                  </AlertDescription>
+                </Alert>
+              )}
+              <div className={`mt-6 space-y-4 ${isAuctionEnded || isAuctionNotStarted ? "pointer-events-none" : ""}`}>
             <div className="flex items-baseline justify-between">
               <span className="text-sm text-muted-foreground">Giá hiện tại</span>
               <div className="text-right">
@@ -1335,10 +1345,10 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                 value={bidAmount}
                 onChange={(e) => setBidAmount(e.target.value)}
                 className="flex-1"
-                disabled={isAuctionEnded || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
+                disabled={isAuctionEnded || isAuctionNotStarted || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
               />
               <Button 
-                disabled={isAuctionEnded || placing || !user || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
+                disabled={isAuctionEnded || isAuctionNotStarted || placing || !user || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
                 onClick={async () => {
                   if (!auction) return
                   setPlaceError(null)
@@ -1449,7 +1459,7 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
                       variant="outline"
                       className="flex-1 bg-transparent text-xs"
                         onClick={() => setBidAmount((suggestedBid + minIncrement * idx).toString())}
-                        disabled={isAuctionEnded || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
+                        disabled={isAuctionEnded || isAuctionNotStarted || ["paused", "cancelled"].includes(auction.status?.toLowerCase() ?? "")}
               >
                         <span className="truncate">{formatPrice(suggestedBid + minIncrement * idx)}</span>
               </Button>
