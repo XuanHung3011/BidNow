@@ -243,34 +243,42 @@ export function AuctionDetail({ auctionId }: AuctionDetailProps) {
         amount: payload.placedBid?.amount
       })
       
-      // CRITICAL: Luôn update với giá mới nhất từ SignalR (ưu tiên SignalR hơn API response)
-      // Chỉ update nếu giá mới cao hơn hoặc bằng giá hiện tại (tránh update ngược về giá cũ)
+      // CRITICAL: Update "Giá hiện tại" ngay lập tức với giá bid mới nhất
+      // Ưu tiên payload.placedBid.amount (giá bid mới) hoặc payload.currentBid
       setAuction((prev) => {
         if (!prev) return prev
 
         // Dùng giá hiện tại với fallback về startingBid (tránh undefined)
         const prevCurrent = prev.currentBid ?? prev.startingBid ?? 0
-        const newBid = payload.currentBid ?? prevCurrent
+        
+        // CRITICAL: Ưu tiên payload.placedBid.amount (giá bid mới nhất) để update ngay lập tức
+        // Nếu không có, dùng payload.currentBid
+        const newBidAmount = payload.placedBid?.amount ?? payload.currentBid ?? prevCurrent
+        const newBidCount = payload.bidCount ?? prev.bidCount ?? 0
 
-        // Chỉ update nếu currentBid mới >= currentBid hiện tại
-        // Hoặc nếu bidCount tăng (có bid mới) thì cũng update để đảm bảo sync
-        if (newBid >= prevCurrent || (payload.bidCount > (prev.bidCount ?? 0))) {
-          console.log("✅ Updating auction with new bid:", {
+        // Update ngay nếu:
+        // 1. Giá bid mới >= giá hiện tại (bid hợp lệ)
+        // 2. Hoặc bidCount tăng (có bid mới)
+        if (newBidAmount >= prevCurrent || newBidCount > (prev.bidCount ?? 0)) {
+          console.log("✅ Updating auction currentBid immediately:", {
             oldBid: prevCurrent,
-            newBid: newBid,
+            newBid: newBidAmount,
+            placedBidAmount: payload.placedBid?.amount,
+            payloadCurrentBid: payload.currentBid,
             oldBidCount: prev.bidCount,
-            newBidCount: payload.bidCount
+            newBidCount: newBidCount
           })
           return {
             ...prev,
-            currentBid: Math.max(prevCurrent, newBid), // Luôn lấy giá cao hơn
-            bidCount: payload.bidCount ?? prev.bidCount,
+            // CRITICAL: Dùng giá bid mới nhất để update ngay lập tức
+            currentBid: Math.max(prevCurrent, newBidAmount),
+            bidCount: newBidCount,
           }
         }
         // Nếu giá mới thấp hơn, có thể là update cũ đến muộn, bỏ qua
         console.log("⚠️ Ignoring older bid:", {
           prevCurrent,
-          newBid: newBid
+          newBidAmount: newBidAmount
         })
         return prev
       })
