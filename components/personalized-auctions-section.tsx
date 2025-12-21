@@ -6,7 +6,7 @@ import Link from "next/link"
 
 import { AuctionCard } from "@/components/auction-card"
 import { Button } from "@/components/ui/button"
-import { RecommendationsAPI } from "@/lib/api"
+import { RecommendationsAPI, ItemsAPI } from "@/lib/api"
 import { getImageUrls } from "@/lib/api/config"
 import { useAuth } from "@/lib/auth-context"
 
@@ -36,7 +36,10 @@ export function PersonalizedAuctionsSection() {
       setIsLoading(true)
       setHasError(false)
       try {
+        console.log("🔍 Fetching personalized recommendations for user:", user.id)
         const items = await RecommendationsAPI.getPersonalized(Number(user.id), 4)
+        console.log("✅ Received recommendations:", items.length, "items")
+        
         const mapped: CardAuction[] = items
           .filter((i) => i.auctionStatus === "active" && i.auctionId)
           .map((i) => ({
@@ -52,10 +55,64 @@ export function PersonalizedAuctionsSection() {
             sellerName: i.sellerName,
           }))
 
-        setAuctions(mapped)
+        console.log("📊 Mapped to active auctions:", mapped.length)
+        
+        // Fallback: Nếu không có personalized recommendations, lấy hot auctions
+        if (mapped.length === 0) {
+          console.log("⚠️ No personalized recommendations, fetching hot auctions as fallback")
+          try {
+            const hotItems = await ItemsAPI.getHot(4)
+            const fallbackMapped: CardAuction[] = hotItems
+              .filter((i) => i.auctionStatus === "active" && i.auctionId)
+              .map((i) => ({
+                id: String(i.auctionId!),
+                title: i.title,
+                image: getImageUrls(i.images as any)[0] || "/placeholder.jpg",
+                currentBid: Number(i.currentBid || i.startingBid || i.basePrice || 0),
+                startingBid: Number(i.startingBid || i.basePrice || 0),
+                startTime: i.auctionStartTime ? (new Date(i.auctionStartTime) as any) : undefined,
+                endTime: i.auctionEndTime ? (new Date(i.auctionEndTime) as any) : new Date(),
+                bidCount: Number(i.bidCount || 0),
+                category: i.categoryName || "Khác",
+                sellerName: i.sellerName,
+              }))
+            console.log("✅ Fallback: Got", fallbackMapped.length, "hot auctions")
+            setAuctions(fallbackMapped)
+          } catch (fallbackError) {
+            console.error("❌ Fallback also failed:", fallbackError)
+            setAuctions([])
+          }
+        } else {
+          setAuctions(mapped)
+        }
       } catch (e) {
+        console.error("❌ Error fetching recommendations:", e)
         setHasError(true)
-        setAuctions([])
+        // Thử fallback khi có lỗi
+        try {
+          console.log("🔄 Trying fallback to hot auctions...")
+          const hotItems = await ItemsAPI.getHot(4)
+          const fallbackMapped: CardAuction[] = hotItems
+            .filter((i) => i.auctionStatus === "active" && i.auctionId)
+            .map((i) => ({
+              id: String(i.auctionId!),
+              title: i.title,
+              image: getImageUrls(i.images as any)[0] || "/placeholder.jpg",
+              currentBid: Number(i.currentBid || i.startingBid || i.basePrice || 0),
+              startingBid: Number(i.startingBid || i.basePrice || 0),
+              startTime: i.auctionStartTime ? (new Date(i.auctionStartTime) as any) : undefined,
+              endTime: i.auctionEndTime ? (new Date(i.auctionEndTime) as any) : new Date(),
+              bidCount: Number(i.bidCount || 0),
+              category: i.categoryName || "Khác",
+              sellerName: i.sellerName,
+            }))
+          console.log("✅ Fallback success:", fallbackMapped.length, "auctions")
+          setAuctions(fallbackMapped)
+          setHasError(false) // Reset error nếu fallback thành công
+        } catch (fallbackError) {
+          console.error("❌ Fallback failed:", fallbackError)
+          setAuctions([])
+        }
       } finally {
         setIsLoading(false)
       }
@@ -137,11 +194,6 @@ export function PersonalizedAuctionsSection() {
     return null
   }
 
-  // Nếu không có dữ liệu (do chưa có lịch sử hoặc lỗi), ẩn section để không làm rối UI
-  if (!isLoading && (hasError || auctions.length === 0)) {
-    return null
-  }
-
   return (
     <section className="bg-muted/30 py-16">
       <div className="container mx-auto px-4">
@@ -166,11 +218,25 @@ export function PersonalizedAuctionsSection() {
               />
             ))}
           </div>
-        ) : (
+        ) : auctions.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
             {auctions.map((auction) => (
               <AuctionCard key={auction.id} auction={auction} />
             ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border bg-card p-12 text-center">
+            <p className="text-lg text-muted-foreground">
+              {hasError 
+                ? "Không thể tải gợi ý lúc này. Vui lòng thử lại sau." 
+                : "Chưa có gợi ý phù hợp. Hãy khám phá các phiên đấu giá để chúng tôi hiểu sở thích của bạn hơn!"}
+            </p>
+            <Link href="/auctions" className="mt-4 inline-block">
+              <Button variant="outline" className="mt-4">
+                Khám phá ngay
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
           </div>
         )}
 

@@ -109,6 +109,7 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
     let started = false
     let isStarting = false
     let reconnectTimeoutId: NodeJS.Timeout | null = null
+    let keepAliveInterval: NodeJS.Timeout | null = null
 
     const start = async () => {
       if (isStarting) return
@@ -119,6 +120,23 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
         isStarting = false
         await connection.invoke("JoinAuctionGroup", String(auctionId))
         console.log("✅ BidHistory: SignalR connected and joined group", auctionId)
+        
+        // Start keep-alive ping để đảm bảo connection không bị timeout
+        // Với Long Polling, SignalR tự động gửi request mới, nhưng ta vẫn ping để đảm bảo
+        if (keepAliveInterval) {
+          clearInterval(keepAliveInterval)
+        }
+        keepAliveInterval = setInterval(async () => {
+          if (!isMounted || connection.state !== "Connected") return
+          try {
+            // Ping để giữ connection alive và đảm bảo vẫn trong group
+            // Long Polling sẽ tự động reconnect nếu cần, nhưng ping này đảm bảo chắc chắn
+            await connection.invoke("JoinAuctionGroup", String(auctionId))
+          } catch (err) {
+            console.warn("⚠️ BidHistory: Keep-alive ping failed:", err)
+            // Nếu ping fail, có thể connection đã disconnect, sẽ tự reconnect
+          }
+        }, 90000) // Ping mỗi 90s (trước khi timeout 100s) để đảm bảo connection liên tục
       } catch (e) {
         isStarting = false
         console.error("❌ BidHistory: Failed to start SignalR:", e)
@@ -128,6 +146,10 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
     // Handle connection close - reconnect automatically
     connection.onclose((error) => {
       console.log("🔴 BidHistory: SignalR connection closed", error)
+      if (keepAliveInterval) {
+        clearInterval(keepAliveInterval)
+        keepAliveInterval = null
+      }
       if (!isMounted) return
       
       // Try to reconnect after a delay
@@ -228,6 +250,9 @@ export function BidHistory({ auctionId, currentBid }: BidHistoryProps) {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (reconnectTimeoutId) {
         clearTimeout(reconnectTimeoutId)
+      }
+      if (keepAliveInterval) {
+        clearInterval(keepAliveInterval)
       }
       const leaveAndStop = async () => {
         try {

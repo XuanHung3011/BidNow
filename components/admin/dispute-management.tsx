@@ -437,29 +437,29 @@ function DisputeCard({
 }: DisputeCardProps) {
   return (
     <Card className="p-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex-1">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="mt-1 h-5 w-5 text-destructive" />
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex-1">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-1 h-5 w-5 text-destructive" />
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-semibold text-foreground">{dispute.reason}</h3>
                 {getStatusBadge(dispute.status)}
-              </div>
+                  </div>
               {dispute.description && (
                 <p className="mt-1 text-sm text-muted-foreground">{dispute.description}</p>
               )}
               <p className="mt-1 text-sm text-muted-foreground">
                 Phiên đấu giá: {dispute.auctionTitle || `#${dispute.orderId}`}
               </p>
-              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                <p>
+                  <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                    <p>
                   Người mua: <span className="font-medium text-foreground">{dispute.buyerName}</span>
-                </p>
-                <p>
+                    </p>
+                    <p>
                   Người bán: <span className="font-medium text-foreground">{dispute.sellerName}</span>
-                </p>
-                <p>
+                    </p>
+                    <p>
                   Giá trị: <span className="font-medium text-foreground">{formatCurrency(dispute.orderAmount)}</span>
                 </p>
                 <p>Tạo lúc: {formatDate(dispute.createdAt)}</p>
@@ -468,29 +468,29 @@ function DisputeCard({
                     Xử lý bởi: <span className="font-medium text-foreground">{dispute.resolverName}</span>
                   </p>
                 )}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+            <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
           <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={onOpenChat}>
-            <MessageSquare className="mr-2 h-4 w-4" />
+                <MessageSquare className="mr-2 h-4 w-4" />
             Mở chat
           </Button>
           {dispute.status === "pending" && (
             <Button size="sm" className="w-full bg-primary hover:bg-primary/90 sm:w-auto" onClick={onStartReview}>
               Bắt đầu xử lý
-            </Button>
+              </Button>
           )}
           {showResolveButton && onResolve && (
             <Button size="sm" variant="default" className="w-full sm:w-auto" onClick={onResolve}>
               <CheckCircle2 className="mr-2 h-4 w-4" />
               Giải quyết
-            </Button>
-          )}
-        </div>
-      </div>
-    </Card>
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
   )
 }
