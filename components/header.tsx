@@ -78,9 +78,15 @@ export function Header() {
     
     try {
       setLoadingNotifications(true)
-      // Fetch all notifications (both read and unread) instead of only unread
+      // Fetch all notifications (both read and unread) - lấy 10 notifications mới nhất
       const data = await NotificationsAPI.getAll(parseInt(user.id), 1, 10)
-      setNotifications(data)
+      // Đảm bảo sắp xếp theo thời gian (mới nhất trước) và chỉ lấy 10 cái
+      const sorted = [...data].sort((a, b) => {
+        const aTime = new Date(a.createdAt).getTime()
+        const bTime = new Date(b.createdAt).getTime()
+        return bTime - aTime
+      })
+      setNotifications(sorted.slice(0, 10))
     } catch (error) {
       console.error("Error fetching notifications:", error)
       toast({
@@ -200,14 +206,29 @@ export function Header() {
         // Tăng unread count
         setUnreadCount((prev) => prev + 1)
         
-        // Nếu đang mở dropdown, thêm notification vào danh sách
+        // Thêm notification vào danh sách và sắp xếp lại, chỉ giữ 10 notifications mới nhất
         setNotifications((prev) => {
           // Kiểm tra xem notification đã có chưa (tránh duplicate)
           const exists = prev.some(n => n.id === notification.id)
-          if (exists) return prev
+          if (exists) {
+            // Nếu đã có, update và sắp xếp lại
+            const updated = prev.map(n => n.id === notification.id ? notification : n)
+            updated.sort((a, b) => {
+              const aTime = new Date(a.createdAt).getTime()
+              const bTime = new Date(b.createdAt).getTime()
+              return bTime - aTime
+            })
+            return updated.slice(0, 10)
+          }
           
-          // Thêm vào đầu danh sách
-          return [notification, ...prev]
+          // Thêm vào danh sách, sắp xếp lại và chỉ giữ 10 notifications mới nhất
+          const updated = [notification, ...prev]
+          updated.sort((a, b) => {
+            const aTime = new Date(a.createdAt).getTime()
+            const bTime = new Date(b.createdAt).getTime()
+            return bTime - aTime
+          })
+          return updated.slice(0, 10)
         })
 
         // Hiển thị thông báo đẩy nếu được bật và notification chưa đọc
