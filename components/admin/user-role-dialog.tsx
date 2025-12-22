@@ -40,6 +40,7 @@ export function UserRoleDialog({ open, onOpenChange, user, onAddRole, onRemoveRo
   const [selectedRole, setSelectedRole] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{ type: "add" | "remove"; role: string } | null>(null)
+  const [successAction, setSuccessAction] = useState<{ type: "add" | "remove"; role: string } | null>(null)
 
   const handleAddRole = () => {
     if (!user || !selectedRole) return
@@ -64,7 +65,10 @@ export function UserRoleDialog({ open, onOpenChange, user, onAddRole, onRemoveRo
       } else {
         await onRemoveRole(user.id, confirmAction.role)
       }
+      
+      // Close confirmation dialog and show success dialog
       setConfirmAction(null)
+      setSuccessAction(confirmAction)
     } finally {
       setIsLoading(false)
     }
@@ -182,6 +186,45 @@ export function UserRoleDialog({ open, onOpenChange, user, onAddRole, onRemoveRo
             </AlertDialogCancel>
             <AlertDialogAction disabled={isLoading || !confirmAction} onClick={handleConfirm}>
               {isLoading ? "Đang xử lý..." : "Xác nhận"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Thông báo thành công */}
+      <AlertDialog
+        open={!!successAction}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSuccessAction(null)
+            // Close the role management dialog after closing success dialog
+            onOpenChange(false)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              {successAction && successAction.type === "add" ? "Thêm vai trò thành công" : "Xóa vai trò thành công"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {successAction && successAction.type === "add"
+                ? `Đã thêm vai trò "${getRoleLabel(successAction.role)}" thành công cho người dùng ${user?.email}.`
+                : successAction
+                ? `Đã xóa vai trò "${getRoleLabel(successAction.role)}" thành công khỏi người dùng ${user?.email}.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => {
+              setSuccessAction(null)
+              // Close the role management dialog
+              onOpenChange(false)
+            }}>
+              Đóng
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

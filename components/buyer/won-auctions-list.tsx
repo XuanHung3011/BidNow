@@ -9,12 +9,17 @@ import Link from "next/link"
 import { AuctionsAPI, type BuyerWonAuctionDto } from "@/lib/api/auctions"
 import { RatingDialog } from "@/components/rating-dialog"
 import { PaymentButton } from "@/components/payment-button"
+import { RatingsAPI } from "@/lib/api/ratings"
+import { useAuth } from "@/lib/auth-context"
+import { useToast } from "@/hooks/use-toast"
 
 interface WonAuctionsListProps {
   bidderId: number
 }
 
 export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
+  const { user } = useAuth()
+  const { toast } = useToast()
   const [auctions, setAuctions] = useState<BuyerWonAuctionDto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -28,7 +33,9 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
     auctionId: number
     auctionTitle: string
     sellerName: string
+    sellerId?: number
   } | null>(null)
+  const [submittingRating, setSubmittingRating] = useState(false)
 
   useEffect(() => {
     if (bidderId && !isNaN(bidderId)) {
@@ -252,24 +259,93 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
     return filtered
   }, [auctions, filterStatus])
 
-  const handleRateClick = (auction: BuyerWonAuctionDto) => {
-    setRatingDialog({
-      open: true,
-      auctionId: auction.auctionId,
-      auctionTitle: auction.itemTitle,
-      sellerName: auction.sellerName || 'Người bán',
-    })
+  const handleRateClick = async (auction: BuyerWonAuctionDto) => {
+    if (!user) return
+    
+    try {
+      // Fetch auction detail to verify winner and get seller info
+      const buyerId = parseInt(user.id)
+      const auctionDetail = await AuctionsAPI.getDetail(auction.auctionId, buyerId)
+      
+      // Validate: Only winner can rate seller
+      if (!auctionDetail.winnerId || auctionDetail.winnerId !== buyerId) {
+        toast({
+          title: "Lỗi",
+          description: "Chỉ người thắng phiên đấu giá mới được đánh giá người bán",
+          variant: "destructive"
+        })
+        return
+      }
+      
+      setRatingDialog({
+        open: true,
+        auctionId: auction.auctionId,
+        auctionTitle: auction.itemTitle,
+        sellerName: auction.sellerName || 'Người bán',
+        sellerId: auctionDetail.sellerId,
+      })
+    } catch (error: any) {
+      console.error("Error fetching auction detail:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải thông tin phiên đấu giá",
+        variant: "destructive"
+      })
+    }
   }
 
   const handleRatingSubmit = async (rating: number, comment: string) => {
-    console.log('Rating submitted:', { 
-      rating, 
-      comment, 
-      auctionId: ratingDialog?.auctionId 
-    })
-    // TODO: Call API to save rating
-    // After successful rating, reload the list
-    await loadWonAuctions()
+    if (!ratingDialog || !user || !ratingDialog.sellerId) {
+      toast({
+        title: "Lỗi",
+        description: "Thông tin không đầy đủ để đánh giá",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setSubmittingRating(true)
+      const buyerId = parseInt(user.id)
+      
+      // Validate: Only winner can rate seller - fetch auction detail to verify
+      const auctionDetail = await AuctionsAPI.getDetail(ratingDialog.auctionId, buyerId)
+      if (!auctionDetail.winnerId || auctionDetail.winnerId !== buyerId) {
+        toast({
+          title: "Lỗi",
+          description: "Chỉ người thắng phiên đấu giá mới được đánh giá người bán",
+          variant: "destructive"
+        })
+        return
+      }
+      
+      await RatingsAPI.create({
+        auctionId: ratingDialog.auctionId,
+        raterId: buyerId,
+        ratedId: ratingDialog.sellerId,
+        rating: rating,
+        comment: comment || undefined,
+      })
+
+      toast({
+        title: "Thành công",
+        description: "Đã gửi đánh giá thành công",
+      })
+
+      // Refresh list to update hasRated status
+      await loadWonAuctions()
+
+      setRatingDialog(null)
+    } catch (error: any) {
+      console.error("Error submitting rating:", error)
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể gửi đánh giá",
+        variant: "destructive"
+      })
+    } finally {
+      setSubmittingRating(false)
+    }
   }
 
   if (loading) {
@@ -497,14 +573,18 @@ export function WonAuctionsList({ bidderId }: WonAuctionsListProps) {
       )}
 
       {/* Rating Dialog */}
-      {ratingDialog && (
+      {ratingDialog && user && (
         <RatingDialog
           open={ratingDialog.open}
           onOpenChange={(open) => setRatingDialog(open ? ratingDialog : null)}
           targetName={ratingDialog.sellerName}
           targetType="seller"
           auctionTitle={ratingDialog.auctionTitle}
+          auctionId={ratingDialog.auctionId}
+          raterId={parseInt(user.id)}
+          ratedId={ratingDialog.sellerId || 0}
           onSubmit={handleRatingSubmit}
+          submitting={submittingRating}
         />
       )}
     </div>

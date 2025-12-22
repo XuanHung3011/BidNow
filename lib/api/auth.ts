@@ -19,8 +19,43 @@ export class AuthAPI {
       });
 
       if (response.status === 404) return { ok: false, reason: 'user_not_found' };
-      if (response.status === 401) return { ok: false, reason: 'invalid_password' };
-      if (response.status === 403) return { ok: false, reason: 'not_verified' };
+      
+      // Check response message for both 401 and 403 to handle account deactivated
+      if (response.status === 401 || response.status === 403) {
+        try {
+          // Read response as text (ASP.NET Core returns plain text for Forbid/Unauthorized)
+          const errorText = await response.text();
+          console.log(`[Login] ${response.status} Response:`, errorText);
+          
+          // Check if message contains "khóa" (locked/deactivated in Vietnamese) or "deactivated"
+          const lowerText = errorText.toLowerCase();
+          if (lowerText.includes("khóa") || 
+              lowerText.includes("deactivated") || 
+              lowerText.includes("account deactivated") ||
+              lowerText.includes("bị khóa") ||
+              lowerText.includes("đã bị khóa")) {
+            console.log("[Login] Detected account deactivated");
+            return { ok: false, reason: 'account_deactivated' };
+          }
+          
+          // If 403 and not deactivated, it's not verified
+          if (response.status === 403) {
+            console.log("[Login] Account not verified");
+            return { ok: false, reason: 'not_verified' };
+          }
+          
+          // If 401 and not deactivated, it's invalid password
+          if (response.status === 401) {
+            console.log("[Login] Invalid password");
+            return { ok: false, reason: 'invalid_password' };
+          }
+        } catch (e) {
+          console.error(`[Login] Error parsing ${response.status} response:`, e);
+          // Default based on status code
+          if (response.status === 401) return { ok: false, reason: 'invalid_password' };
+          if (response.status === 403) return { ok: false, reason: 'not_verified' };
+        }
+      }
       if (!response.ok) return { ok: false, reason: 'invalid' };
 
       const userData: UserResponse = await this.handleResponse(response);

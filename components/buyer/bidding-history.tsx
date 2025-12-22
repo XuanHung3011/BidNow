@@ -120,9 +120,23 @@ export function BiddingHistory() {
   }, [history, filterStatus])
 
   const handleRateClick = async (auctionId: number, itemTitle: string) => {
+    if (!user) return
+    
     try {
-      // Fetch auction detail to get seller info
-      const auctionDetail = await AuctionsAPI.getDetail(auctionId)
+      // Fetch auction detail to get seller info and verify winner
+      const buyerId = parseInt(user.id)
+      const auctionDetail = await AuctionsAPI.getDetail(auctionId, buyerId)
+      
+      // Validate: Only winner can rate seller
+      if (!auctionDetail.winnerId || auctionDetail.winnerId !== buyerId) {
+        toast({
+          title: "Lỗi",
+          description: "Chỉ người thắng phiên đấu giá mới được đánh giá người bán",
+          variant: "destructive"
+        })
+        return
+      }
+      
       setRatingDialog({
         open: true,
         auctionId: auctionId,
@@ -153,6 +167,18 @@ export function BiddingHistory() {
     try {
       setSubmittingRating(true)
       const buyerId = parseInt(user.id)
+      
+      // Validate: Only winner can rate seller - fetch auction detail to verify
+      const auctionDetail = await AuctionsAPI.getDetail(ratingDialog.auctionId, buyerId)
+      if (!auctionDetail.winnerId || auctionDetail.winnerId !== buyerId) {
+        toast({
+          title: "Lỗi",
+          description: "Chỉ người thắng phiên đấu giá mới được đánh giá người bán",
+          variant: "destructive"
+        })
+        return
+      }
+      
       await RatingsAPI.create({
         auctionId: ratingDialog.auctionId,
         raterId: buyerId,

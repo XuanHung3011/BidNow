@@ -11,15 +11,11 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { UsersAPI } from "@/lib/api/users"
-import { MessagesAPI } from "@/lib/api/messages"
-import { useRouter } from "next/navigation"
+import { ContactAPI } from "@/lib/api/contact"
 
-const SUPPORT_ADMIN_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_ADMIN_EMAIL || "admin@bidnow.local"
 
 export function ContactForm() {
   const { user } = useAuth()
-  const router = useRouter()
   const { toast } = useToast()
   const [formData, setFormData] = useState({
     name: user?.name || "",
@@ -30,11 +26,7 @@ export function ContactForm() {
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  useEffect(() => {
-    if (!user) {
-      router.push("/login")
-    }
-  }, [user, router])
+  // Không yêu cầu đăng nhập - cho phép người dùng chưa có tài khoản gửi form
 
   const getCategoryLabel = (value: string) => {
     switch (value) {
@@ -58,46 +50,20 @@ export function ContactForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!user?.id) {
-      toast({
-        title: "Yêu cầu đăng nhập",
-        description: "Vui lòng đăng nhập để gửi tin nhắn.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const senderId = Number(user.id)
-    if (Number.isNaN(senderId)) {
-      toast({
-        title: "Lỗi",
-        description: "Không xác định được thông tin người gửi.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const composedMessage = [
-      `[Tiêu đề]: ${formData.subject || "Không có"}`,
-      `[Danh mục]: ${getCategoryLabel(formData.category)}`,
-      `[Liên hệ]: ${formData.name || "Ẩn danh"} - ${formData.email || "Không cung cấp"}`,
-      "",
-      "[Nội dung]:",
-      formData.message || "(Không có nội dung)",
-    ].join("\n")
-
     try {
       setIsSubmitting(true)
-      const adminUser = await UsersAPI.getByEmail(SUPPORT_ADMIN_EMAIL)
-      if (!adminUser?.id) {
-        throw new Error("Không tìm thấy tài khoản hỗ trợ")
-      }
-      await MessagesAPI.send({
-        senderId,
-        receiverId: adminUser.id,
-        content: composedMessage,
+      
+      // Gửi email trực tiếp đến admin
+      await ContactAPI.sendContactMessage({
+        name: formData.name,
+        email: formData.email,
+        subject: formData.subject,
+        category: formData.category,
+        message: formData.message,
+        userId: user?.id ? Number(user.id) : null,
       })
-
+      
+      // Lưu vào localStorage
       if (typeof window !== "undefined") {
         const storedMessages = JSON.parse(localStorage.getItem("bidnow_contact_messages") || "[]")
         const newMessage = {
@@ -107,9 +73,9 @@ export function ContactForm() {
           subject: formData.subject,
           category: formData.category,
           message: formData.message,
-          userId: String(user?.id),
+          userId: user?.id ? String(user.id) : null,
           timestamp: new Date().toISOString(),
-          status: "pending",
+          status: "sent",
           read: false,
         }
         localStorage.setItem("bidnow_contact_messages", JSON.stringify([newMessage, ...storedMessages]))

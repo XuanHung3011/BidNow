@@ -50,9 +50,11 @@ export default function LoginPage() {
           ? "Mật khẩu không đúng"
           : result.reason === "not_verified"
           ? "Email chưa được xác minh"
+          : result.reason === "account_deactivated"
+          ? "Tài khoản đã bị khóa"
           : result.reason === "network"
           ? "Lỗi kết nối, vui lòng thử lại"
-          : "Email hoặc mật khẩu không đúng"
+          : "Tài khoản đã bị khóa"
       setError(message)
       toast({ title: "Không thể đăng nhập", description: message, variant: "destructive" })
     }

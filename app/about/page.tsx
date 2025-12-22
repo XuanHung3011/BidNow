@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Shield, Users, Zap, Award, FileText, Scale, Lock, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { ContactForm } from "@/components/contact-form"
 
 export default function AboutPage() {
   return (
@@ -191,14 +192,14 @@ export default function AboutPage() {
 
         <section className="bg-muted/50 py-16">
           <div className="container mx-auto px-4">
-            <div className="mx-auto max-w-3xl text-center">
-              <h2 className="mb-6 text-3xl font-bold text-foreground">Cần hỗ trợ?</h2>
-              <p className="mb-8 text-lg text-muted-foreground">
-                Nếu bạn có thắc mắc hoặc cần hỗ trợ, hãy liên hệ với chúng tôi
-              </p>
-              <Button asChild size="lg" className="bg-primary hover:bg-primary/90">
-                <Link href="/contact">Liên hệ Admin</Link>
-              </Button>
+            <div className="mx-auto max-w-4xl">
+              <div className="mb-8 text-center">
+                <h2 className="mb-6 text-3xl font-bold text-foreground">Cần hỗ trợ?</h2>
+                <p className="text-lg text-muted-foreground">
+                  Nếu bạn có thắc mắc hoặc cần hỗ trợ, hãy gửi tin nhắn cho Admin
+                </p>
+              </div>
+              <ContactForm />
             </div>
           </div>
         </section>

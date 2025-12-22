@@ -12,6 +12,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import Link from "next/link"
 import { useState, useEffect, useMemo } from "react"
 import { RatingDialog } from "@/components/rating-dialog"
@@ -56,6 +66,11 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
   const [auctionDetail, setAuctionDetail] = useState<AuctionDetailDto | null>(null)
   const [loadingAuctionDetail, setLoadingAuctionDetail] = useState(false)
   const [filterSort, setFilterSort] = useState<"newest" | "oldest" | "price-high" | "price-low" | "bids-high" | "bids-low">("newest")
+  
+  // Delete confirmation dialog state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteSuccessOpen, setDeleteSuccessOpen] = useState(false)
+  const [itemToDelete, setItemToDelete] = useState<number | null>(null)
 
   // Load draft items when status is "draft"
   useEffect(() => {
@@ -129,17 +144,18 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
     }
   }
 
-  const handleDeleteItem = async (itemId: number) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa sản phẩm này?")) {
-      return
-    }
+  const handleDeleteClick = (itemId: number) => {
+    setItemToDelete(itemId)
+    setDeleteConfirmOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return
 
     try {
-      await ItemsAPI.deleteItem(itemId)
-      toast({
-        title: "Thành công",
-        description: "Đã xóa sản phẩm thành công",
-      })
+      await ItemsAPI.deleteItem(itemToDelete)
+      setDeleteConfirmOpen(false)
+      setDeleteSuccessOpen(true)
       // Reload the list
       if (status === "draft") {
         loadDraftItems()
@@ -150,13 +166,19 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
       if (onItemDeleted) {
         onItemDeleted()
       }
+      setItemToDelete(null)
     } catch (error: any) {
       toast({
         title: "Lỗi",
         description: error.message || "Không thể xóa sản phẩm",
         variant: "destructive"
       })
+      setItemToDelete(null)
     }
+  }
+
+  const handleDeleteItem = async (itemId: number) => {
+    handleDeleteClick(itemId)
   }
 
   // Load auctions for non-draft and non-pending statuses
@@ -262,14 +284,49 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
     return () => clearInterval(interval)
   }, [user?.id])
 
-  const handleRateClick = (auction: SellerAuctionDto) => {
-    setRatingDialog({
-      open: true,
-      auctionId: auction.id,
-      auctionTitle: auction.itemTitle,
-      buyerName: auction.winnerName || "Người mua",
-      winnerId: auction.winnerId,
-    })
+  const handleRateClick = async (auction: SellerAuctionDto) => {
+    if (!user) return
+    
+    try {
+      // Fetch auction detail to verify seller is owner and buyer is winner
+      const sellerId = parseInt(user.id)
+      const auctionDetail = await AuctionsAPI.getDetail(auction.id, sellerId)
+      
+      // Validate: Seller must be owner of auction
+      if (auctionDetail.sellerId !== sellerId) {
+        toast({
+          title: "Lỗi",
+          description: "Bạn chỉ có thể đánh giá người mua của phiên đấu giá do bạn tạo",
+          variant: "destructive"
+        })
+        return
+      }
+      
+      // Validate: Only rate winner
+      if (!auctionDetail.winnerId) {
+        toast({
+          title: "Lỗi",
+          description: "Chỉ có thể đánh giá người thắng phiên đấu giá",
+          variant: "destructive"
+        })
+        return
+      }
+      
+      setRatingDialog({
+        open: true,
+        auctionId: auction.id,
+        auctionTitle: auction.itemTitle,
+        buyerName: auction.winnerName || "Người mua",
+        winnerId: auction.winnerId,
+      })
+    } catch (error: any) {
+      console.error("Error fetching auction detail:", error)
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải thông tin phiên đấu giá",
+        variant: "destructive"
+      })
+    }
   }
 
   const handleRatingSubmit = async (rating: number, comment: string) => {
@@ -285,6 +342,30 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
     try {
       setSubmittingRating(true)
       const sellerId = parseInt(user.id)
+      
+      // Validate: Seller must be owner and buyer must be winner
+      const auctionDetail = await AuctionsAPI.getDetail(ratingDialog.auctionId, sellerId)
+      
+      // Validate seller is owner
+      if (auctionDetail.sellerId !== sellerId) {
+        toast({
+          title: "Lỗi",
+          description: "Bạn chỉ có thể đánh giá người mua của phiên đấu giá do bạn tạo",
+          variant: "destructive"
+        })
+        return
+      }
+      
+      // Validate buyer is winner
+      if (!auctionDetail.winnerId || auctionDetail.winnerId !== ratingDialog.winnerId) {
+        toast({
+          title: "Lỗi",
+          description: "Chỉ có thể đánh giá người thắng phiên đấu giá",
+          variant: "destructive"
+        })
+        return
+      }
+      
       await RatingsAPI.create({
         auctionId: ratingDialog.auctionId,
         raterId: sellerId,
@@ -366,12 +447,21 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
     const diffDays = Math.floor(diffMs / 86400000)
 
     if (status === "active") {
-      if (diffMins < 60) {
+      // Nếu thời gian đã qua, hiển thị "Đã kết thúc"
+      if (diffMs <= 0) {
+        return "Đã kết thúc"
+      }
+      // Hiển thị thời gian còn lại
+      if (diffDays > 0) {
+        const remainingHours = Math.floor((diffMs % 86400000) / 3600000)
+        return `${diffDays} ngày ${remainingHours} giờ`
+      } else if (diffHours > 0) {
+        const remainingMins = Math.floor((diffMs % 3600000) / 60000)
+        return `${diffHours} giờ ${remainingMins} phút`
+      } else if (diffMins > 0) {
         return `${diffMins} phút`
-      } else if (diffHours < 24) {
-        return `${diffHours} giờ`
       } else {
-        return `${diffDays} ngày`
+        return "Sắp kết thúc"
       }
     } else if (status === "scheduled") {
       return date.toLocaleString("vi-VN", {
@@ -394,76 +484,253 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
   if (status === "draft") {
     if (draftLoading) {
       return (
-        <Card className="p-12 text-center">
-          <p className="text-muted-foreground">Đang tải...</p>
-        </Card>
+        <>
+          <Card className="p-12 text-center">
+            <p className="text-muted-foreground">Đang tải...</p>
+          </Card>
+          {/* Delete Confirmation Dialog */}
+          <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Xác nhận xóa bản nháp</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Bạn có chắc chắn muốn xóa bản nháp này? Hành động này không thể hoàn tác.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Hủy</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Xóa
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Delete Success Dialog */}
+          <AlertDialog open={deleteSuccessOpen} onOpenChange={setDeleteSuccessOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
+                    <svg
+                      className="h-6 w-6 text-green-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  </div>
+                  Xóa thành công
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Bản nháp đã được xóa thành công.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogAction onClick={() => setDeleteSuccessOpen(false)}>
+                  Đóng
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
       )
     }
 
     if (draftItems.length === 0) {
       return (
-        <Card className="p-12 text-center">
-          <p className="text-muted-foreground">Không có bản nháp nào</p>
-        </Card>
+        <>
+          <Card className="p-12 text-center">
+            <p className="text-muted-foreground">Không có bản nháp nào</p>
+          </Card>
+          {/* Delete Confirmation Dialog */}
+          <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Xác nhận xóa bản nháp</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Bạn có chắc chắn muốn xóa bản nháp này? Hành động này không thể hoàn tác.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Hủy</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Xóa
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Delete Success Dialog */}
+          <AlertDialog open={deleteSuccessOpen} onOpenChange={setDeleteSuccessOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
+                    <svg
+                      className="h-6 w-6 text-green-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  </div>
+                  Xóa thành công
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Bản nháp đã được xóa thành công.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogAction onClick={() => setDeleteSuccessOpen(false)}>
+                  Đóng
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
       )
     }
 
     return (
-      <div className="space-y-4">
-        {draftItems.map((item) => {
-          const imageUrls = getImageUrls(item.images)
-          const firstImage = imageUrls[0] || "/placeholder.svg"
-          
-          return (
-            <Card key={item.id} className="p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex gap-4">
-                  <img
-                    src={firstImage}
-                    alt={item.title}
-                    className="h-20 w-20 rounded-lg object-cover"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-start gap-2">
-                      <h3 className="font-semibold text-foreground">{item.title}</h3>
-                      <Badge variant="secondary">Bản nháp</Badge>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{item.categoryName || "Chưa có danh mục"}</p>
-                    <div className="mt-2 flex flex-wrap gap-4 text-sm">
-                      <span className="text-muted-foreground">
-                        Giá khởi điểm:{" "}
-                        <span className="font-semibold text-foreground">
-                          {item.basePrice ? item.basePrice.toLocaleString('vi-VN') + ' VNĐ' : 'Chưa đặt'}
-                        </span>
-                      </span>
-                      {item.createdAt && (
+      <>
+        <div className="space-y-4">
+          {draftItems.map((item) => {
+            const imageUrls = getImageUrls(item.images)
+            const firstImage = imageUrls[0] || "/placeholder.svg"
+            
+            return (
+              <Card key={item.id} className="p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex gap-4">
+                    <img
+                      src={firstImage}
+                      alt={item.title}
+                      className="h-20 w-20 rounded-lg object-cover"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-start gap-2">
+                        <h3 className="font-semibold text-foreground">{item.title}</h3>
+                        <Badge variant="secondary">Bản nháp</Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{item.categoryName || "Chưa có danh mục"}</p>
+                      <div className="mt-2 flex flex-wrap gap-4 text-sm">
                         <span className="text-muted-foreground">
-                          Tạo lúc: <span className="font-semibold text-foreground">
-                            {new Date(item.createdAt).toLocaleDateString('vi-VN')}
+                          Giá khởi điểm:{" "}
+                          <span className="font-semibold text-foreground">
+                            {item.basePrice ? item.basePrice.toLocaleString('vi-VN') + ' VNĐ' : 'Chưa đặt'}
                           </span>
                         </span>
-                      )}
+                        {item.createdAt && (
+                          <span className="text-muted-foreground">
+                            Tạo lúc: <span className="font-semibold text-foreground">
+                              {new Date(item.createdAt).toLocaleDateString('vi-VN')}
+                            </span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                  {onSelectDraftItem && (
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {onSelectDraftItem && (
+                      <Button 
+                        variant="default" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleSelectDraft(item)
+                        }}
+                      >
+                        <Edit className="mr-2 h-4 w-4" />
+                        Tiếp tục chỉnh sửa
+                      </Button>
+                    )}
                     <Button 
-                      variant="default" 
+                      variant="destructive" 
                       size="sm"
-                      onClick={() => handleSelectDraft(item)}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        handleDeleteClick(item.id)
+                      }}
+                      type="button"
                     >
-                      <Edit className="mr-2 h-4 w-4" />
-                      Tiếp tục chỉnh sửa
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Xóa
                     </Button>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </Card>
-          )
-        })}
-      </div>
+              </Card>
+            )
+          })}
+        </div>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Xác nhận xóa bản nháp</AlertDialogTitle>
+              <AlertDialogDescription>
+                Bạn có chắc chắn muốn xóa bản nháp này? Hành động này không thể hoàn tác.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Hủy</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Xóa
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete Success Dialog */}
+        <AlertDialog open={deleteSuccessOpen} onOpenChange={setDeleteSuccessOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
+                  <svg
+                    className="h-6 w-6 text-green-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
+                Xóa thành công
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Bản nháp đã được xóa thành công.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction onClick={() => setDeleteSuccessOpen(false)}>
+                Đóng
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </>
     )
   }
 
@@ -544,7 +811,7 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
                   <Button 
                     variant="destructive" 
                     size="sm"
-                    onClick={() => handleDeleteItem(item.id)}
+                    onClick={() => handleDeleteClick(item.id)}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Xóa
@@ -692,7 +959,7 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
                         ? "Bắt đầu:"
                         : "Ngày bán:"}{" "}
                       <span className="font-semibold text-foreground">
-                        {status === "active" || status === "scheduled" ? formatDate(auction.startTime) : formatDate(auction.endTime)}
+                        {status === "active" ? formatDate(auction.endTime) : status === "scheduled" ? formatDate(auction.startTime) : formatDate(auction.endTime)}
                       </span>
                     </span>
                   </div>
@@ -1000,6 +1267,58 @@ export function SellerAuctionsList({ status, onSelectDraftItem, onItemDeleted, r
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa bản nháp</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa bản nháp này? Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Xóa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Success Dialog */}
+      <AlertDialog open={deleteSuccessOpen} onOpenChange={setDeleteSuccessOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
+                <svg
+                  className="h-6 w-6 text-green-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+              Xóa thành công
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Bản nháp đã được xóa thành công.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setDeleteSuccessOpen(false)}>
+              Đóng
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
